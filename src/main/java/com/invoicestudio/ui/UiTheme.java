@@ -113,19 +113,18 @@ public final class UiTheme {
 
     /**
      * Metric card: micro title, big value, sub description.
-     * accentClass: accent-gold / accent-emerald / accent-red / accent-sky / accent-amber
+     * accentClass: accent-gold / accent-emerald / accent-red / accent-sky / accent-amber —
+     * applied to the SUB line (e.g. "+12.5% vs last month") so a delta reads
+     * green for plus and red for minus; the big value stays neutral.
      */
     public static VBox kpiCard(String title, Label valueLabel, String subText, String accentClass) {
         VBox card = new VBox(5);
         card.getStyleClass().add("kpi-card");
         HBox.setHgrow(card, Priority.ALWAYS);
-        card.getChildren().addAll(
-                microLabel(title, null),
-                valueLabel,
-                subText != null ? subLabel(subText) : new Label()
-        );
-        if (accentClass != null) {
-            valueLabel.getStyleClass().add(accentClass);
+        Label sub = subText != null ? subLabel(subText) : new Label();
+        card.getChildren().addAll(microLabel(title, null), valueLabel, sub);
+        if (accentClass != null && subText != null) {
+            sub.getStyleClass().add(accentClass);
         }
         return card;
     }

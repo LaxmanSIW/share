@@ -221,6 +221,35 @@ public class NavSmokeRunner extends StudioApp {
         steps.add(new Step("26-r2-templates", () -> clickSidebar("Templates"), r -> firstContentButton("Designer") != null));
         steps.add(new Step("27-r2-dashboard-final", () -> clickSidebar("Dashboard"), r -> contentNodeCount() > 10));
 
+        // -- Dashboard revenue delta: red when negative, green when positive --
+        // One '›' from the current month lands on a month with no bills whose
+        // predecessor HAS bills → delta = -100.0% → sub label must turn RED.
+        steps.add(new Step("28-delta-negative-red", () ->
+                        safeFire(firstContentButton("\u203a"), "next-month \u203a"),
+                r -> {
+                    Label sub = revenueDeltaSubLabel();
+                    return sub != null && sub.getStyleClass().contains("accent-red")
+                            && sub.getText() != null && sub.getText().contains("-100.0%");
+                }));
+        // Step 28 left the dashboard on Oct 2026. Reset to the live month,
+        // then two '‹' back: Jul 2026 holds ₹16610 (INV-SMOKE-001) vs empty
+        // Jun 2026 → delta = +100.0% → sub label must turn GREEN. Top bar is
+        // rebuilt on every refresh(), so re-lookup before each fire.
+        steps.add(new Step("29-delta-positive-green", () -> {
+                    safeFire(firstContentButton("Current Month"), "reset to current month");
+                    safeFire(firstContentButton("\u2039"), "prev-month \u2039 (1/2)");
+                    safeFire(firstContentButton("\u2039"), "prev-month \u2039 (2/2)");
+                },
+                r -> {
+                    Label sub = revenueDeltaSubLabel();
+                    return sub != null && sub.getStyleClass().contains("accent-emerald")
+                            && sub.getText() != null && sub.getText().contains("+100.0%");
+                }));
+        // Restore the live month so any later navigation starts from "now".
+        steps.add(new Step("30-delta-restore-current", () ->
+                        safeFire(firstContentButton("Current Month"), "current-month"),
+                r -> revenueDeltaSubLabel() != null));
+
         stepIndex = 0;
         runStep();
     }
@@ -424,6 +453,28 @@ public class NavSmokeRunner extends StudioApp {
     void safeFire(Button btn, String what) {
         if (btn == null) throw new IllegalStateException("button not found: " + what);
         btn.fire();
+    }
+
+    // ------------------------------------------------------------------
+    // Dashboard KPI helpers (revenue delta red/green verification)
+    // ------------------------------------------------------------------
+
+    /** Order-preserving DFS collecting labels carrying the kpi-subtext class. */
+    static void collectByClass(Node n, String cls, List<Label> out) {
+        if (n == null) return;
+        if (n instanceof Label l && l.getStyleClass().contains(cls)) out.add(l);
+        if (n instanceof Parent p) {
+            for (Node ch : p.getChildrenUnmodifiable()) collectByClass(ch, cls, out);
+        }
+    }
+
+    /** The "%+N.N% vs last month" sub-label on the THIS MONTH REVENUE KPI card. */
+    Label revenueDeltaSubLabel() {
+        List<Label> subs = new ArrayList<>();
+        collectByClass(contentArea(), "kpi-subtext", subs);
+        return subs.stream()
+                .filter(l -> l.getText() != null && l.getText().contains("vs last month"))
+                .findFirst().orElse(null);
     }
 
     // ------------------------------------------------------------------

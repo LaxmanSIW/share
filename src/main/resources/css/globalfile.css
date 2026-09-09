@@ -113,13 +113,6 @@ Label {
     -fx-text-fill: -color-text;
 }
 
-/* Accent helpers — use INSTEAD of inline text colors */
-.accent-gold    { -fx-text-fill: -color-accent; }
-.accent-emerald { -fx-text-fill: -color-success; }
-.accent-red     { -fx-text-fill: -color-error; }
-.accent-sky     { -fx-text-fill: -color-info; }
-.accent-amber   { -fx-text-fill: -color-warning; }
-
 .icon-accent { -fx-text-fill: -color-accent; }
 .icon-lg     { -fx-font-size: 20px; }
 
@@ -867,6 +860,10 @@ Label {
     -fx-border-color: -color-border;
     -fx-border-radius: 10;
     -fx-background-radius: 10;
+    /* Modena paints every cell's RIGHT edge (incl. empty rows) with this
+       looked-up color, which derives near-white from the light -fx-color.
+       Pin it to the row line color so vertical separators match the rows. */
+    -fx-table-cell-border-color: rgba(35, 43, 56, 0.55);
 }
 
 .table-view .column-header-background {
@@ -2144,3 +2141,14 @@ Label {
 .cell-clear {
     -fx-background-color: transparent;
 }
+
+/* Accent helpers — use INSTEAD of inline text colors.
+   Kept at the END of the file ON PURPOSE: JavaFX gives equal-specificity wins
+   to the LAST matching rule, so these must come after .kpi-value, .kpi-subtext,
+   .table-cell-mono, .table-cell-title, .button-icon-subtle, .text-muted etc.
+   (all of which also set -fx-text-fill) for the accent color to actually show. */
+.accent-gold    { -fx-text-fill: -color-accent; }
+.accent-emerald { -fx-text-fill: -color-success; }
+.accent-red     { -fx-text-fill: -color-error; }
+.accent-sky     { -fx-text-fill: -color-info; }
+.accent-amber   { -fx-text-fill: -color-warning; }
