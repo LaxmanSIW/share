@@ -9,15 +9,21 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ColorPicker;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.DialogPane;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
+import javafx.scene.control.Spinner;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
 import javafx.scene.image.WritableImage;
-import javafx.scene.control.ComboBox;
 import javafx.scene.control.MenuButton;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
 import javafx.stage.Window;
@@ -30,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Predicate;
 
@@ -59,11 +66,13 @@ public class NavSmokeRunner extends StudioApp {
     static final List<Throwable> uncaught = new CopyOnWriteArrayList<>();
     static final List<String> shotLog = new CopyOnWriteArrayList<>();
     static final File SHOT_DIR = new File(System.getProperty("smoke.shots", "screenshots"));
+    static final double MM_PX = 3.7795275591; // ~96 DPI
 
     Stage stage;
     int stepIndex = 0;
     int dialogShotSeq = 0;
     List<String> colOrderBefore;
+    List<Double> rowHBefore;
     final List<Step> steps = new ArrayList<>();
 
     record Step(String name, Runnable action, Predicate<NavSmokeRunner> verify) {}
@@ -171,6 +180,22 @@ public class NavSmokeRunner extends StudioApp {
                 r -> verifySwapped(colOrderBefore, 0, 1)));
         steps.add(new Step("14e-col-move-boundaries", () -> {},
                 r -> boundaryButtonsDisabled()));
+
+        // -- Template Designer: TABLE border / row-color / row-height properties --
+        steps.add(new Step("14f-table-prop-controls", () -> {},
+                r -> tablePropControlsPresent()));
+        steps.add(new Step("14g-table-border-rows-only", () -> setBorderType("Rows Only"),
+                r -> borderTypeIs("Rows Only")));
+        steps.add(new Step("14h-table-border-restore-grid", () -> setBorderType("Grid"),
+                r -> borderTypeIs("Grid")));
+        steps.add(new Step("14i-table-border-side-top-off", () -> fireCheckBox("T"),
+                r -> selectedTableElement().map(t -> !t.isBorderTop()).orElse(false)));
+        steps.add(new Step("14j-table-border-side-top-on", () -> fireCheckBox("T"),
+                r -> selectedTableElement().map(TemplateElement::isBorderTop).orElse(false)));
+        steps.add(new Step("14k-table-rowheight-applies", () -> { rowHBefore = canvasTableRowHeights(); setRowHeightByLabel("Row Height (mm):", 12.0); },
+                r -> rowHeightChanged(rowHBefore, 12.0)));
+        steps.add(new Step("14l-table-rowheight-restore", () -> setRowHeightByLabel("Row Height (mm):", 6.0),
+                r -> true));
 
         steps.add(new Step("15-leave-designer-templates", () -> clickSidebar("Templates"),
                 r -> firstContentButton("Designer") != null));
@@ -504,6 +529,129 @@ public class NavSmokeRunner extends StudioApp {
             if (ups.get(n - 1).isDisabled()) return false;
         }
         return true;
+    }
+
+    // ------------------------------------------------------------------
+    // Designer table-property helpers (border / row colors / row height)
+    // ------------------------------------------------------------------
+
+    /** The TABLE element currently selected through the Layers list. */
+    Optional<TemplateElement> selectedTableElement() {
+        Node n = stage.getScene().getRoot().lookup(".layers-list");
+        if (n instanceof ListView<?> lv
+                && lv.getSelectionModel().getSelectedItem() instanceof TemplateElement te) {
+            return Optional.of(te);
+        }
+        return Optional.empty();
+    }
+
+    boolean tablePropControlsPresent() {
+        if (findComboBoxWithItem("Rows Only") == null) return false;
+        for (String t : new String[]{"T", "B", "L", "R"}) {
+            if (findCheckBox(t) == null) return false;
+        }
+        // headerBg + headerText + border + rowBg + rowText + zebra pickers
+        return countNodesOfType(stage.getScene().getRoot(), ColorPicker.class) >= 6;
+    }
+
+    @SuppressWarnings("unchecked")
+    ComboBox<String> findComboBoxWithItem(String item) {
+        return (ComboBox<String>) findNode(stage.getScene().getRoot(), n ->
+                n instanceof ComboBox<?> cb && cb.getItems().stream()
+                        .anyMatch(i -> item.equals(String.valueOf(i))));
+    }
+
+    CheckBox findCheckBox(String text) {
+        return (CheckBox) findNode(stage.getScene().getRoot(), n ->
+                n instanceof CheckBox c && text.equals(c.getText()));
+    }
+
+    static Node findNode(Node n, Predicate<Node> p) {
+        if (p.test(n)) return n;
+        if (n instanceof Parent parent) {
+            for (Node ch : parent.getChildrenUnmodifiable()) {
+                Node r = findNode(ch, p);
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+
+    static int countNodesOfType(Node n, Class<? extends Node> type) {
+        int c = type.isInstance(n) ? 1 : 0;
+        if (n instanceof Parent p) {
+            for (Node ch : p.getChildrenUnmodifiable()) c += countNodesOfType(ch, type);
+        }
+        return c;
+    }
+
+    /** Sets the Border Type combo (drives el.borderStyle + canvas refresh). */
+    void setBorderType(String value) {
+        ComboBox<String> cb = findComboBoxWithItem(value);
+        if (cb == null) throw new IllegalStateException("border type combo not found");
+        cb.setValue(value);
+    }
+
+    boolean borderTypeIs(String value) {
+        ComboBox<String> cb = findComboBoxWithItem(value);
+        return cb != null && value.equals(cb.getValue());
+    }
+
+    /** CheckBox.fire() toggles selection and runs the onAction handler. */
+    void fireCheckBox(String text) {
+        CheckBox cb = findCheckBox(text);
+        if (cb == null) throw new IllegalStateException("checkbox not found: " + text);
+        cb.fire();
+    }
+
+    /** Finds a GridPane spinner by its row label text, e.g. "Row Height (mm):". */
+    @SuppressWarnings("unchecked")
+    Spinner<Double> findSpinnerByLabel(String labelText) {
+        Label lbl = (Label) findNode(stage.getScene().getRoot(), n ->
+                n instanceof Label l && labelText.equals(l.getText()));
+        if (lbl == null || !(lbl.getParent() instanceof GridPane gp)) return null;
+        Integer row = GridPane.getRowIndex(lbl);
+        for (Node ch : gp.getChildren()) {
+            if (ch instanceof Spinner<?> s
+                    && Integer.valueOf(1).equals(GridPane.getColumnIndex(ch))
+                    && row != null && row.equals(GridPane.getRowIndex(ch))) {
+                return (Spinner<Double>) s;
+            }
+        }
+        return null;
+    }
+
+    void setRowHeightByLabel(String labelText, double mm) {
+        Spinner<Double> sp = findSpinnerByLabel(labelText);
+        if (sp == null) throw new IllegalStateException("spinner not found: " + labelText);
+        sp.getValueFactory().setValue(mm);
+    }
+
+    /** Pref-heights of header/data HBoxes inside white table VBoxes on canvas. */
+    List<Double> canvasTableRowHeights() {
+        List<Double> out = new ArrayList<>();
+        collectTableRows(stage.getScene().getRoot(), out);
+        return out;
+    }
+
+    static void collectTableRows(Node n, List<Double> out) {
+        if (n instanceof VBox vb && vb.getStyle() != null && vb.getStyle().contains("#ffffff")) {
+            for (Node ch : vb.getChildrenUnmodifiable()) {
+                if (ch instanceof HBox hb && hb.getPrefHeight() > 5) out.add(hb.getPrefHeight());
+            }
+        }
+        if (n instanceof Parent p) {
+            for (Node ch : p.getChildrenUnmodifiable()) collectTableRows(ch, out);
+        }
+    }
+
+    /** True if rows now render at {@code mm}, previously at the seed 6mm. */
+    boolean rowHeightChanged(List<Double> before, double mm) {
+        List<Double> now = canvasTableRowHeights();
+        long nowCount = now.stream().filter(v -> Math.abs(v - mm * MM_PX) < 1.0).count();
+        long beforeCount = before == null ? 0
+                : before.stream().filter(v -> Math.abs(v - 6.0 * MM_PX) < 1.0).count();
+        return nowCount >= 3 && beforeCount >= 3;
     }
 
     /**

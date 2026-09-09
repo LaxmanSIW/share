@@ -64,8 +64,17 @@ public class TemplateElement {
     private String headerBg = "#efe9db";
     private String headerColor = "#1a1a1a";
     private double rowHeight = 7.0; // mm
-    private String borderStyle = "grid"; // grid, rows, none
+    private String borderStyle = "grid"; // grid, rows, outline, none
     private boolean showZebra = true;
+    private String tableBorderColor = "#c8c8c8";
+    private double tableBorderWidth = 0.26; // mm (~1px @96dpi)
+    private Boolean borderTop = true;
+    private Boolean borderBottom = true;
+    private Boolean borderLeft = true;
+    private Boolean borderRight = true;
+    private String rowBg = "#ffffff";
+    private String rowColor = "#1a1a1a";
+    private String zebraColor = "#f8f8f8";
 
     public TemplateElement() {}
 
@@ -206,4 +215,42 @@ public class TemplateElement {
 
     public boolean isShowZebra() { return showZebra; }
     public void setShowZebra(boolean showZebra) { this.showZebra = showZebra; }
+
+    public String getTableBorderColor() { return tableBorderColor != null && !tableBorderColor.isBlank() ? tableBorderColor : "#c8c8c8"; }
+    public void setTableBorderColor(String tableBorderColor) { this.tableBorderColor = tableBorderColor; }
+
+    public double getTableBorderWidth() { return tableBorderWidth; }
+    public void setTableBorderWidth(double tableBorderWidth) { this.tableBorderWidth = tableBorderWidth; }
+
+    /** Outer border sides — null-safe, default true for legacy templates. */
+    public boolean isBorderTop() { return borderTop == null || borderTop; }
+    public void setBorderTop(Boolean borderTop) { this.borderTop = borderTop; }
+
+    public boolean isBorderBottom() { return borderBottom == null || borderBottom; }
+    public void setBorderBottom(Boolean borderBottom) { this.borderBottom = borderBottom; }
+
+    public boolean isBorderLeft() { return borderLeft == null || borderLeft; }
+    public void setBorderLeft(Boolean borderLeft) { this.borderLeft = borderLeft; }
+
+    public boolean isBorderRight() { return borderRight == null || borderRight; }
+    public void setBorderRight(Boolean borderRight) { this.borderRight = borderRight; }
+
+    public String getRowBg() { return rowBg != null && !rowBg.isBlank() ? rowBg : "#ffffff"; }
+    public void setRowBg(String rowBg) { this.rowBg = rowBg; }
+
+    public String getRowColor() { return rowColor != null && !rowColor.isBlank() ? rowColor : "#1a1a1a"; }
+    public void setRowColor(String rowColor) { this.rowColor = rowColor; }
+
+    public String getZebraColor() { return zebraColor != null && !zebraColor.isBlank() ? zebraColor : "#f8f8f8"; }
+    public void setZebraColor(String zebraColor) { this.zebraColor = zebraColor; }
+
+    /**
+     * Scale factor for table fonts relative to the legacy default (7.5pt), so
+     * existing templates render exactly as before while the Font Size spinner
+     * now visibly affects canvas, preview and PDF. Clamped to [0.5, 3.0].
+     */
+    public double tableFontScale() {
+        double s = fontSize > 0 ? fontSize / 7.5 : 1.0;
+        return Math.max(0.5, Math.min(3.0, s));
+    }
 }

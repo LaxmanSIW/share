@@ -992,24 +992,56 @@ public class TemplateDesigner extends BorderPane {
                 return sp;
             }
             case TABLE: {
+                // Shared table skin values (kept identical to BillPreviewPane + PdfExportService)
+                String bc = el.getTableBorderColor();
+                double bwPx = Math.max(0.5, el.getTableBorderWidth() > 0 ? el.getTableBorderWidth() * MM_PX : 1.0);
+                String bw = String.format(java.util.Locale.US, "%.2f", bwPx);
+                String bStyle = el.getBorderStyle(); // grid, rows, outline, none
+                boolean drawOuter = !"none".equals(bStyle);
+                boolean innerLines = "grid".equals(bStyle) || "rows".equals(bStyle);
+
                 VBox box = new VBox(0);
                 box.setPrefSize(w, h);
-                box.setStyle("-fx-background-color: #ffffff; -fx-border-color: #c8c8c8; -fx-border-width: 1;");
+                if (drawOuter) {
+                    // Per-side outer border: hidden sides use transparent color
+                    box.setStyle("-fx-background-color: #ffffff; -fx-border-color: "
+                            + (el.isBorderTop() ? bc : "transparent") + " "
+                            + (el.isBorderRight() ? bc : "transparent") + " "
+                            + (el.isBorderBottom() ? bc : "transparent") + " "
+                            + (el.isBorderLeft() ? bc : "transparent") + ";"
+                            + " -fx-border-width: " + bw + ";");
+                } else {
+                    box.setStyle("-fx-background-color: #ffffff;");
+                }
 
                 List<TableColumn> cols = el.getColumns();
                 if (cols == null || cols.isEmpty()) cols = PresetTemplates.defaultItemColumns();
 
-                HBox hRow = new HBox(0);
-                hRow.setPrefHeight(22);
+                double rowPx = (el.getRowHeight() > 0 ? el.getRowHeight() : 7.0) * MM_PX;
+                double headerPx = Math.max(22, rowPx);
+                String fontPx = String.format(java.util.Locale.US, "%.1f", 10.0 * el.tableFontScale());
+
                 String hBg = el.getHeaderBg() != null && !el.getHeaderBg().isBlank() ? el.getHeaderBg() : "#efe9db";
                 String hCol = el.getHeaderColor() != null && !el.getHeaderColor().isBlank() ? el.getHeaderColor() : "#1a1a1a";
-                hRow.setStyle("-fx-background-color: " + hBg + "; -fx-border-color: #c8c8c8; -fx-border-width: 0 0 1 0;");
+                String rowBgCol = el.getRowBg();
+                String rowTextCol = el.getRowColor();
+                String zebraCol = el.getZebraColor();
 
-                for (TableColumn c : cols) {
+                HBox hRow = new HBox(0);
+                hRow.setPrefHeight(headerPx);
+                // Header underline (grid / rows styles only)
+                hRow.setStyle("-fx-background-color: " + hBg + ";"
+                        + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
+
+                for (int ci = 0; ci < cols.size(); ci++) {
+                    TableColumn c = cols.get(ci);
                     double cW = (c.getWidth() / 100.0) * w;
+                    boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
                     Label lbl = new Label(c.getLabel());
                     lbl.setPrefWidth(cW);
-                    lbl.setStyle("-fx-font-weight: bold; -fx-font-size: 10px; -fx-text-fill: " + hCol + "; -fx-padding: 0 4;");
+                    lbl.setPrefHeight(headerPx);
+                    lbl.setStyle("-fx-font-weight: bold; -fx-font-size: " + fontPx + "px; -fx-text-fill: " + hCol + "; -fx-padding: 0 4;"
+                            + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
                     lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
                     hRow.getChildren().add(lbl);
                 }
@@ -1017,11 +1049,14 @@ public class TemplateDesigner extends BorderPane {
 
                 for (int r = 1; r <= 2; r++) {
                     HBox row = new HBox(0);
-                    row.setPrefHeight(20);
-                    String rBg = el.isShowZebra() && (r % 2 == 0) ? "#f8f8f8" : "#ffffff";
-                    row.setStyle("-fx-background-color: " + rBg + "; -fx-border-color: #e5e5e5; -fx-border-width: 0 0 0.5 0;");
-                    for (TableColumn c : cols) {
+                    row.setPrefHeight(rowPx);
+                    String rBg = el.isShowZebra() && (r % 2 == 0) ? zebraCol : rowBgCol;
+                    row.setStyle("-fx-background-color: " + rBg + ";"
+                            + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
+                    for (int ci = 0; ci < cols.size(); ci++) {
+                        TableColumn c = cols.get(ci);
                         double cW = (c.getWidth() / 100.0) * w;
+                        boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
                         String val = "sr".equalsIgnoreCase(c.getKey()) ? String.valueOf(r) :
                                      ("desc".equalsIgnoreCase(c.getKey()) ? "Sample Item " + r :
                                      ("hsn".equalsIgnoreCase(c.getKey()) ? "8471" :
@@ -1032,7 +1067,9 @@ public class TemplateDesigner extends BorderPane {
                                      ("amount".equalsIgnoreCase(c.getKey()) ? "590.00" : "—")))))));
                         Label lbl = new Label(val);
                         lbl.setPrefWidth(cW);
-                        lbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #1a1a1a; -fx-padding: 0 4;");
+                        lbl.setPrefHeight(rowPx);
+                        lbl.setStyle("-fx-font-size: " + fontPx + "px; -fx-text-fill: " + rowTextCol + "; -fx-padding: 0 4;"
+                                + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
                         lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
                         row.getChildren().add(lbl);
                     }
@@ -1646,6 +1683,82 @@ public class TemplateDesigner extends BorderPane {
         fontS.valueProperty().addListener((obs, o, v) -> { el.setFontSize(v); refreshCanvas(); });
         grid.add(new Label("Font Size:"), 0, 3);
         grid.add(fontS, 1, 3);
+
+        // --- Border properties (type / color / width / sides) ---
+        ComboBox<String> borderTypeCb = new ComboBox<>(FXCollections.observableArrayList(
+                "Grid", "Rows Only", "Outline", "None"));
+        borderTypeCb.setTooltip(new Tooltip("Grid = all cell lines, Rows Only = horizontal lines, Outline = outer frame only, None = no borders"));
+        String curStyle = el.getBorderStyle();
+        borderTypeCb.setValue(switch (curStyle) {
+            case "rows" -> "Rows Only";
+            case "outline" -> "Outline";
+            case "none" -> "None";
+            default -> "Grid";
+        });
+        borderTypeCb.valueProperty().addListener((obs, o, v) -> {
+            el.setBorderStyle(switch (v == null ? "" : v) {
+                case "Rows Only" -> "rows";
+                case "Outline" -> "outline";
+                case "None" -> "none";
+                default -> "grid";
+            });
+            refreshCanvas();
+        });
+        grid.add(new Label("Border Type:"), 0, 4);
+        grid.add(borderTypeCb, 1, 4);
+
+        ColorPicker bColorPicker = new ColorPicker(hexToColor(el.getTableBorderColor(), Color.web("#c8c8c8")));
+        bColorPicker.setTooltip(new Tooltip("Table Border Color"));
+        bColorPicker.setOnAction(e -> { el.setTableBorderColor(colorToHex(bColorPicker.getValue())); refreshCanvas(); });
+        grid.add(new Label("Border Color:"), 0, 5);
+        grid.add(bColorPicker, 1, 5);
+
+        Spinner<Double> bWidth = new Spinner<>(0.0, 1.5, el.getTableBorderWidth() > 0 ? el.getTableBorderWidth() : 0.26, 0.05);
+        bWidth.setEditable(true);
+        bWidth.setTooltip(new Tooltip("Border thickness in mm (~0.26mm = 1px on screen)"));
+        bWidth.valueProperty().addListener((obs, o, v) -> { el.setTableBorderWidth(v); refreshCanvas(); });
+        grid.add(new Label("Border Width (mm):"), 0, 6);
+        grid.add(bWidth, 1, 6);
+
+        HBox sidesBox = new HBox(8);
+        CheckBox topCb = new CheckBox("T");
+        CheckBox bottomCb = new CheckBox("B");
+        CheckBox leftCb = new CheckBox("L");
+        CheckBox rightCb = new CheckBox("R");
+        topCb.setTooltip(new Tooltip("Show top border"));
+        bottomCb.setTooltip(new Tooltip("Show bottom border"));
+        leftCb.setTooltip(new Tooltip("Show left border"));
+        rightCb.setTooltip(new Tooltip("Show right border"));
+        topCb.setSelected(el.isBorderTop());
+        bottomCb.setSelected(el.isBorderBottom());
+        leftCb.setSelected(el.isBorderLeft());
+        rightCb.setSelected(el.isBorderRight());
+        topCb.setOnAction(e -> { el.setBorderTop(topCb.isSelected()); refreshCanvas(); });
+        bottomCb.setOnAction(e -> { el.setBorderBottom(bottomCb.isSelected()); refreshCanvas(); });
+        leftCb.setOnAction(e -> { el.setBorderLeft(leftCb.isSelected()); refreshCanvas(); });
+        rightCb.setOnAction(e -> { el.setBorderRight(rightCb.isSelected()); refreshCanvas(); });
+        sidesBox.getChildren().addAll(topCb, bottomCb, leftCb, rightCb);
+        grid.add(new Label("Sides:"), 0, 7);
+        grid.add(sidesBox, 1, 7);
+
+        // --- Data row (record) colors ---
+        ColorPicker rowBgPicker = new ColorPicker(hexToColor(el.getRowBg(), Color.WHITE));
+        rowBgPicker.setTooltip(new Tooltip("Data Row Background Color"));
+        rowBgPicker.setOnAction(e -> { el.setRowBg(colorToHex(rowBgPicker.getValue())); refreshCanvas(); });
+        grid.add(new Label("Row BG:"), 0, 8);
+        grid.add(rowBgPicker, 1, 8);
+
+        ColorPicker rowTextPicker = new ColorPicker(hexToColor(el.getRowColor(), Color.web("#1a1a1a")));
+        rowTextPicker.setTooltip(new Tooltip("Data Row Text Color"));
+        rowTextPicker.setOnAction(e -> { el.setRowColor(colorToHex(rowTextPicker.getValue())); refreshCanvas(); });
+        grid.add(new Label("Row Text:"), 0, 9);
+        grid.add(rowTextPicker, 1, 9);
+
+        ColorPicker zebraPicker = new ColorPicker(hexToColor(el.getZebraColor(), Color.web("#f8f8f8")));
+        zebraPicker.setTooltip(new Tooltip("Alternate (striped) Row Color — used when Zebra Striping is on"));
+        zebraPicker.setOnAction(e -> { el.setZebraColor(colorToHex(zebraPicker.getValue())); refreshCanvas(); });
+        grid.add(new Label("Zebra Color:"), 0, 10);
+        grid.add(zebraPicker, 1, 10);
 
         CheckBox zebraCb = new CheckBox("Zebra Row Striping");
         zebraCb.setSelected(el.isShowZebra());

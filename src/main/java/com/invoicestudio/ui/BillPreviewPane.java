@@ -351,9 +351,26 @@ public class BillPreviewPane extends StackPane {
     }
 
     private Node createTableNode(TemplateElement el, double w, double h) {
+        // Shared table skin values (kept identical to designer canvas + PdfExportService)
+        String bc = el.getTableBorderColor();
+        double bwPx = Math.max(0.5, el.getTableBorderWidth() > 0 ? el.getTableBorderWidth() * MM_PX : 1.0);
+        String bw = String.format(java.util.Locale.US, "%.2f", bwPx);
+        String bStyle = el.getBorderStyle(); // grid, rows, outline, none
+        boolean drawOuter = !"none".equals(bStyle);
+        boolean innerLines = "grid".equals(bStyle) || "rows".equals(bStyle);
+
         VBox box = new VBox(0);
         box.setPrefSize(w, h);
-        box.setStyle("-fx-background-color: #ffffff; -fx-border-color: #c8c8c8; -fx-border-width: 1;");
+        if (drawOuter) {
+            box.setStyle("-fx-background-color: #ffffff; -fx-border-color: "
+                    + (el.isBorderTop() ? bc : "transparent") + " "
+                    + (el.isBorderRight() ? bc : "transparent") + " "
+                    + (el.isBorderBottom() ? bc : "transparent") + " "
+                    + (el.isBorderLeft() ? bc : "transparent") + ";"
+                    + " -fx-border-width: " + bw + ";");
+        } else {
+            box.setStyle("-fx-background-color: #ffffff;");
+        }
 
         List<TableColumn> cols = el.getColumns();
         if (cols == null || cols.isEmpty()) cols = PresetTemplates.defaultItemColumns();
@@ -362,17 +379,22 @@ public class BillPreviewPane extends StackPane {
         double rowHeightPx = (el.getRowHeight() > 0 ? el.getRowHeight() : 7.0) * MM_PX;
         double headerHeightPx = Math.max(22, rowHeightPx);
         hRow.setPrefHeight(headerHeightPx);
+        String fontPx = String.format(java.util.Locale.US, "%.1f", 10.0 * el.tableFontScale());
 
         String hBg = el.getHeaderBg() != null && !el.getHeaderBg().isBlank() ? el.getHeaderBg() : "#efe9db";
         String hCol = el.getHeaderColor() != null && !el.getHeaderColor().isBlank() ? el.getHeaderColor() : "#1a1a1a";
-        hRow.setStyle("-fx-background-color: " + hBg + "; -fx-border-color: #c8c8c8; -fx-border-width: 0 0 1 0;");
+        hRow.setStyle("-fx-background-color: " + hBg + ";"
+                + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
 
-        for (TableColumn c : cols) {
+        for (int ci = 0; ci < cols.size(); ci++) {
+            TableColumn c = cols.get(ci);
             double cW = (c.getWidth() / 100.0) * w;
+            boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
             Label lbl = new Label(c.getLabel());
             lbl.setPrefWidth(cW);
             lbl.setPrefHeight(headerHeightPx);
-            lbl.setStyle("-fx-font-weight: bold; -fx-font-size: 10px; -fx-text-fill: " + hCol + "; -fx-padding: 0 4;");
+            lbl.setStyle("-fx-font-weight: bold; -fx-font-size: " + fontPx + "px; -fx-text-fill: " + hCol + "; -fx-padding: 0 4;"
+                    + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
             lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
             hRow.getChildren().add(lbl);
         }
@@ -389,21 +411,28 @@ public class BillPreviewPane extends StackPane {
         }
 
         String cur = currentSettings != null ? currentSettings.getCurrency() : "₹";
+        String rowBgCol = el.getRowBg();
+        String rowTextCol = el.getRowColor();
+        String zebraCol = el.getZebraColor();
 
         for (int i = 0; i < items.size(); i++) {
             BillItem item = items.get(i);
             HBox row = new HBox(0);
             row.setPrefHeight(rowHeightPx);
-            String rBg = el.isShowZebra() && (i % 2 == 1) ? "#f8f8f8" : "#ffffff";
-            row.setStyle("-fx-background-color: " + rBg + "; -fx-border-color: #e5e5e5; -fx-border-width: 0 0 0.5 0;");
+            String rBg = el.isShowZebra() && (i % 2 == 1) ? zebraCol : rowBgCol;
+            row.setStyle("-fx-background-color: " + rBg + ";"
+                    + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
 
-            for (TableColumn c : cols) {
+            for (int ci = 0; ci < cols.size(); ci++) {
+                TableColumn c = cols.get(ci);
                 double cW = (c.getWidth() / 100.0) * w;
+                boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
                 String val = getItemColumnValue(c.getKey(), item, i + 1, cur);
                 Label lbl = new Label(val);
                 lbl.setPrefWidth(cW);
                 lbl.setPrefHeight(rowHeightPx);
-                lbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #1a1a1a; -fx-padding: 0 4;");
+                lbl.setStyle("-fx-font-size: " + fontPx + "px; -fx-text-fill: " + rowTextCol + "; -fx-padding: 0 4;"
+                        + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
                 lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
                 row.getChildren().add(lbl);
             }

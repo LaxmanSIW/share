@@ -353,34 +353,55 @@ public class PdfExportService {
 
         Color headerBg = parseColor(el.getHeaderBg(), new Color(239, 233, 219));
         Color headerColor = parseColor(el.getHeaderColor(), Color.BLACK);
-        Color borderColor = parseColor(el.getBorderColor(), new Color(200, 200, 200));
+        Color borderColor = parseColor(el.getTableBorderColor(), new Color(200, 200, 200));
+        Color rowBgColor = parseColor(el.getRowBg(), Color.WHITE);
+        Color rowTextColor = parseColor(el.getRowColor(), new Color(26, 26, 26));
+        Color zebraBgColor = parseColor(el.getZebraColor(), new Color(248, 248, 248));
+
+        // Border skin: grid = all cell lines, rows = horizontal only,
+        // outline = outer frame only, none = no borders at all
+        String bStyle = el.getBorderStyle(); // grid, rows, outline, none
+        boolean drawOuter = !"none".equals(bStyle);
+        boolean innerLines = "grid".equals(bStyle) || "rows".equals(bStyle);
+        boolean gridLines = "grid".equals(bStyle);
+        float strokePx = (float) Math.max(0.5, (el.getTableBorderWidth() > 0 ? el.getTableBorderWidth() : 0.26) * PX_PER_MM);
+        BasicStroke borderStroke = new BasicStroke(strokePx);
 
         double rowHeightPx = (el.getRowHeight() > 0 ? el.getRowHeight() : 7.0) * PX_PER_MM;
         double headerHeightPx = Math.max(22 * (DPI / 96.0), rowHeightPx);
+
+        // Font scale — keeps legacy templates identical (7.5pt → scale 1) while
+        // making the Font Size property actually affect the printed table
+        double fScale = el.tableFontScale();
 
         // Header Background
         g2.setColor(headerBg);
         g2.fill(new Rectangle2D.Double(x, y, w, headerHeightPx));
 
-        // Header Border
-        g2.setColor(borderColor);
-        g2.setStroke(new BasicStroke(1.0f));
-        g2.draw(new Rectangle2D.Double(x, y, w, headerHeightPx));
-
         // Header Text
-        Font headerFont = new Font("SansSerif", Font.BOLD, (int) Math.max(9, 9 * (DPI / 72.0)));
-        Font dataFont = new Font("SansSerif", Font.PLAIN, (int) Math.max(8.5, 8.5 * (DPI / 72.0)));
+        Font headerFont = new Font("SansSerif", Font.BOLD, (int) Math.max(6, 9 * fScale * (DPI / 72.0)));
+        Font dataFont = new Font("SansSerif", Font.PLAIN, (int) Math.max(6, 8.5 * fScale * (DPI / 72.0)));
+
+        g2.setColor(borderColor);
+        g2.setStroke(borderStroke);
 
         double colX = x;
-        for (TableColumn c : cols) {
+        for (int ci = 0; ci < cols.size(); ci++) {
+            TableColumn c = cols.get(ci);
             double cW = (c.getWidth() / 100.0) * w;
             g2.setFont(headerFont);
             g2.setColor(headerColor);
             drawCellText(g2, c.getLabel(), colX + 4 * (DPI / 96.0), y, cW - 8 * (DPI / 96.0), headerHeightPx, c.getAlign());
 
             g2.setColor(borderColor);
-            g2.draw(new Line2D.Double(colX + cW, y, colX + cW, y + headerHeightPx));
+            if (gridLines && ci < cols.size() - 1) {
+                g2.draw(new Line2D.Double(colX + cW, y, colX + cW, y + headerHeightPx));
+            }
             colX += cW;
+        }
+        if (innerLines) {
+            g2.setColor(borderColor);
+            g2.draw(new Line2D.Double(x, y + headerHeightPx, x + w, y + headerHeightPx));
         }
 
         List<BillItem> items = bill != null && bill.getItems() != null ? bill.getItems() : new ArrayList<>();
@@ -399,32 +420,47 @@ public class PdfExportService {
         for (int i = 0; i < items.size(); i++) {
             BillItem item = items.get(i);
             boolean isEven = (i % 2 == 0);
+
+            // Row background, then zebra stripe overlay when enabled
+            g2.setColor(rowBgColor);
+            g2.fill(new Rectangle2D.Double(x, curY, w, rowHeightPx));
             if (el.isShowZebra() && !isEven) {
-                g2.setColor(new Color(248, 248, 248));
+                g2.setColor(zebraBgColor);
                 g2.fill(new Rectangle2D.Double(x, curY, w, rowHeightPx));
             }
 
-            g2.setColor(borderColor);
-            g2.draw(new Line2D.Double(x, curY + rowHeightPx, x + w, curY + rowHeightPx));
+            if (innerLines) {
+                g2.setColor(borderColor);
+                g2.draw(new Line2D.Double(x, curY + rowHeightPx, x + w, curY + rowHeightPx));
+            }
 
             double rowColX = x;
-            for (TableColumn c : cols) {
+            for (int ci = 0; ci < cols.size(); ci++) {
+                TableColumn c = cols.get(ci);
                 double cW = (c.getWidth() / 100.0) * w;
                 String val = getTableColumnValue(c.getKey(), item, i + 1, currency);
                 g2.setFont(dataFont);
-                g2.setColor(Color.BLACK);
+                g2.setColor(rowTextColor);
                 drawCellText(g2, val, rowColX + 4 * (DPI / 96.0), curY, cW - 8 * (DPI / 96.0), rowHeightPx, c.getAlign());
 
                 g2.setColor(borderColor);
-                g2.draw(new Line2D.Double(rowColX + cW, curY, rowColX + cW, curY + rowHeightPx));
+                if (gridLines && ci < cols.size() - 1) {
+                    g2.draw(new Line2D.Double(rowColX + cW, curY, rowColX + cW, curY + rowHeightPx));
+                }
                 rowColX += cW;
             }
             curY += rowHeightPx;
         }
 
-        // Outer border
-        g2.setColor(borderColor);
-        g2.draw(new Rectangle2D.Double(x, y, w, curY - y));
+        // Outer border — drawn per enabled side
+        if (drawOuter) {
+            g2.setColor(borderColor);
+            g2.setStroke(borderStroke);
+            if (el.isBorderTop())    g2.draw(new Line2D.Double(x, y, x + w, y));
+            if (el.isBorderBottom()) g2.draw(new Line2D.Double(x, curY, x + w, curY));
+            if (el.isBorderLeft())   g2.draw(new Line2D.Double(x, y, x, curY));
+            if (el.isBorderRight())  g2.draw(new Line2D.Double(x + w, y, x + w, curY));
+        }
     }
 
     private static String getTableColumnValue(String key, BillItem item, int index, String cur) {
