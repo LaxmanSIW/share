@@ -74,6 +74,10 @@ public class Buyer {
     public Map<String, String> getCustom() { return custom; }
     public void setCustom(Map<String, String> custom) { this.custom = custom != null ? custom : new HashMap<>(); }
 
+    public String getTradeName() {
+        return custom != null ? custom.getOrDefault("trade_name", "") : "";
+    }
+
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 

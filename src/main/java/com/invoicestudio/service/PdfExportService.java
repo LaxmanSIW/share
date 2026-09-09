@@ -436,18 +436,18 @@ public class PdfExportService {
         double taxable = (qty * rate) * (1.0 - disc / 100.0);
         double total = taxable * (1.0 + gst / 100.0);
 
-        return switch (key.toLowerCase()) {
-            case "sr", "index", "#" -> String.valueOf(index);
-            case "desc", "name", "description" -> item.getDesc() != null ? item.getDesc() : "";
-            case "hsn", "sac" -> item.getHsn() != null ? item.getHsn() : "";
+        return switch (key.toLowerCase().trim()) {
+            case "sr", "index", "#", "s_no", "sno" -> String.valueOf(index);
+            case "desc", "name", "description", "item_name" -> item.getDesc() != null ? item.getDesc() : "";
+            case "hsn", "sac", "hsn_sac" -> item.getHsn() != null ? item.getHsn() : "";
             case "qty", "quantity" -> String.format("%.2f", qty);
             case "unit" -> item.getUnit() != null ? item.getUnit() : "PCS";
-            case "rate", "price" -> String.format("%.2f", rate);
-            case "disc", "discount" -> disc > 0 ? String.format("%.1f%%", disc) : "0%";
-            case "taxable" -> String.format("%.2f", taxable);
+            case "rate", "price", "unit_price" -> String.format("%.2f", rate);
+            case "disc", "discount", "disc_pct" -> disc > 0 ? String.format("%.1f%%", disc) : "0%";
+            case "taxable", "taxable_value" -> String.format("%.2f", taxable);
             case "gst", "gst_rate", "tax" -> String.format("%.0f%%", gst);
-            case "amount", "total" -> String.format("%.2f", total);
-            default -> "";
+            case "amount", "total", "total_amount" -> String.format("%.2f", total);
+            default -> item.getCustomField(key);
         };
     }
 

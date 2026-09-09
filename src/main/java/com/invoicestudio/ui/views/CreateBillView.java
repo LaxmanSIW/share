@@ -2,20 +2,25 @@ package com.invoicestudio.ui.views;
 
 import com.invoicestudio.db.*;
 import com.invoicestudio.model.*;
+import com.invoicestudio.model.TableColumn;
 import com.invoicestudio.service.BillingService;
 import com.invoicestudio.service.PdfExportService;
 import com.invoicestudio.service.PrintingService;
 import com.invoicestudio.ui.BillPreviewPane;
 import com.invoicestudio.ui.DialogHelper;
+import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
+import javafx.util.StringConverter;
 
 import java.io.File;
 import java.time.Instant;
@@ -61,6 +66,7 @@ public class CreateBillView extends BorderPane {
     private final TextField creditReasonField = new TextField();
 
     // Items
+    private final StackPane lineItemsHeaderContainer = new StackPane();
     private final VBox itemsBox = new VBox(8);
     private final List<BillItemRow> itemRows = new ArrayList<>();
 
@@ -219,6 +225,7 @@ public class CreateBillView extends BorderPane {
         templateCombo.setValue(currentTemplate);
         templateCombo.setOnAction(e -> {
             currentTemplate = templateCombo.getValue();
+            rebuildLineItemsUI();
             updateTotalsAndPreview();
         });
         templateCombo.setMaxWidth(Double.MAX_VALUE);
@@ -243,7 +250,7 @@ public class CreateBillView extends BorderPane {
         VBox buyerSec = new VBox(10);
         buyerSec.setStyle("-fx-background-color: #151B25; -fx-padding: 14; -fx-background-radius: 8; -fx-border-color: #232B38; -fx-border-radius: 8;");
 
-        HBox byrTop = new HBox(12);
+        HBox byrTop = new HBox(10);
         byrTop.setAlignment(Pos.CENTER_LEFT);
         Label byrLbl = new Label("BUYER / RECIPIENT DETAILS");
         byrLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: #D9A13B;");
@@ -251,25 +258,94 @@ public class CreateBillView extends BorderPane {
         Region bSp = new Region();
         HBox.setHgrow(bSp, Priority.ALWAYS);
 
-        // Buyer Autocomplete dropdown
+        // Searchable / Filterable Buyer Dropdown
         List<Buyer> buyers = buyerDao.getAllBuyers();
-        buyerCombo.setPromptText("Select Existing Buyer...");
-        buyerCombo.setItems(FXCollections.observableArrayList(buyers));
+        ObservableList<Buyer> masterBuyerList = FXCollections.observableArrayList(buyers);
+        FilteredList<Buyer> filteredBuyers = new FilteredList<>(masterBuyerList, p -> true);
+
+        buyerCombo.setEditable(true);
+        buyerCombo.setItems(filteredBuyers);
+        buyerCombo.setPrefWidth(280);
+
+        buyerCombo.setConverter(new StringConverter<Buyer>() {
+            @Override
+            public String toString(Buyer b) {
+                return b == null ? "" : b.getName();
+            }
+
+            @Override
+            public Buyer fromString(String string) {
+                if (string == null || string.isBlank()) return null;
+                for (Buyer b : masterBuyerList) {
+                    if (b.getName() != null && b.getName().equalsIgnoreCase(string.trim())) {
+                        return b;
+                    }
+                }
+                return null;
+            }
+        });
+
+        buyerCombo.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(Buyer b, boolean empty) {
+                super.updateItem(b, empty);
+                if (empty || b == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    String sub = "";
+                    if (b.getPhone() != null && !b.getPhone().isBlank()) sub += " • 📞 " + b.getPhone();
+                    if (b.getGst() != null && !b.getGst().isBlank()) sub += " • GST: " + b.getGst();
+                    setText(b.getName() + sub);
+                }
+            }
+        });
+
+        TextField buyerEditor = buyerCombo.getEditor();
+        buyerEditor.setPromptText("Search buyer by name, phone, GST...");
+        buyerEditor.textProperty().addListener((obs, o, v) -> {
+            Buyer cur = buyerCombo.getSelectionModel().getSelectedItem();
+            if (cur != null && cur.getName() != null && cur.getName().equals(v)) {
+                return;
+            }
+            String q = v != null ? v.trim().toLowerCase() : "";
+            filteredBuyers.setPredicate(b -> {
+                if (q.isEmpty()) return true;
+                boolean mName = b.getName() != null && b.getName().toLowerCase().contains(q);
+                boolean mPhone = b.getPhone() != null && b.getPhone().toLowerCase().contains(q);
+                boolean mGst = b.getGst() != null && b.getGst().toLowerCase().contains(q);
+                boolean mAddress = b.getAddress() != null && b.getAddress().toLowerCase().contains(q);
+                boolean mTrade = b.getCustom() != null && b.getCustom().getOrDefault("trade_name", "").toLowerCase().contains(q);
+                return mName || mPhone || mGst || mAddress || mTrade;
+            });
+            if (!buyerCombo.isShowing() && buyerEditor.isFocused() && !q.isEmpty()) {
+                buyerCombo.show();
+            }
+        });
+
         buyerCombo.setOnAction(e -> {
             Buyer b = buyerCombo.getValue();
             if (b != null) {
-                buyerNameField.setText(b.getName());
-                buyerAddressField.setText(b.getAddress());
-                buyerGstField.setText(b.getGst());
-                buyerPhoneField.setText(b.getPhone());
-                buyerStateField.setText(b.getState());
-                buyerStateCodeField.setText(b.getEffectiveStateCode());
+                buyerNameField.setText(b.getName() != null ? b.getName() : "");
+                buyerAddressField.setText(b.getAddress() != null ? b.getAddress() : "");
+                buyerGstField.setText(b.getGst() != null ? b.getGst() : "");
+                buyerPhoneField.setText(b.getPhone() != null ? b.getPhone() : "");
+                buyerStateField.setText(b.getState() != null ? b.getState() : "");
+                buyerStateCodeField.setText(b.getEffectiveStateCode() != null ? b.getEffectiveStateCode() : "");
                 updateTotalsAndPreview();
             }
         });
-        buyerCombo.setPrefWidth(220);
 
-        byrTop.getChildren().addAll(byrLbl, bSp, buyerCombo);
+        Button clearBuyerBtn = new Button("✕");
+        clearBuyerBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        clearBuyerBtn.setTooltip(new Tooltip("Clear Search Filter"));
+        clearBuyerBtn.setOnAction(e -> {
+            buyerCombo.setValue(null);
+            buyerEditor.clear();
+            filteredBuyers.setPredicate(p -> true);
+        });
+
+        byrTop.getChildren().addAll(byrLbl, bSp, buyerCombo, clearBuyerBtn);
         buyerSec.getChildren().add(byrTop);
 
         GridPane byrGrid = new GridPane();
@@ -342,17 +418,22 @@ public class CreateBillView extends BorderPane {
         Region itSp = new Region();
         HBox.setHgrow(itSp, Priority.ALWAYS);
 
-        Button addItemBtn = new Button("+ Add Item");
+        Button addItemBtn = new Button("Add Line Item");
         addItemBtn.getStyleClass().addAll("button-sm", "gold-btn");
+        addItemBtn.setGraphic(IconHelper.getIcon("plus", 11, "#0B0E13"));
+        addItemBtn.setGraphicTextGap(6);
+        addItemBtn.setStyle("-fx-cursor: hand; -fx-padding: 5 12; -fx-font-weight: bold;");
         addItemBtn.setOnAction(e -> {
             BillItemRow row = new BillItemRow();
             itemRows.add(row);
             itemsBox.getChildren().add(row);
+            refreshSrNumbers();
             updateTotalsAndPreview();
         });
 
         itTop.getChildren().addAll(itLbl, itSp, addItemBtn);
-        itemsSec.getChildren().addAll(itTop, itemsBox);
+        lineItemsHeaderContainer.getChildren().setAll(createLineItemsHeader());
+        itemsSec.getChildren().addAll(itTop, lineItemsHeaderContainer, itemsBox);
         form.getChildren().add(itemsSec);
 
         // 6. Summary, Totals & Actions
@@ -743,8 +824,146 @@ public class CreateBillView extends BorderPane {
         app.showHistory();
     }
 
+    private List<TableColumn> getActiveTableColumns() {
+        if (currentTemplate != null && currentTemplate.getElements() != null) {
+            for (TemplateElement el : currentTemplate.getElements()) {
+                if (el.getType() == ElementType.TABLE && !el.isHidden() && el.getColumns() != null && !el.getColumns().isEmpty()) {
+                    return el.getColumns();
+                }
+            }
+            // If all table elements are marked hidden or none found, fallback to first table element
+            for (TemplateElement el : currentTemplate.getElements()) {
+                if (el.getType() == ElementType.TABLE && el.getColumns() != null && !el.getColumns().isEmpty()) {
+                    return el.getColumns();
+                }
+            }
+        }
+        return PresetTemplates.defaultItemColumns();
+    }
+
+    private double getColumnControlWidth(TableColumn col) {
+        if (col == null || col.getKey() == null) return 60;
+        String k = col.getKey().toLowerCase().trim();
+        return switch (k) {
+            case "sr", "index", "#", "s_no", "sno" -> 30;
+            case "hsn", "sac", "hsn_sac" -> 65;
+            case "qty", "quantity" -> 50;
+            case "unit" -> 55;
+            case "rate", "price", "unit_price" -> 65;
+            case "gst", "tax" -> 45;
+            case "disc", "discount" -> 45;
+            case "taxable", "taxable_value" -> 70;
+            case "amount", "total", "total_amount" -> 75;
+            default -> {
+                if (col.getWidth() > 0) {
+                    yield Math.max(50.0, Math.min(130.0, col.getWidth() * 5.5));
+                }
+                yield 70.0;
+            }
+        };
+    }
+
+    private Node createLineItemsHeader() {
+        HBox header = new HBox(8);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.setStyle("-fx-background-color: #141A24; -fx-padding: 6 8; -fx-background-radius: 6; -fx-border-color: #1E2738; -fx-border-width: 1; -fx-border-radius: 6;");
+
+        // Catalog pick spacer (matches pick item button)
+        Label hPick = new Label("");
+        hPick.setPrefWidth(30); hPick.setMinWidth(30); hPick.setMaxWidth(30);
+        header.getChildren().add(hPick);
+
+        List<TableColumn> cols = getActiveTableColumns();
+        boolean descAdded = false;
+
+        for (TableColumn col : cols) {
+            String k = col.getKey() != null ? col.getKey().toLowerCase().trim() : "";
+            String labelText = col.getLabel() != null && !col.getLabel().isBlank() ? col.getLabel().toUpperCase() : k.toUpperCase();
+            Label lbl = new Label(labelText);
+            lbl.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
+
+            if ("desc".equals(k) || "description".equals(k) || "name".equals(k) || "item_name".equals(k)) {
+                descAdded = true;
+                lbl.setMinWidth(140);
+                lbl.setAlignment(Pos.CENTER_LEFT);
+                HBox.setHgrow(lbl, Priority.ALWAYS);
+            } else {
+                double w = getColumnControlWidth(col);
+                lbl.setPrefWidth(w);
+                lbl.setMinWidth(w);
+                lbl.setMaxWidth(w);
+
+                if ("right".equalsIgnoreCase(col.getAlign()) || "qty".equals(k) || "rate".equals(k) || "gst".equals(k) || "disc".equals(k) || "taxable".equals(k) || "amount".equals(k)) {
+                    lbl.setAlignment(Pos.CENTER_RIGHT);
+                } else if ("center".equalsIgnoreCase(col.getAlign()) || "sr".equals(k) || "hsn".equals(k) || "unit".equals(k)) {
+                    lbl.setAlignment(Pos.CENTER);
+                } else {
+                    lbl.setAlignment(Pos.CENTER_LEFT);
+                }
+            }
+
+            header.getChildren().add(lbl);
+
+            // Catalog save spacer next to description column
+            if ("desc".equals(k) || "description".equals(k) || "name".equals(k) || "item_name".equals(k)) {
+                Label hSave = new Label("");
+                hSave.setPrefWidth(30); hSave.setMinWidth(30); hSave.setMaxWidth(30);
+                header.getChildren().add(hSave);
+            }
+        }
+
+        if (!descAdded) {
+            Label hDesc = new Label("ITEM DESCRIPTION");
+            hDesc.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
+            hDesc.setMinWidth(140);
+            hDesc.setAlignment(Pos.CENTER_LEFT);
+            HBox.setHgrow(hDesc, Priority.ALWAYS);
+            header.getChildren().add(1, hDesc);
+
+            Label hSave = new Label("");
+            hSave.setPrefWidth(30); hSave.setMinWidth(30); hSave.setMaxWidth(30);
+            header.getChildren().add(2, hSave);
+        }
+
+        // Delete button spacer
+        Label hAction = new Label("");
+        hAction.setPrefWidth(30); hAction.setMinWidth(30); hAction.setMaxWidth(30);
+        header.getChildren().add(hAction);
+
+        return header;
+    }
+
+    private void rebuildLineItemsUI() {
+        lineItemsHeaderContainer.getChildren().setAll(createLineItemsHeader());
+        List<BillItem> currentItems = new ArrayList<>();
+        for (BillItemRow r : itemRows) {
+            currentItems.add(r.getItem());
+        }
+        itemRows.clear();
+        itemsBox.getChildren().clear();
+        if (currentItems.isEmpty()) {
+            BillItemRow row = new BillItemRow();
+            itemRows.add(row);
+            itemsBox.getChildren().add(row);
+        } else {
+            for (BillItem it : currentItems) {
+                BillItemRow row = new BillItemRow(it);
+                itemRows.add(row);
+                itemsBox.getChildren().add(row);
+            }
+        }
+        refreshSrNumbers();
+    }
+
+    private void refreshSrNumbers() {
+        for (int i = 0; i < itemRows.size(); i++) {
+            itemRows.get(i).srLbl.setText(String.valueOf(i + 1));
+        }
+    }
+
     // Inner class for line item row editor
     private class BillItemRow extends HBox {
+        private final String itemId;
         private final TextField descField = new TextField();
         private final TextField hsnField = new TextField();
         private final TextField qtyField = new TextField("1");
@@ -753,7 +972,10 @@ public class CreateBillView extends BorderPane {
         private final TextField gstField = new TextField("18");
         private final TextField discField = new TextField("0");
         private final Label amountLbl = new Label("₹0.00");
-        private String itemId;
+        private final Label taxableLbl = new Label("₹0.00");
+        private final Label srLbl = new Label("1");
+        private final Map<String, TextField> customInputs = new HashMap<>();
+        private final Map<String, String> customData = new HashMap<>();
 
         public BillItemRow() {
             this(new BillItem("it_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8), "", "", 1, "PCS", 0, 18, 0));
@@ -764,37 +986,52 @@ public class CreateBillView extends BorderPane {
             setAlignment(Pos.CENTER_LEFT);
             setStyle("-fx-background-color: #12161D; -fx-padding: 8; -fx-background-radius: 6; -fx-border-color: #232B38; -fx-border-radius: 6;");
 
-            this.itemId = it.getId();
-            descField.setText(it.getDesc());
-            hsnField.setText(it.getHsn());
+            this.itemId = it.getId() != null ? it.getId() : "it_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            descField.setText(it.getDesc() != null ? it.getDesc() : "");
+            hsnField.setText(it.getHsn() != null ? it.getHsn() : "");
             qtyField.setText(String.valueOf(it.getQty()));
-            unitField.setText(it.getUnit());
+            unitField.setText(it.getUnit() != null ? it.getUnit() : "PCS");
             rateField.setText(String.valueOf(it.getRate()));
             gstField.setText(String.valueOf(it.getGst()));
             discField.setText(String.valueOf(it.getDiscPct()));
+            if (it.getCustom() != null) {
+                customData.putAll(it.getCustom());
+            }
 
-            descField.setPromptText("Item Description / Catalog Search");
+            descField.setPromptText("Item Name / Description");
+            descField.setMinWidth(140);
+            descField.setAlignment(Pos.CENTER_LEFT);
             HBox.setHgrow(descField, Priority.ALWAYS);
 
-            // Autocomplete / Search from catalog button
-            Button catBtn = new Button("📦");
-            catBtn.getStyleClass().addAll("button-sm", "button-secondary");
-            catBtn.setTooltip(new Tooltip("Pick from Catalog"));
-            catBtn.setOnAction(e -> pickCatalogItem(this));
+            hsnField.setPrefWidth(65); hsnField.setMinWidth(65); hsnField.setMaxWidth(65); hsnField.setPromptText("HSN");
+            hsnField.setAlignment(Pos.CENTER);
 
-            Button saveCatBtn = new Button("💾");
-            saveCatBtn.getStyleClass().addAll("button-sm", "button-secondary");
-            saveCatBtn.setTooltip(new Tooltip("Save to Catalog"));
-            saveCatBtn.setOnAction(e -> saveItemToCatalog(this));
+            qtyField.setPrefWidth(50); qtyField.setMinWidth(50); qtyField.setMaxWidth(50); qtyField.setPromptText("Qty");
+            qtyField.setAlignment(Pos.CENTER_RIGHT);
 
-            hsnField.setPrefWidth(65); hsnField.setPromptText("HSN");
-            qtyField.setPrefWidth(50);
-            unitField.setPrefWidth(55);
-            rateField.setPrefWidth(65);
-            gstField.setPrefWidth(45);
-            discField.setPrefWidth(45);
-            amountLbl.setPrefWidth(70);
-            amountLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #F4F4F5; -fx-alignment: CENTER_RIGHT;");
+            unitField.setPrefWidth(55); unitField.setMinWidth(55); unitField.setMaxWidth(55); unitField.setPromptText("Unit");
+            unitField.setAlignment(Pos.CENTER);
+
+            rateField.setPrefWidth(65); rateField.setMinWidth(65); rateField.setMaxWidth(65); rateField.setPromptText("Rate");
+            rateField.setAlignment(Pos.CENTER_RIGHT);
+
+            gstField.setPrefWidth(45); gstField.setMinWidth(45); gstField.setMaxWidth(45); gstField.setPromptText("GST");
+            gstField.setAlignment(Pos.CENTER_RIGHT);
+
+            discField.setPrefWidth(45); discField.setMinWidth(45); discField.setMaxWidth(45); discField.setPromptText("Disc");
+            discField.setAlignment(Pos.CENTER_RIGHT);
+
+            taxableLbl.setPrefWidth(70); taxableLbl.setMinWidth(70); taxableLbl.setMaxWidth(70);
+            taxableLbl.setAlignment(Pos.CENTER_RIGHT);
+            taxableLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1;");
+
+            amountLbl.setPrefWidth(75); amountLbl.setMinWidth(75); amountLbl.setMaxWidth(75);
+            amountLbl.setAlignment(Pos.CENTER_RIGHT);
+            amountLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #F4F4F5;");
+
+            srLbl.setPrefWidth(30); srLbl.setMinWidth(30); srLbl.setMaxWidth(30);
+            srLbl.setAlignment(Pos.CENTER);
+            srLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
 
             descField.textProperty().addListener((obs, o, v) -> updateRowAmount());
             hsnField.textProperty().addListener((obs, o, v) -> updateRowAmount());
@@ -803,22 +1040,101 @@ public class CreateBillView extends BorderPane {
             gstField.textProperty().addListener((obs, o, v) -> updateRowAmount());
             discField.textProperty().addListener((obs, o, v) -> updateRowAmount());
 
-            Button delBtn = new Button("✕");
+            // Catalog Pick Button
+            Button catBtn = new Button();
+            catBtn.setGraphic(IconHelper.getIcon("items", 12, "#D9A13B"));
+            catBtn.getStyleClass().addAll("button-sm", "button-secondary");
+            catBtn.setTooltip(new Tooltip("Pick Item from Catalog"));
+            catBtn.setPrefSize(30, 28); catBtn.setMinSize(30, 28); catBtn.setMaxSize(30, 28);
+            catBtn.setStyle("-fx-padding: 0; -fx-alignment: center; -fx-cursor: hand;");
+            catBtn.setOnAction(e -> pickCatalogItem(this));
+            getChildren().add(catBtn);
+
+            // Catalog Save Button
+            Button saveCatBtn = new Button();
+            saveCatBtn.setGraphic(IconHelper.getIcon("upload", 12, "#CBD5E1"));
+            saveCatBtn.getStyleClass().addAll("button-sm", "button-secondary");
+            saveCatBtn.setTooltip(new Tooltip("Save Item to Catalog"));
+            saveCatBtn.setPrefSize(30, 28); saveCatBtn.setMinSize(30, 28); saveCatBtn.setMaxSize(30, 28);
+            saveCatBtn.setStyle("-fx-padding: 0; -fx-alignment: center; -fx-cursor: hand;");
+            saveCatBtn.setOnAction(e -> saveItemToCatalog(this));
+
+            List<TableColumn> cols = getActiveTableColumns();
+            boolean descRendered = false;
+
+            for (TableColumn col : cols) {
+                String k = col.getKey() != null ? col.getKey().toLowerCase().trim() : "";
+                switch (k) {
+                    case "sr", "index", "#", "s_no", "sno" -> {
+                        int idx = itemRows.indexOf(this) + 1;
+                        srLbl.setText(String.valueOf(Math.max(1, idx)));
+                        getChildren().add(srLbl);
+                    }
+                    case "desc", "name", "description", "item_name" -> {
+                        descRendered = true;
+                        getChildren().add(descField);
+                        getChildren().add(saveCatBtn);
+                    }
+                    case "hsn", "sac", "hsn_sac" -> getChildren().add(hsnField);
+                    case "qty", "quantity" -> getChildren().add(qtyField);
+                    case "unit" -> getChildren().add(unitField);
+                    case "rate", "price", "unit_price" -> getChildren().add(rateField);
+                    case "gst", "tax" -> getChildren().add(gstField);
+                    case "disc", "discount" -> getChildren().add(discField);
+                    case "taxable", "taxable_value" -> getChildren().add(taxableLbl);
+                    case "amount", "total", "total_amount" -> getChildren().add(amountLbl);
+                    default -> {
+                        double w = getColumnControlWidth(col);
+                        TextField customTf = new TextField(customData.getOrDefault(k, ""));
+                        customTf.setPrefWidth(w); customTf.setMinWidth(w); customTf.setMaxWidth(w);
+                        customTf.setPromptText(col.getLabel() != null ? col.getLabel() : k);
+                        if ("right".equalsIgnoreCase(col.getAlign())) {
+                            customTf.setAlignment(Pos.CENTER_RIGHT);
+                        } else if ("center".equalsIgnoreCase(col.getAlign())) {
+                            customTf.setAlignment(Pos.CENTER);
+                        } else {
+                            customTf.setAlignment(Pos.CENTER_LEFT);
+                        }
+                        customTf.textProperty().addListener((obs, o, v) -> {
+                            if (v == null || v.isBlank()) customData.remove(k);
+                            else customData.put(k, v);
+                            updateTotalsAndPreview();
+                        });
+                        customInputs.put(k, customTf);
+                        getChildren().add(customTf);
+                    }
+                }
+            }
+
+            if (!descRendered) {
+                getChildren().add(1, descField);
+                getChildren().add(2, saveCatBtn);
+            }
+
+            Button delBtn = new Button();
+            delBtn.setGraphic(IconHelper.getIcon("delete", 12, "#EF4444"));
             delBtn.getStyleClass().addAll("button-sm", "button-danger");
             delBtn.setTooltip(new Tooltip("Remove this line item"));
+            delBtn.setPrefSize(30, 28); delBtn.setMinSize(30, 28); delBtn.setMaxSize(30, 28);
+            delBtn.setStyle("-fx-padding: 0; -fx-alignment: center; -fx-cursor: hand; -fx-border-color: rgba(239,68,68,0.3);");
             delBtn.setOnAction(e -> {
                 itemRows.remove(this);
                 itemsBox.getChildren().remove(this);
+                refreshSrNumbers();
                 updateTotalsAndPreview();
             });
+            getChildren().add(delBtn);
 
-            getChildren().addAll(catBtn, descField, saveCatBtn, hsnField, qtyField, unitField, rateField, gstField, discField, amountLbl, delBtn);
             updateRowAmount();
         }
 
         private void updateRowAmount() {
             BillItem it = getItem();
             amountLbl.setText(String.format("₹%.2f", it.getAmount()));
+            double gross = it.getGross();
+            double d = Math.max(0, Math.min(100, it.getDiscPct()));
+            double taxable = Math.round((gross - gross * (d / 100.0)) * 100.0) / 100.0;
+            taxableLbl.setText(String.format("₹%.2f", taxable));
             updateTotalsAndPreview();
         }
 
@@ -829,13 +1145,15 @@ public class CreateBillView extends BorderPane {
             try { g = Double.parseDouble(gstField.getText()); } catch (Exception ignored) {}
             try { d = Double.parseDouble(discField.getText()); } catch (Exception ignored) {}
 
-            return new BillItem(itemId, descField.getText(), hsnField.getText(), q, unitField.getText(), r, g, d);
+            BillItem bi = new BillItem(itemId, descField.getText(), hsnField.getText(), q, unitField.getText(), r, g, d);
+            bi.setCustom(new HashMap<>(customData));
+            return bi;
         }
 
         public void applyCatalogItem(ItemRecord ir) {
             descField.setText(ir.getName());
-            hsnField.setText(ir.getHsn());
-            unitField.setText(ir.getUnit());
+            hsnField.setText(ir.getHsn() != null ? ir.getHsn() : "");
+            unitField.setText(ir.getUnit() != null ? ir.getUnit() : "PCS");
             rateField.setText(String.valueOf(ir.getRate()));
             gstField.setText(String.valueOf(ir.getGst()));
             updateRowAmount();
@@ -849,24 +1167,40 @@ public class CreateBillView extends BorderPane {
 
         VBox box = new VBox(10);
         box.setPadding(new Insets(14));
-        box.setPrefWidth(380);
+        box.setPrefWidth(420);
 
         List<ItemRecord> items = itemDao.getAllItems();
-        ListView<ItemRecord> lv = new ListView<>(FXCollections.observableArrayList(items));
+        ObservableList<ItemRecord> masterItems = FXCollections.observableArrayList(items);
+        FilteredList<ItemRecord> filteredItems = new FilteredList<>(masterItems, p -> true);
+
+        TextField searchField = new TextField();
+        searchField.setPromptText("Type to search items by name or HSN...");
+        searchField.textProperty().addListener((obs, o, v) -> {
+            String q = v != null ? v.trim().toLowerCase() : "";
+            filteredItems.setPredicate(it -> {
+                if (q.isEmpty()) return true;
+                boolean mName = it.getName() != null && it.getName().toLowerCase().contains(q);
+                boolean mHsn = it.getHsn() != null && it.getHsn().toLowerCase().contains(q);
+                return mName || mHsn;
+            });
+        });
+
+        ListView<ItemRecord> lv = new ListView<>(filteredItems);
+        lv.setPrefHeight(260);
         lv.setCellFactory(v -> new ListCell<>() {
             @Override
             protected void updateItem(ItemRecord it, boolean empty) {
                 super.updateItem(it, empty);
                 if (empty || it == null) setText(null);
-                else setText(it.getName() + " — ₹" + it.getRate() + " (HSN: " + it.getHsn() + ", GST: " + (int) it.getGst() + "%)");
+                else setText(it.getName() + " — ₹" + String.format("%.2f", it.getRate()) + " (HSN: " + (it.getHsn() != null ? it.getHsn() : "-") + ", GST: " + (int) it.getGst() + "%)");
             }
         });
-        box.getChildren().add(lv);
+        box.getChildren().addAll(searchField, lv);
 
         dlg.getDialogPane().setContent(box);
         dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         dlg.setResultConverter(b -> b == ButtonType.OK ? lv.getSelectionModel().getSelectedItem() : null);
-        DialogHelper.styleDialog(dlg);
+        DialogHelper.styleDialog(dlg, 440, 380);
 
         dlg.showAndWait().ifPresent(targetRow::applyCatalogItem);
     }

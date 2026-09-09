@@ -12,6 +12,7 @@ public class BillItem {
     private double rate;
     private double gst = 18.0;
     private double discPct;
+    private java.util.Map<String, String> custom = new java.util.HashMap<>();
 
     public BillItem() {}
 
@@ -49,6 +50,30 @@ public class BillItem {
 
     public double getDiscPct() { return discPct; }
     public void setDiscPct(double discPct) { this.discPct = discPct; }
+
+    public java.util.Map<String, String> getCustom() {
+        if (custom == null) custom = new java.util.HashMap<>();
+        return custom;
+    }
+
+    public void setCustom(java.util.Map<String, String> custom) {
+        this.custom = custom != null ? custom : new java.util.HashMap<>();
+    }
+
+    public String getCustomField(String key) {
+        if (key == null || custom == null) return "";
+        return custom.getOrDefault(key, "");
+    }
+
+    public void setCustomField(String key, String value) {
+        if (key == null) return;
+        if (custom == null) custom = new java.util.HashMap<>();
+        if (value == null || value.isBlank()) {
+            custom.remove(key);
+        } else {
+            custom.put(key, value);
+        }
+    }
 
     public double getGross() {
         return qty * rate;

@@ -1670,11 +1670,16 @@ public class TemplateDesigner extends BorderPane {
             lblField.setTooltip(new Tooltip("Column Header Title"));
             lblField.textProperty().addListener((obs, o, v) -> { c.setLabel(v); refreshCanvas(); });
 
-            ComboBox<String> keyCombo = new ComboBox<>(FXCollections.observableArrayList("sr", "desc", "hsn", "qty", "unit", "rate", "gst", "amount"));
-            keyCombo.setValue(c.getKey());
-            keyCombo.setPrefWidth(75);
-            keyCombo.setTooltip(new Tooltip("Data Field Binding"));
+            ComboBox<String> keyCombo = new ComboBox<>(FXCollections.observableArrayList(
+                    "sr", "desc", "hsn", "qty", "unit", "rate", "disc", "taxable", "gst", "amount",
+                    "batch_no", "exp_date", "mrp", "serial_no", "part_no"
+            ));
+            keyCombo.setEditable(true);
+            keyCombo.setValue(c.getKey() != null ? c.getKey() : "desc");
+            keyCombo.setPrefWidth(95);
+            keyCombo.setTooltip(new Tooltip("Data Field Binding (Pick preset or type custom key)"));
             keyCombo.valueProperty().addListener((obs, o, v) -> { c.setKey(v); refreshCanvas(); });
+            keyCombo.getEditor().textProperty().addListener((obs, o, v) -> { c.setKey(v); refreshCanvas(); });
 
             Spinner<Double> widthSpin = new Spinner<>(1.0, 100.0, c.getWidth(), 1.0);
             widthSpin.setPrefWidth(65);

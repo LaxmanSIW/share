@@ -9,6 +9,7 @@ com\invoicestudio\db\DatabaseManager$1.class
 com\invoicestudio\db\DatabaseManager.class
 com\invoicestudio\model\BuyerFieldDef.class
 com\invoicestudio\db\SettingsDao.class
+com\invoicestudio\ui\views\CreateBillView$2.class
 com\invoicestudio\ui\views\DashboardView.class
 com\invoicestudio\db\DatabaseManager$6.class
 com\invoicestudio\model\ElementType.class
@@ -46,6 +47,7 @@ com\invoicestudio\db\BillDao.class
 com\invoicestudio\ui\views\CreateBillView.class
 com\invoicestudio\db\DatabaseManager$5.class
 com\invoicestudio\model\RepeatCadence.class
+com\invoicestudio\ui\views\CreateBillView$3.class
 com\invoicestudio\ui\views\TemplateDesigner$5.class
 com\invoicestudio\service\BarcodeService.class
 com\invoicestudio\ui\views\ItemsView.class
