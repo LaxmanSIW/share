@@ -1,0 +1,5 @@
+com\invoicestudio\service\CsvServiceTest.class
+com\invoicestudio\db\DatabaseTest.class
+com\invoicestudio\service\BillingServiceTest.class
+com\invoicestudio\service\RecurringEngineTest.class
+com\invoicestudio\service\PageMarginTest.class

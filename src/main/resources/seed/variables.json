@@ -1,0 +1,7 @@
+[
+  {
+    "key": "delivery_date",
+    "label": "Delivery Date",
+    "type": "text"
+  }
+]

@@ -1,0 +1,887 @@
+package com.invoicestudio.ui.views;
+
+import com.invoicestudio.db.*;
+import com.invoicestudio.model.*;
+import com.invoicestudio.service.BillingService;
+import com.invoicestudio.service.PdfExportService;
+import com.invoicestudio.service.PrintingService;
+import com.invoicestudio.ui.BillPreviewPane;
+import com.invoicestudio.ui.DialogHelper;
+import com.invoicestudio.ui.StudioApp;
+import com.invoicestudio.ui.Toast;
+import javafx.collections.FXCollections;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.stage.FileChooser;
+
+import java.io.File;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class CreateBillView extends BorderPane {
+
+    private final StudioApp app;
+    private final BillDao billDao;
+    private final BuyerDao buyerDao;
+    private final ItemDao itemDao;
+    private final TemplateDao templateDao;
+    private final SettingsDao settingsDao;
+
+    private Bill editingBill;
+    private Template currentTemplate;
+    private Settings currentSettings;
+
+    // Form controls
+    private DocType selectedDocType = DocType.INVOICE;
+    private final ComboBox<Template> templateCombo = new ComboBox<>();
+    private final TextField billNoField = new TextField();
+    private final DatePicker datePicker = new DatePicker(LocalDate.now());
+
+    // Buyer
+    private final ComboBox<Buyer> buyerCombo = new ComboBox<>();
+    private final TextField buyerNameField = new TextField();
+    private final TextArea buyerAddressField = new TextArea();
+    private final TextField buyerGstField = new TextField();
+    private final TextField buyerPhoneField = new TextField();
+    private final TextField buyerStateField = new TextField();
+    private final TextField buyerStateCodeField = new TextField();
+    private final CheckBox saveBuyerCb = new CheckBox("Save buyer to directory");
+
+    // Logistics & Extra
+    private final TextField poNoField = new TextField();
+    private final TextField transportField = new TextField();
+    private final TextField vehicleField = new TextField();
+    private final TextField ewayField = new TextField();
+    private final TextField refInvoiceField = new TextField();
+    private final TextField creditReasonField = new TextField();
+
+    // Items
+    private final VBox itemsBox = new VBox(8);
+    private final List<BillItemRow> itemRows = new ArrayList<>();
+
+    // Totals & Options
+    private final TextField discountPctField = new TextField("0");
+    private final TextArea notesField = new TextArea();
+    private final ComboBox<BillStatus> statusCombo = new ComboBox<>();
+    private final ComboBox<RepeatCadence> repeatCombo = new ComboBox<>();
+    private final DatePicker repeatEndPicker = new DatePicker();
+
+    // Totals labels
+    private final Label subtotalLbl = new Label("₹0.00");
+    private final Label discountLbl = new Label("₹0.00");
+    private final Label taxableLbl = new Label("₹0.00");
+    private final Label cgstLbl = new Label("₹0.00");
+    private final Label sgstLbl = new Label("₹0.00");
+    private final Label igstLbl = new Label("₹0.00");
+    private final Label grandTotalLbl = new Label("₹0.00");
+    private final Label amountInWordsLbl = new Label("Zero Rupees Only");
+
+    // Right Preview
+    private final BillPreviewPane previewPane = new BillPreviewPane();
+
+    public CreateBillView(StudioApp app, Bill billToEdit, String initialTemplateId) {
+        this.app = app;
+        this.billDao = new BillDao(app.getDb());
+        this.buyerDao = new BuyerDao(app.getDb());
+        this.itemDao = new ItemDao(app.getDb());
+        this.templateDao = new TemplateDao(app.getDb());
+        this.settingsDao = new SettingsDao(app.getDb());
+
+        this.currentSettings = settingsDao.getSettings();
+        List<Template> templates = templateDao.getAllTemplates();
+        if (templates.isEmpty()) {
+            templates = PresetTemplates.getAllPresets();
+            for (Template t : templates) templateDao.saveTemplate(t);
+        }
+
+        if (initialTemplateId != null) {
+            this.currentTemplate = templateDao.getTemplateById(initialTemplateId);
+        }
+        if (this.currentTemplate == null) {
+            this.currentTemplate = templates.get(0);
+        }
+
+        this.editingBill = billToEdit;
+
+        getStyleClass().add("bg-app");
+
+        // Top Toolbar
+        setTop(createToolbar());
+
+        // Center SplitPane: Form on Left, Live Preview on Right
+        SplitPane split = new SplitPane();
+        split.setStyle("-fx-background-color: transparent;");
+
+        Node leftForm = createFormPane(templates);
+        Node rightPreview = createPreviewArea();
+
+        split.getItems().addAll(leftForm, rightPreview);
+        split.setDividerPositions(0.52);
+
+        setCenter(split);
+
+        initFormData();
+        updateTotalsAndPreview();
+    }
+
+    public CreateBillView(StudioApp app, Bill billToEdit, String initialTemplateId, ItemRecord initialItem) {
+        this(app, billToEdit, initialTemplateId);
+        if (initialItem != null && (editingBill == null || editingBill.getItems() == null || editingBill.getItems().isEmpty())) {
+            BillItem it = new BillItem(
+                "it_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
+                initialItem.getName(),
+                initialItem.getHsn() != null ? initialItem.getHsn() : "",
+                1,
+                initialItem.getUnit() != null ? initialItem.getUnit() : "PCS",
+                initialItem.getRate(),
+                initialItem.getGst(),
+                0
+            );
+            BillItemRow row = new BillItemRow(it);
+            itemRows.clear();
+            itemsBox.getChildren().clear();
+            itemRows.add(row);
+            itemsBox.getChildren().add(row);
+            updateTotalsAndPreview();
+        }
+    }
+
+    private Node createToolbar() {
+        HBox bar = new HBox(12);
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.setStyle("-fx-background-color: #0E131A; -fx-padding: 8 18; -fx-border-color: #232B38; -fx-border-width: 0 0 1 0;");
+
+        Button backBtn = new Button("← Back");
+        backBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        backBtn.setTooltip(new Tooltip("Return to History View"));
+        backBtn.setOnAction(e -> app.showHistory());
+
+        Label title = new Label(editingBill != null ? "Edit Bill: " + editingBill.getBillNo() : "Create New Document");
+        title.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-text-fill: #CBD5E1;");
+
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+
+        Button saveBtn = new Button("Save Document");
+        saveBtn.getStyleClass().addAll("gold-btn");
+        saveBtn.setTooltip(new Tooltip("Save invoice to database"));
+        saveBtn.setOnAction(e -> saveBill(false, false));
+
+        Button printBtn = new Button("Save & Print");
+        printBtn.getStyleClass().addAll("button-secondary");
+        printBtn.setTooltip(new Tooltip("Save invoice and open printer"));
+        printBtn.setOnAction(e -> saveBill(true, false));
+
+        Button pdfBtn = new Button("Save & PDF");
+        pdfBtn.getStyleClass().addAll("button-secondary");
+        pdfBtn.setTooltip(new Tooltip("Save invoice and export PDF document"));
+        pdfBtn.setOnAction(e -> saveBill(false, true));
+
+        bar.getChildren().addAll(backBtn, title, sp, saveBtn, printBtn, pdfBtn);
+        return bar;
+    }
+
+    private Node createFormPane(List<Template> templates) {
+        VBox form = new VBox(18);
+        form.setPadding(new Insets(20));
+        form.setStyle("-fx-background-color: #0B0E13;");
+
+        // 1. Document Type Tabs
+        HBox docTypeTabs = new HBox(8);
+        for (DocType dt : DocType.values()) {
+            Button btn = new Button(dt.getLabel());
+            btn.getStyleClass().addAll("button-sm", dt == selectedDocType ? "gold-btn" : "button-secondary");
+            btn.setOnAction(e -> {
+                selectedDocType = dt;
+                for (Node n : docTypeTabs.getChildren()) {
+                    n.getStyleClass().removeAll("gold-btn", "button-secondary");
+                    n.getStyleClass().add("button-secondary");
+                }
+                btn.getStyleClass().remove("button-secondary");
+                btn.getStyleClass().add("gold-btn");
+                updateTotalsAndPreview();
+            });
+            docTypeTabs.getChildren().add(btn);
+        }
+        form.getChildren().add(docTypeTabs);
+
+        // 2. Template, Bill No, Date
+        GridPane metaGrid = new GridPane();
+        metaGrid.setHgap(12); metaGrid.setVgap(8);
+
+        metaGrid.add(new Label("Template:"), 0, 0);
+        templateCombo.setItems(FXCollections.observableArrayList(templates));
+        templateCombo.setValue(currentTemplate);
+        templateCombo.setOnAction(e -> {
+            currentTemplate = templateCombo.getValue();
+            updateTotalsAndPreview();
+        });
+        templateCombo.setMaxWidth(Double.MAX_VALUE);
+        metaGrid.add(templateCombo, 0, 1);
+
+        metaGrid.add(new Label("Bill Number:"), 1, 0);
+        billNoField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        metaGrid.add(billNoField, 1, 1);
+
+        metaGrid.add(new Label("Bill Date:"), 2, 0);
+        datePicker.setOnAction(e -> updateTotalsAndPreview());
+        metaGrid.add(datePicker, 2, 1);
+
+        ColumnConstraints c1 = new ColumnConstraints(); c1.setPercentWidth(40);
+        ColumnConstraints c2 = new ColumnConstraints(); c2.setPercentWidth(30);
+        ColumnConstraints c3 = new ColumnConstraints(); c3.setPercentWidth(30);
+        metaGrid.getColumnConstraints().addAll(c1, c2, c3);
+
+        form.getChildren().add(metaGrid);
+
+        // 3. Buyer Section
+        VBox buyerSec = new VBox(10);
+        buyerSec.setStyle("-fx-background-color: #151B25; -fx-padding: 14; -fx-background-radius: 8; -fx-border-color: #232B38; -fx-border-radius: 8;");
+
+        HBox byrTop = new HBox(12);
+        byrTop.setAlignment(Pos.CENTER_LEFT);
+        Label byrLbl = new Label("BUYER / RECIPIENT DETAILS");
+        byrLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: #D9A13B;");
+
+        Region bSp = new Region();
+        HBox.setHgrow(bSp, Priority.ALWAYS);
+
+        // Buyer Autocomplete dropdown
+        List<Buyer> buyers = buyerDao.getAllBuyers();
+        buyerCombo.setPromptText("Select Existing Buyer...");
+        buyerCombo.setItems(FXCollections.observableArrayList(buyers));
+        buyerCombo.setOnAction(e -> {
+            Buyer b = buyerCombo.getValue();
+            if (b != null) {
+                buyerNameField.setText(b.getName());
+                buyerAddressField.setText(b.getAddress());
+                buyerGstField.setText(b.getGst());
+                buyerPhoneField.setText(b.getPhone());
+                buyerStateField.setText(b.getState());
+                buyerStateCodeField.setText(b.getEffectiveStateCode());
+                updateTotalsAndPreview();
+            }
+        });
+        buyerCombo.setPrefWidth(220);
+
+        byrTop.getChildren().addAll(byrLbl, bSp, buyerCombo);
+        buyerSec.getChildren().add(byrTop);
+
+        GridPane byrGrid = new GridPane();
+        byrGrid.setHgap(10); byrGrid.setVgap(8);
+
+        byrGrid.add(new Label("Buyer Name:"), 0, 0);
+        buyerNameField.setPromptText("e.g. Acme Corp");
+        buyerNameField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        byrGrid.add(buyerNameField, 0, 1);
+
+        byrGrid.add(new Label("GSTIN:"), 1, 0);
+        buyerGstField.setPromptText("27ABCDE1234F1Z5");
+        buyerGstField.textProperty().addListener((obs, o, v) -> {
+            if (v != null && v.trim().length() >= 2 && buyerStateCodeField.getText().isBlank()) {
+                String code = v.trim().substring(0, 2);
+                if (code.matches("\\d{2}")) {
+                    buyerStateCodeField.setText(code);
+                }
+            }
+            updateTotalsAndPreview();
+        });
+        byrGrid.add(buyerGstField, 1, 1);
+
+        byrGrid.add(new Label("Phone / Contact:"), 2, 0);
+        buyerPhoneField.setPromptText("9820012345");
+        buyerPhoneField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        byrGrid.add(buyerPhoneField, 2, 1);
+
+        byrGrid.add(new Label("Billing Address:"), 0, 2, 2, 1);
+        buyerAddressField.setPromptText("Address line 1, city, state, pin...");
+        buyerAddressField.setPrefRowCount(2);
+        buyerAddressField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        byrGrid.add(buyerAddressField, 0, 3, 2, 1);
+
+        byrGrid.add(new Label("Place of Supply (State & Code):"), 2, 2);
+        HBox stCodeBox = new HBox(6);
+        stCodeBox.setAlignment(Pos.CENTER_LEFT);
+        buyerStateField.setPromptText("e.g. Maharashtra");
+        HBox.setHgrow(buyerStateField, Priority.ALWAYS);
+        buyerStateField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        buyerStateCodeField.setPromptText("Code (27)");
+        buyerStateCodeField.setPrefWidth(80);
+        buyerStateCodeField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        stCodeBox.getChildren().addAll(buyerStateField, buyerStateCodeField);
+        byrGrid.add(stCodeBox, 2, 3);
+
+        saveBuyerCb.setSelected(true);
+        byrGrid.add(saveBuyerCb, 0, 4, 3, 1);
+
+        ColumnConstraints bc1 = new ColumnConstraints(); bc1.setPercentWidth(40);
+        ColumnConstraints bc2 = new ColumnConstraints(); bc2.setPercentWidth(30);
+        ColumnConstraints bc3 = new ColumnConstraints(); bc3.setPercentWidth(30);
+        byrGrid.getColumnConstraints().addAll(bc1, bc2, bc3);
+
+        buyerSec.getChildren().add(byrGrid);
+        form.getChildren().add(buyerSec);
+
+        // 4. Logistics & Credit note fields (accordion / collapsible)
+        TitledPane logisticsPane = new TitledPane("Logistics, Transport & Order References", createLogisticsBox());
+        logisticsPane.setExpanded(false);
+        form.getChildren().add(logisticsPane);
+
+        // 5. Line Items Editor
+        VBox itemsSec = new VBox(8);
+        HBox itTop = new HBox(8);
+        itTop.setAlignment(Pos.CENTER_LEFT);
+        Label itLbl = new Label("LINE ITEMS");
+        itLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: #D9A13B;");
+
+        Region itSp = new Region();
+        HBox.setHgrow(itSp, Priority.ALWAYS);
+
+        Button addItemBtn = new Button("+ Add Item");
+        addItemBtn.getStyleClass().addAll("button-sm", "gold-btn");
+        addItemBtn.setOnAction(e -> {
+            BillItemRow row = new BillItemRow();
+            itemRows.add(row);
+            itemsBox.getChildren().add(row);
+            updateTotalsAndPreview();
+        });
+
+        itTop.getChildren().addAll(itLbl, itSp, addItemBtn);
+        itemsSec.getChildren().addAll(itTop, itemsBox);
+        form.getChildren().add(itemsSec);
+
+        // 6. Summary, Totals & Actions
+        form.getChildren().add(createSummaryBox());
+
+        ScrollPane scroll = new ScrollPane(form);
+        scroll.setFitToWidth(true);
+        scroll.setStyle("-fx-background: #0B0E13; -fx-background-color: #0B0E13;");
+        return scroll;
+    }
+
+    private Node createLogisticsBox() {
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(8); g.setPadding(new Insets(10));
+
+        g.add(new Label("PO / Order No:"), 0, 0);
+        poNoField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        g.add(poNoField, 0, 1);
+
+        g.add(new Label("Transport Name:"), 1, 0);
+        transportField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        g.add(transportField, 1, 1);
+
+        g.add(new Label("Vehicle No:"), 2, 0);
+        vehicleField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        g.add(vehicleField, 2, 1);
+
+        g.add(new Label("E-Way Bill No:"), 3, 0);
+        ewayField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        g.add(ewayField, 3, 1);
+
+        // Credit note extra fields
+        g.add(new Label("Against Invoice #:"), 0, 2);
+        refInvoiceField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        g.add(refInvoiceField, 0, 3);
+
+        g.add(new Label("Adjustment Reason:"), 1, 2, 2, 1);
+        creditReasonField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        g.add(creditReasonField, 1, 3, 2, 1);
+
+        return g;
+    }
+
+    private Node createSummaryBox() {
+        HBox box = new HBox(16);
+        box.setStyle("-fx-background-color: #151B25; -fx-padding: 16; -fx-background-radius: 8; -fx-border-color: #232B38; -fx-border-radius: 8;");
+
+        // Left notes & payment status
+        VBox left = new VBox(10);
+        left.getChildren().add(new Label("Notes & Terms:"));
+        notesField.setPrefRowCount(3);
+        notesField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        left.getChildren().add(notesField);
+
+        HBox opts = new HBox(10);
+        opts.setAlignment(Pos.CENTER_LEFT);
+        statusCombo.setItems(FXCollections.observableArrayList(BillStatus.UNPAID, BillStatus.PAID));
+        statusCombo.setValue(BillStatus.UNPAID);
+        statusCombo.setOnAction(e -> updateTotalsAndPreview());
+
+        repeatCombo.setItems(FXCollections.observableArrayList(RepeatCadence.values()));
+        repeatCombo.setValue(RepeatCadence.NONE);
+        repeatCombo.setOnAction(e -> updateTotalsAndPreview());
+
+        opts.getChildren().addAll(new Label("Status:"), statusCombo, new Label("Repeat:"), repeatCombo);
+        left.getChildren().add(opts);
+        HBox.setHgrow(left, Priority.ALWAYS);
+
+        // Right totals table
+        VBox right = new VBox(6);
+        right.setPrefWidth(260);
+
+        HBox discRow = new HBox(8);
+        discRow.setAlignment(Pos.CENTER_LEFT);
+        Label dLbl = new Label("Global Discount (%):");
+        discountPctField.setPrefWidth(60);
+        discountPctField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        discRow.getChildren().addAll(dLbl, discountPctField);
+        right.getChildren().add(discRow);
+
+        right.getChildren().addAll(
+                createTotalLine("Subtotal:", subtotalLbl),
+                createTotalLine("Total Discount:", discountLbl),
+                createTotalLine("Taxable Value:", taxableLbl),
+                createTotalLine("CGST:", cgstLbl),
+                createTotalLine("SGST:", sgstLbl),
+                createTotalLine("IGST:", igstLbl),
+                new Separator(),
+                createTotalLine("Grand Total:", grandTotalLbl)
+        );
+        grandTotalLbl.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #D9A13B;");
+
+        amountInWordsLbl.setStyle("-fx-font-size: 10px; -fx-font-style: italic; -fx-text-fill: #94A3B8;");
+        amountInWordsLbl.setWrapText(true);
+        right.getChildren().add(amountInWordsLbl);
+
+        box.getChildren().addAll(left, right);
+        return box;
+    }
+
+    private Node createTotalLine(String label, Label valLbl) {
+        HBox h = new HBox();
+        Label l = new Label(label);
+        l.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+        valLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #F4F4F5;");
+        h.getChildren().addAll(l, sp, valLbl);
+        return h;
+    }
+
+    private Node createPreviewArea() {
+        VBox box = new VBox(8);
+        box.setStyle("-fx-background-color: #07090C; -fx-padding: 12;");
+
+        HBox ctrl = new HBox(8);
+        ctrl.setAlignment(Pos.CENTER_LEFT);
+        Label title = new Label("LIVE DOCUMENT PREVIEW");
+        title.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #94A3B8;");
+
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+
+        Button zOut = new Button("−");
+        zOut.getStyleClass().addAll("button-sm", "button-secondary");
+        zOut.setTooltip(new Tooltip("Zoom Out"));
+
+        Label zoomValLbl = new Label("75%");
+        zoomValLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #D9A13B; -fx-min-width: 44; -fx-alignment: center;");
+
+        Button zIn = new Button("+");
+        zIn.getStyleClass().addAll("button-sm", "button-secondary");
+        zIn.setTooltip(new Tooltip("Zoom In"));
+
+        Button z100 = new Button("100%");
+        z100.getStyleClass().addAll("button-sm", "button-secondary");
+        z100.setTooltip(new Tooltip("Reset Zoom to 100%"));
+
+        Button zFit = new Button("Fit");
+        zFit.getStyleClass().addAll("button-sm", "button-secondary");
+        zFit.setTooltip(new Tooltip("Fit Preview to Pane"));
+
+        Runnable updateZoom = () -> {
+            zoomValLbl.setText((int) Math.round(previewPane.getZoom() * 100) + "%");
+        };
+
+        zOut.setOnAction(e -> {
+            previewPane.setZoom(Math.max(0.2, previewPane.getZoom() - 0.1));
+            updateZoom.run();
+        });
+        zIn.setOnAction(e -> {
+            previewPane.setZoom(Math.min(2.0, previewPane.getZoom() + 0.1));
+            updateZoom.run();
+        });
+        z100.setOnAction(e -> {
+            previewPane.setZoom(1.0);
+            updateZoom.run();
+        });
+        zFit.setOnAction(e -> {
+            previewPane.setZoom(0.75);
+            updateZoom.run();
+        });
+
+        ctrl.getChildren().addAll(title, sp, zOut, zoomValLbl, zIn, z100, zFit);
+
+        ScrollPane previewScroll = new ScrollPane(previewPane);
+        previewScroll.setFitToWidth(true);
+        previewScroll.setFitToHeight(true);
+        previewScroll.setStyle("-fx-background: #07090C; -fx-background-color: #07090C;");
+        VBox.setVgrow(previewScroll, Priority.ALWAYS);
+
+        box.getChildren().addAll(ctrl, previewScroll);
+        return box;
+    }
+
+    private void initFormData() {
+        if (editingBill != null) {
+            selectedDocType = editingBill.getDocType();
+            billNoField.setText(editingBill.getBillNo());
+            try { datePicker.setValue(LocalDate.parse(editingBill.getDate())); } catch (Exception ignored) {}
+            buyerNameField.setText(editingBill.getVariables().getOrDefault("buyer_name", ""));
+            buyerAddressField.setText(editingBill.getVariables().getOrDefault("buyer_address", ""));
+            buyerGstField.setText(editingBill.getVariables().getOrDefault("buyer_gst", ""));
+            buyerPhoneField.setText(editingBill.getVariables().getOrDefault("buyer_phone", ""));
+            buyerStateField.setText(editingBill.getVariables().getOrDefault("buyer_state", ""));
+            buyerStateCodeField.setText(editingBill.getVariables().getOrDefault("buyer_state_code", ""));
+            poNoField.setText(editingBill.getVariables().getOrDefault("po_no", ""));
+            transportField.setText(editingBill.getVariables().getOrDefault("transport_name", ""));
+            vehicleField.setText(editingBill.getVariables().getOrDefault("vehicle_no", ""));
+            ewayField.setText(editingBill.getVariables().getOrDefault("e_way_bill", ""));
+            refInvoiceField.setText(editingBill.getVariables().getOrDefault("ref_invoice_no", ""));
+            creditReasonField.setText(editingBill.getVariables().getOrDefault("credit_reason", ""));
+            discountPctField.setText(String.valueOf(editingBill.getDiscountPct()));
+            notesField.setText(editingBill.getNotes());
+            statusCombo.setValue(editingBill.getStatus());
+            repeatCombo.setValue(editingBill.getRepeat());
+
+            for (BillItem it : editingBill.getItems()) {
+                BillItemRow r = new BillItemRow(it);
+                itemRows.add(r);
+                itemsBox.getChildren().add(r);
+            }
+        } else {
+            billNoField.setText(BillingService.nextBillNo(currentSettings));
+            BillItemRow r = new BillItemRow();
+            itemRows.add(r);
+            itemsBox.getChildren().add(r);
+        }
+        previewPane.setZoom(0.75);
+    }
+
+    private boolean isInterStateSale() {
+        String buyerCode = buyerStateCodeField.getText() != null ? buyerStateCodeField.getText().trim() : "";
+        if (buyerCode.isBlank() && buyerGstField.getText() != null && buyerGstField.getText().trim().length() >= 2) {
+            String prefix = buyerGstField.getText().trim().substring(0, 2);
+            if (prefix.matches("\\d{2}")) {
+                buyerCode = prefix;
+            }
+        }
+
+        String sellerCode = "";
+        if (currentSettings != null && currentSettings.getBusiness() != null) {
+            sellerCode = currentSettings.getBusiness().getStateCode() != null ? currentSettings.getBusiness().getStateCode().trim() : "";
+            if (sellerCode.isBlank() && currentSettings.getBusiness().getGstin() != null && currentSettings.getBusiness().getGstin().trim().length() >= 2) {
+                String prefix = currentSettings.getBusiness().getGstin().trim().substring(0, 2);
+                if (prefix.matches("\\d{2}")) {
+                    sellerCode = prefix;
+                }
+            }
+        }
+
+        // 1. If state codes are available on both sides, compare them
+        if (!buyerCode.isBlank() && !sellerCode.isBlank()) {
+            return !buyerCode.equalsIgnoreCase(sellerCode);
+        }
+
+        // 2. Fallback to state names
+        String buyerState = buyerStateField.getText() != null ? buyerStateField.getText().trim() : "";
+        String sellerState = currentSettings != null && currentSettings.getBusiness() != null && currentSettings.getBusiness().getState() != null
+                ? currentSettings.getBusiness().getState().trim() : "";
+        if (!buyerState.isBlank() && !sellerState.isBlank()) {
+            return !buyerState.equalsIgnoreCase(sellerState);
+        }
+
+        // 3. Fallback to settings toggle
+        return currentSettings != null && currentSettings.isInterState();
+    }
+
+    private void updateTotalsAndPreview() {
+        List<BillItem> items = itemRows.stream().map(BillItemRow::getItem).collect(Collectors.toList());
+        double disc = 0;
+        try { disc = Double.parseDouble(discountPctField.getText()); } catch (Exception ignored) {}
+
+        boolean interState = isInterStateSale();
+        BillTotals totals = BillingService.computeTotals(items, disc, interState);
+        String words = BillingService.amountInWords(totals.getGrandTotal());
+
+        subtotalLbl.setText(String.format("₹%.2f", totals.getSubtotal()));
+        discountLbl.setText(String.format("₹%.2f", totals.getDiscount()));
+        taxableLbl.setText(String.format("₹%.2f", totals.getTaxable()));
+        cgstLbl.setText(String.format("₹%.2f", totals.getCgst()));
+        sgstLbl.setText(String.format("₹%.2f", totals.getSgst()));
+        igstLbl.setText(String.format("₹%.2f", totals.getIgst()));
+        grandTotalLbl.setText(String.format("₹%.2f", totals.getGrandTotal()));
+        amountInWordsLbl.setText(words);
+
+        // Update preview
+        Bill b = buildBillObject(totals, words);
+        previewPane.render(currentTemplate, b, currentSettings, 0, 1);
+    }
+
+    private Bill buildBillObject(BillTotals totals, String words) {
+        Bill b = new Bill();
+        b.setId(editingBill != null ? editingBill.getId() : "bill_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
+        b.setBillNo(billNoField.getText());
+        b.setDate(datePicker.getValue() != null ? datePicker.getValue().toString() : BillingService.todayISO());
+        b.setDocType(selectedDocType);
+        b.setTemplateId(currentTemplate != null ? currentTemplate.getId() : "");
+        b.setTemplateName(currentTemplate != null ? currentTemplate.getName() : "");
+
+        Map<String, String> vars = new HashMap<>();
+        vars.put("buyer_name", buyerNameField.getText());
+        vars.put("buyer_address", buyerAddressField.getText());
+        vars.put("buyer_gst", buyerGstField.getText());
+        vars.put("buyer_phone", buyerPhoneField.getText());
+        vars.put("buyer_state", buyerStateField.getText());
+        vars.put("buyer_state_code", buyerStateCodeField.getText().trim());
+
+        // Copy custom buyer fields from selected buyer if present
+        Buyer selectedBuyer = buyerCombo.getValue();
+        if (selectedBuyer != null && selectedBuyer.getCustom() != null) {
+            for (Map.Entry<String, String> entry : selectedBuyer.getCustom().entrySet()) {
+                vars.put("buyer_" + entry.getKey(), entry.getValue());
+            }
+        }
+
+        vars.put("po_no", poNoField.getText());
+        vars.put("transport_name", transportField.getText());
+        vars.put("vehicle_no", vehicleField.getText());
+        vars.put("e_way_bill", ewayField.getText());
+        vars.put("ref_invoice_no", refInvoiceField.getText());
+        vars.put("credit_reason", creditReasonField.getText());
+        b.setVariables(vars);
+
+        b.setItems(itemRows.stream().map(BillItemRow::getItem).collect(Collectors.toList()));
+        double disc = 0;
+        try { disc = Double.parseDouble(discountPctField.getText()); } catch (Exception ignored) {}
+        b.setDiscountPct(disc);
+
+        b.setTotals(totals);
+        b.setAmountInWords(words);
+        b.setNotes(notesField.getText());
+        b.setStatus(statusCombo.getValue() != null ? statusCombo.getValue() : BillStatus.UNPAID);
+        b.setRepeat(repeatCombo.getValue() != null ? repeatCombo.getValue() : RepeatCadence.NONE);
+        if (repeatEndPicker.getValue() != null) b.setRepeatEndDate(repeatEndPicker.getValue().toString());
+
+        return b;
+    }
+
+    private void saveBill(boolean printAfter, boolean pdfAfter) {
+        if (billNoField.getText() == null || billNoField.getText().isBlank()) {
+            Toast.show(app.getRootPane(), "Missing Information", "Please enter a valid bill number.", true);
+            return;
+        }
+
+        List<BillItem> items = itemRows.stream().map(BillItemRow::getItem).collect(Collectors.toList());
+        double disc = 0;
+        try { disc = Double.parseDouble(discountPctField.getText()); } catch (Exception ignored) {}
+        boolean interState = isInterStateSale();
+        BillTotals totals = BillingService.computeTotals(items, disc, interState);
+        String words = BillingService.amountInWords(totals.getGrandTotal());
+
+        Bill bill = buildBillObject(totals, words);
+        billDao.saveBill(bill);
+
+        // Auto increment counter in settings if new bill
+        if (editingBill == null) {
+            currentSettings.setBillNoNext(currentSettings.getBillNoNext() + 1);
+            settingsDao.saveSettings(currentSettings);
+        }
+
+        // Save buyer to directory if enabled
+        if (saveBuyerCb.isSelected() && !buyerNameField.getText().isBlank()) {
+            Buyer existing = buyerDao.findByName(buyerNameField.getText());
+            if (existing == null) {
+                Buyer nb = new Buyer(
+                        "byr_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
+                        buyerNameField.getText(),
+                        buyerAddressField.getText(),
+                        buyerGstField.getText(),
+                        buyerPhoneField.getText(),
+                        buyerStateField.getText(),
+                        buyerStateCodeField.getText().trim()
+                );
+                buyerDao.saveBuyer(nb);
+            }
+        }
+
+        app.reloadAllData();
+        Toast.show(app.getRootPane(), "Bill Saved", bill.getBillNo() + " saved successfully.", false);
+
+        if (printAfter) {
+            double prevZoom = previewPane.getZoom();
+            previewPane.setZoom(1.0);
+            try {
+                PrintingService.printNode(previewPane, app.getPrimaryStage(), 1, bill.getBillNo());
+            } finally {
+                previewPane.setZoom(prevZoom);
+            }
+        }
+
+        if (pdfAfter) {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Export Invoice PDF");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Document (*.pdf)", "*.pdf"));
+            fc.setInitialFileName(bill.getBillNo() + ".pdf");
+            File dest = fc.showSaveDialog(app.getPrimaryStage());
+            if (dest != null) {
+                try {
+                    PdfExportService.exportBillPdf(bill, currentTemplate, currentSettings, dest, 1);
+                    Toast.show(app.getRootPane(), "PDF Exported", "Saved to " + dest.getName(), false);
+                } catch (Exception ex) {
+                    Toast.show(app.getRootPane(), "PDF Export Failed", ex.getMessage(), true);
+                }
+            }
+        }
+
+        app.showHistory();
+    }
+
+    // Inner class for line item row editor
+    private class BillItemRow extends HBox {
+        private final TextField descField = new TextField();
+        private final TextField hsnField = new TextField();
+        private final TextField qtyField = new TextField("1");
+        private final TextField unitField = new TextField("PCS");
+        private final TextField rateField = new TextField("0");
+        private final TextField gstField = new TextField("18");
+        private final TextField discField = new TextField("0");
+        private final Label amountLbl = new Label("₹0.00");
+        private String itemId;
+
+        public BillItemRow() {
+            this(new BillItem("it_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8), "", "", 1, "PCS", 0, 18, 0));
+        }
+
+        public BillItemRow(BillItem it) {
+            setSpacing(8);
+            setAlignment(Pos.CENTER_LEFT);
+            setStyle("-fx-background-color: #12161D; -fx-padding: 8; -fx-background-radius: 6; -fx-border-color: #232B38; -fx-border-radius: 6;");
+
+            this.itemId = it.getId();
+            descField.setText(it.getDesc());
+            hsnField.setText(it.getHsn());
+            qtyField.setText(String.valueOf(it.getQty()));
+            unitField.setText(it.getUnit());
+            rateField.setText(String.valueOf(it.getRate()));
+            gstField.setText(String.valueOf(it.getGst()));
+            discField.setText(String.valueOf(it.getDiscPct()));
+
+            descField.setPromptText("Item Description / Catalog Search");
+            HBox.setHgrow(descField, Priority.ALWAYS);
+
+            // Autocomplete / Search from catalog button
+            Button catBtn = new Button("📦");
+            catBtn.getStyleClass().addAll("button-sm", "button-secondary");
+            catBtn.setTooltip(new Tooltip("Pick from Catalog"));
+            catBtn.setOnAction(e -> pickCatalogItem(this));
+
+            Button saveCatBtn = new Button("💾");
+            saveCatBtn.getStyleClass().addAll("button-sm", "button-secondary");
+            saveCatBtn.setTooltip(new Tooltip("Save to Catalog"));
+            saveCatBtn.setOnAction(e -> saveItemToCatalog(this));
+
+            hsnField.setPrefWidth(65); hsnField.setPromptText("HSN");
+            qtyField.setPrefWidth(50);
+            unitField.setPrefWidth(55);
+            rateField.setPrefWidth(65);
+            gstField.setPrefWidth(45);
+            discField.setPrefWidth(45);
+            amountLbl.setPrefWidth(70);
+            amountLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #F4F4F5; -fx-alignment: CENTER_RIGHT;");
+
+            descField.textProperty().addListener((obs, o, v) -> updateRowAmount());
+            hsnField.textProperty().addListener((obs, o, v) -> updateRowAmount());
+            qtyField.textProperty().addListener((obs, o, v) -> updateRowAmount());
+            rateField.textProperty().addListener((obs, o, v) -> updateRowAmount());
+            gstField.textProperty().addListener((obs, o, v) -> updateRowAmount());
+            discField.textProperty().addListener((obs, o, v) -> updateRowAmount());
+
+            Button delBtn = new Button("✕");
+            delBtn.getStyleClass().addAll("button-sm", "button-danger");
+            delBtn.setTooltip(new Tooltip("Remove this line item"));
+            delBtn.setOnAction(e -> {
+                itemRows.remove(this);
+                itemsBox.getChildren().remove(this);
+                updateTotalsAndPreview();
+            });
+
+            getChildren().addAll(catBtn, descField, saveCatBtn, hsnField, qtyField, unitField, rateField, gstField, discField, amountLbl, delBtn);
+            updateRowAmount();
+        }
+
+        private void updateRowAmount() {
+            BillItem it = getItem();
+            amountLbl.setText(String.format("₹%.2f", it.getAmount()));
+            updateTotalsAndPreview();
+        }
+
+        public BillItem getItem() {
+            double q = 1, r = 0, g = 18, d = 0;
+            try { q = Double.parseDouble(qtyField.getText()); } catch (Exception ignored) {}
+            try { r = Double.parseDouble(rateField.getText()); } catch (Exception ignored) {}
+            try { g = Double.parseDouble(gstField.getText()); } catch (Exception ignored) {}
+            try { d = Double.parseDouble(discField.getText()); } catch (Exception ignored) {}
+
+            return new BillItem(itemId, descField.getText(), hsnField.getText(), q, unitField.getText(), r, g, d);
+        }
+
+        public void applyCatalogItem(ItemRecord ir) {
+            descField.setText(ir.getName());
+            hsnField.setText(ir.getHsn());
+            unitField.setText(ir.getUnit());
+            rateField.setText(String.valueOf(ir.getRate()));
+            gstField.setText(String.valueOf(ir.getGst()));
+            updateRowAmount();
+        }
+    }
+
+    private void pickCatalogItem(BillItemRow targetRow) {
+        Dialog<ItemRecord> dlg = new Dialog<>();
+        dlg.setTitle("Select Catalog Item");
+        dlg.setHeaderText("Choose item to populate line:");
+
+        VBox box = new VBox(10);
+        box.setPadding(new Insets(14));
+        box.setPrefWidth(380);
+
+        List<ItemRecord> items = itemDao.getAllItems();
+        ListView<ItemRecord> lv = new ListView<>(FXCollections.observableArrayList(items));
+        lv.setCellFactory(v -> new ListCell<>() {
+            @Override
+            protected void updateItem(ItemRecord it, boolean empty) {
+                super.updateItem(it, empty);
+                if (empty || it == null) setText(null);
+                else setText(it.getName() + " — ₹" + it.getRate() + " (HSN: " + it.getHsn() + ", GST: " + (int) it.getGst() + "%)");
+            }
+        });
+        box.getChildren().add(lv);
+
+        dlg.getDialogPane().setContent(box);
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dlg.setResultConverter(b -> b == ButtonType.OK ? lv.getSelectionModel().getSelectedItem() : null);
+        DialogHelper.styleDialog(dlg);
+
+        dlg.showAndWait().ifPresent(targetRow::applyCatalogItem);
+    }
+
+    private void saveItemToCatalog(BillItemRow row) {
+        BillItem bi = row.getItem();
+        if (bi.getDesc().isBlank()) {
+            Toast.show(app.getRootPane(), "Cannot Save", "Please enter an item name first.", true);
+            return;
+        }
+        ItemRecord ir = new ItemRecord(
+                "itm_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
+                bi.getDesc(), bi.getHsn(), bi.getUnit(), bi.getRate(), bi.getGst()
+        );
+        itemDao.saveItem(ir);
+        Toast.show(app.getRootPane(), "Catalog Item Saved", "\"" + bi.getDesc() + "\" added to catalog.", false);
+    }
+}
