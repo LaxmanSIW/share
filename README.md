@@ -2,7 +2,7 @@
 
 **Standalone JavaFX Billing & Invoice Management Desktop Application**
 
-InvoiceStudio is a cross-platform desktop application for creating and managing invoices.
+InvoiceStudio  is a cross-platform desktop application for creating and managing invoices.
 It ships with a full billing workflow — buyers, items, bills, GST handling, an invoice
 **Template Designer**, PDF export with QR/UPI codes, sales reports and a dashboard —
 wrapped in a custom dark **“Obsidian & Gold”** theme with a VS Code-style sidebar.
