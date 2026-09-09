@@ -121,7 +121,7 @@ public class CreateBillView extends BorderPane {
 
         // Center SplitPane: Form on Left, Live Preview on Right
         SplitPane split = new SplitPane();
-        split.setStyle("-fx-background-color: transparent;");
+        split.getStyleClass().add("bg-transparent");
 
         Node leftForm = createFormPane(templates);
         Node rightPreview = createPreviewArea();
@@ -160,7 +160,7 @@ public class CreateBillView extends BorderPane {
     private Node createToolbar() {
         HBox bar = new HBox(12);
         bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setStyle("-fx-background-color: #0E131A; -fx-padding: 8 18; -fx-border-color: #232B38; -fx-border-width: 0 0 1 0;");
+        bar.getStyleClass().add("bill-toolbar");
 
         Button backBtn = new Button("← Back");
         backBtn.getStyleClass().addAll("button-sm", "button-secondary");
@@ -168,7 +168,7 @@ public class CreateBillView extends BorderPane {
         backBtn.setOnAction(e -> app.showHistory());
 
         Label title = new Label(editingBill != null ? "Edit Bill: " + editingBill.getBillNo() : "Create New Document");
-        title.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-text-fill: #CBD5E1;");
+        title.getStyleClass().add("card-title");
 
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
@@ -195,7 +195,7 @@ public class CreateBillView extends BorderPane {
     private Node createFormPane(List<Template> templates) {
         VBox form = new VBox(18);
         form.setPadding(new Insets(20));
-        form.setStyle("-fx-background-color: #0B0E13;");
+        form.getStyleClass().add("bill-form");
 
         // 1. Document Type Tabs
         HBox docTypeTabs = new HBox(8);
@@ -248,12 +248,12 @@ public class CreateBillView extends BorderPane {
 
         // 3. Buyer Section
         VBox buyerSec = new VBox(10);
-        buyerSec.setStyle("-fx-background-color: #151B25; -fx-padding: 14; -fx-background-radius: 8; -fx-border-color: #232B38; -fx-border-radius: 8;");
+        buyerSec.getStyleClass().add("panel-box");
 
         HBox byrTop = new HBox(10);
         byrTop.setAlignment(Pos.CENTER_LEFT);
         Label byrLbl = new Label("BUYER / RECIPIENT DETAILS");
-        byrLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: #D9A13B;");
+        byrLbl.getStyleClass().add("section-eyebrow");
 
         Region bSp = new Region();
         HBox.setHgrow(bSp, Priority.ALWAYS);
@@ -413,7 +413,7 @@ public class CreateBillView extends BorderPane {
         HBox itTop = new HBox(8);
         itTop.setAlignment(Pos.CENTER_LEFT);
         Label itLbl = new Label("LINE ITEMS");
-        itLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: #D9A13B;");
+        itLbl.getStyleClass().add("section-eyebrow");
 
         Region itSp = new Region();
         HBox.setHgrow(itSp, Priority.ALWAYS);
@@ -422,7 +422,7 @@ public class CreateBillView extends BorderPane {
         addItemBtn.getStyleClass().addAll("button-sm", "gold-btn");
         addItemBtn.setGraphic(IconHelper.getIcon("plus", 11, "#0B0E13"));
         addItemBtn.setGraphicTextGap(6);
-        addItemBtn.setStyle("-fx-cursor: hand; -fx-padding: 5 12; -fx-font-weight: bold;");
+        addItemBtn.getStyleClass().add("btn-dense");
         addItemBtn.setOnAction(e -> {
             BillItemRow row = new BillItemRow();
             itemRows.add(row);
@@ -441,7 +441,7 @@ public class CreateBillView extends BorderPane {
 
         ScrollPane scroll = new ScrollPane(form);
         scroll.setFitToWidth(true);
-        scroll.setStyle("-fx-background: #0B0E13; -fx-background-color: #0B0E13;");
+        scroll.getStyleClass().add("scroll-base");
         return scroll;
     }
 
@@ -479,7 +479,7 @@ public class CreateBillView extends BorderPane {
 
     private Node createSummaryBox() {
         HBox box = new HBox(16);
-        box.setStyle("-fx-background-color: #151B25; -fx-padding: 16; -fx-background-radius: 8; -fx-border-color: #232B38; -fx-border-radius: 8;");
+        box.getStyleClass().add("panel-box");
 
         // Left notes & payment status
         VBox left = new VBox(10);
@@ -524,9 +524,9 @@ public class CreateBillView extends BorderPane {
                 new Separator(),
                 createTotalLine("Grand Total:", grandTotalLbl)
         );
-        grandTotalLbl.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #D9A13B;");
+        grandTotalLbl.getStyleClass().add("grand-total-value");
 
-        amountInWordsLbl.setStyle("-fx-font-size: 10px; -fx-font-style: italic; -fx-text-fill: #94A3B8;");
+        amountInWordsLbl.getStyleClass().add("text-note");
         amountInWordsLbl.setWrapText(true);
         right.getChildren().add(amountInWordsLbl);
 
@@ -537,22 +537,22 @@ public class CreateBillView extends BorderPane {
     private Node createTotalLine(String label, Label valLbl) {
         HBox h = new HBox();
         Label l = new Label(label);
-        l.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
+        l.getStyleClass().add("text-muted");
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
-        valLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #F4F4F5;");
+        valLbl.getStyleClass().add("card-title-sm");
         h.getChildren().addAll(l, sp, valLbl);
         return h;
     }
 
     private Node createPreviewArea() {
         VBox box = new VBox(8);
-        box.setStyle("-fx-background-color: #07090C; -fx-padding: 12;");
+        box.getStyleClass().add("panel-deep");
 
         HBox ctrl = new HBox(8);
         ctrl.setAlignment(Pos.CENTER_LEFT);
         Label title = new Label("LIVE DOCUMENT PREVIEW");
-        title.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #94A3B8;");
+        title.getStyleClass().add("overline");
 
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
@@ -562,7 +562,7 @@ public class CreateBillView extends BorderPane {
         zOut.setTooltip(new Tooltip("Zoom Out"));
 
         Label zoomValLbl = new Label("75%");
-        zoomValLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #D9A13B; -fx-min-width: 44; -fx-alignment: center;");
+        zoomValLbl.getStyleClass().add("zoom-value");
 
         Button zIn = new Button("+");
         zIn.getStyleClass().addAll("button-sm", "button-secondary");
@@ -602,7 +602,7 @@ public class CreateBillView extends BorderPane {
         ScrollPane previewScroll = new ScrollPane(previewPane);
         previewScroll.setFitToWidth(true);
         previewScroll.setFitToHeight(true);
-        previewScroll.setStyle("-fx-background: #07090C; -fx-background-color: #07090C;");
+        previewScroll.getStyleClass().add("scroll-deep");
         VBox.setVgrow(previewScroll, Priority.ALWAYS);
 
         box.getChildren().addAll(ctrl, previewScroll);
@@ -866,7 +866,7 @@ public class CreateBillView extends BorderPane {
     private Node createLineItemsHeader() {
         HBox header = new HBox(8);
         header.setAlignment(Pos.CENTER_LEFT);
-        header.setStyle("-fx-background-color: #141A24; -fx-padding: 6 8; -fx-background-radius: 6; -fx-border-color: #1E2738; -fx-border-width: 1; -fx-border-radius: 6;");
+        header.getStyleClass().add("items-header-strip");
 
         // Catalog pick spacer (matches pick item button)
         Label hPick = new Label("");
@@ -880,7 +880,6 @@ public class CreateBillView extends BorderPane {
             String k = col.getKey() != null ? col.getKey().toLowerCase().trim() : "";
             String labelText = col.getLabel() != null && !col.getLabel().isBlank() ? col.getLabel().toUpperCase() : k.toUpperCase();
             Label lbl = new Label(labelText);
-            lbl.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
 
             if ("desc".equals(k) || "description".equals(k) || "name".equals(k) || "item_name".equals(k)) {
                 descAdded = true;
@@ -914,7 +913,6 @@ public class CreateBillView extends BorderPane {
 
         if (!descAdded) {
             Label hDesc = new Label("ITEM DESCRIPTION");
-            hDesc.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
             hDesc.setMinWidth(140);
             hDesc.setAlignment(Pos.CENTER_LEFT);
             HBox.setHgrow(hDesc, Priority.ALWAYS);
@@ -984,7 +982,7 @@ public class CreateBillView extends BorderPane {
         public BillItemRow(BillItem it) {
             setSpacing(8);
             setAlignment(Pos.CENTER_LEFT);
-            setStyle("-fx-background-color: #12161D; -fx-padding: 8; -fx-background-radius: 6; -fx-border-color: #232B38; -fx-border-radius: 6;");
+            getStyleClass().add("item-row");
 
             this.itemId = it.getId() != null ? it.getId() : "it_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
             descField.setText(it.getDesc() != null ? it.getDesc() : "");
@@ -1023,15 +1021,15 @@ public class CreateBillView extends BorderPane {
 
             taxableLbl.setPrefWidth(70); taxableLbl.setMinWidth(70); taxableLbl.setMaxWidth(70);
             taxableLbl.setAlignment(Pos.CENTER_RIGHT);
-            taxableLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1;");
+            taxableLbl.getStyleClass().add("cell-bold-secondary");
 
             amountLbl.setPrefWidth(75); amountLbl.setMinWidth(75); amountLbl.setMaxWidth(75);
             amountLbl.setAlignment(Pos.CENTER_RIGHT);
-            amountLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #F4F4F5;");
+            amountLbl.getStyleClass().add("cell-bold");
 
             srLbl.setPrefWidth(30); srLbl.setMinWidth(30); srLbl.setMaxWidth(30);
             srLbl.setAlignment(Pos.CENTER);
-            srLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
+            srLbl.getStyleClass().add("text-muted");
 
             descField.textProperty().addListener((obs, o, v) -> updateRowAmount());
             hsnField.textProperty().addListener((obs, o, v) -> updateRowAmount());
@@ -1046,7 +1044,7 @@ public class CreateBillView extends BorderPane {
             catBtn.getStyleClass().addAll("button-sm", "button-secondary");
             catBtn.setTooltip(new Tooltip("Pick Item from Catalog"));
             catBtn.setPrefSize(30, 28); catBtn.setMinSize(30, 28); catBtn.setMaxSize(30, 28);
-            catBtn.setStyle("-fx-padding: 0; -fx-alignment: center; -fx-cursor: hand;");
+            catBtn.getStyleClass().add("icon-btn");
             catBtn.setOnAction(e -> pickCatalogItem(this));
             getChildren().add(catBtn);
 
@@ -1056,7 +1054,7 @@ public class CreateBillView extends BorderPane {
             saveCatBtn.getStyleClass().addAll("button-sm", "button-secondary");
             saveCatBtn.setTooltip(new Tooltip("Save Item to Catalog"));
             saveCatBtn.setPrefSize(30, 28); saveCatBtn.setMinSize(30, 28); saveCatBtn.setMaxSize(30, 28);
-            saveCatBtn.setStyle("-fx-padding: 0; -fx-alignment: center; -fx-cursor: hand;");
+            saveCatBtn.getStyleClass().add("icon-btn");
             saveCatBtn.setOnAction(e -> saveItemToCatalog(this));
 
             List<TableColumn> cols = getActiveTableColumns();
@@ -1116,7 +1114,7 @@ public class CreateBillView extends BorderPane {
             delBtn.getStyleClass().addAll("button-sm", "button-danger");
             delBtn.setTooltip(new Tooltip("Remove this line item"));
             delBtn.setPrefSize(30, 28); delBtn.setMinSize(30, 28); delBtn.setMaxSize(30, 28);
-            delBtn.setStyle("-fx-padding: 0; -fx-alignment: center; -fx-cursor: hand; -fx-border-color: rgba(239,68,68,0.3);");
+            delBtn.getStyleClass().add("icon-btn-danger");
             delBtn.setOnAction(e -> {
                 itemRows.remove(this);
                 itemsBox.getChildren().remove(this);

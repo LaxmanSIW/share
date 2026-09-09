@@ -1,12 +1,11 @@
 package com.invoicestudio.ui.views;
 
-import com.invoicestudio.db.SettingsDao;
 import com.invoicestudio.model.*;
 import com.invoicestudio.service.BackupRestoreService;
-import com.invoicestudio.service.PrintingService;
 import com.invoicestudio.ui.DialogHelper;
-import com.invoicestudio.ui.IconHelper;
+import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
+import com.invoicestudio.ui.UiTheme;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -20,17 +19,23 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.file.Files;
-import java.util.*;
-import java.util.function.Consumer;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Optional;
 import javafx.scene.text.Font;
 
+/**
+ * Settings — v3 redesign.
+ * All sections preserved: business profile + logo, bank details, billing
+ * preferences, buyer custom fields, custom fonts (Google / local files),
+ * print calibration, backup & restore, storage info.
+ * FIX: expandable textareas no longer render with a white background inside
+ * the dark theme.
+ */
 public class SettingsView extends VBox {
 
-    private final SettingsDao settingsDao;
-    private final BackupRestoreService backupService;
-    private final PrintingService printingService;
-    private final Consumer<Settings> onSaved;
-    private final Runnable onReloadApp;
+    private final StudioApp app;
 
     private Settings currentSettings;
 
@@ -80,18 +85,12 @@ public class SettingsView extends VBox {
     private final ComboBox<String> googleFontCat = new ComboBox<>();
     private final List<CustomFontDef> editableFonts = new ArrayList<>();
 
-    public SettingsView(SettingsDao settingsDao, BackupRestoreService backupService, PrintingService printingService,
-                        Consumer<Settings> onSaved, Runnable onReloadApp) {
-        this.settingsDao = settingsDao;
-        this.backupService = backupService;
-        this.printingService = printingService;
-        this.onSaved = onSaved;
-        this.onReloadApp = onReloadApp;
+    public SettingsView(StudioApp app) {
+        this.app = app;
 
         setSpacing(24);
         setPadding(new Insets(24));
-        getStyleClass().add("root-pane");
-        setStyle("-fx-background-color: #0B0E13;");
+        getStyleClass().add("view-page");
 
         buildHeader();
         buildBusinessSection();
@@ -111,9 +110,10 @@ public class SettingsView extends VBox {
         header.setAlignment(Pos.CENTER_LEFT);
 
         VBox titleBox = new VBox(4);
-        HBox titleRow = new HBox(8);
+        HBox titleRow = new HBox(10);
         titleRow.setAlignment(Pos.CENTER_LEFT);
-        Label titleIcon = IconHelper.createIconLabel(IconHelper.ICON_SETTINGS, 22, "#d9a13b");
+        Label titleIcon = new Label("⚙");
+        titleIcon.getStyleClass().addAll("icon-accent", "icon-lg");
         Label title = new Label("Settings");
         title.getStyleClass().add("view-title");
         titleRow.getChildren().addAll(titleIcon, title);
@@ -123,9 +123,8 @@ public class SettingsView extends VBox {
         titleBox.getChildren().addAll(titleRow, sub);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
 
-        Button saveBtn = new Button("Save Settings");
-        saveBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_CHECK, 14, "#000000"));
-        saveBtn.getStyleClass().add("button-primary");
+        Button saveBtn = UiTheme.goldBtn("Save Settings");
+        saveBtn.setGraphic(new Label("✓"));
         saveBtn.setTooltip(new Tooltip("Save all business profile and system preferences"));
         saveBtn.setOnAction(e -> saveSettings());
 
@@ -134,9 +133,7 @@ public class SettingsView extends VBox {
     }
 
     private void buildBusinessSection() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18));
+        VBox card = UiTheme.card(14);
 
         Label secTitle = new Label("MY BUSINESS PROFILE");
         secTitle.getStyleClass().add("card-title");
@@ -151,7 +148,7 @@ public class SettingsView extends VBox {
         col2.setPercentWidth(50);
         grid.getColumnConstraints().addAll(col1, col2);
 
-        grid.add(labeledNode("Business Name *", busName), 0, 0);
+        grid.add(UiTheme.labeled("Business Name *", busName), 0, 0);
         busGstin.textProperty().addListener((obs, o, v) -> {
             if (v != null && v.trim().length() >= 2 && busStateCode.getText().isBlank()) {
                 String code = v.trim().substring(0, 2);
@@ -160,15 +157,15 @@ public class SettingsView extends VBox {
                 }
             }
         });
-        grid.add(labeledNode("GSTIN", busGstin), 1, 0);
+        grid.add(UiTheme.labeled("GSTIN", busGstin), 1, 0);
 
         grid.add(createExpandableField("Registered Address", busAddress, "Street, building, area, city, pin code...", 3, 8), 0, 1, 2, 1);
 
-        grid.add(labeledNode("Phone Number", busPhone), 0, 2);
-        grid.add(labeledNode("Email Address", busEmail), 1, 2);
+        grid.add(UiTheme.labeled("Phone Number", busPhone), 0, 2);
+        grid.add(UiTheme.labeled("Email Address", busEmail), 1, 2);
 
-        grid.add(labeledNode("State (e.g. Maharashtra)", busState), 0, 3);
-        grid.add(labeledNode("State Code (e.g. 27)", busStateCode), 1, 3);
+        grid.add(UiTheme.labeled("State (e.g. Maharashtra)", busState), 0, 3);
+        grid.add(UiTheme.labeled("State Code (e.g. 27)", busStateCode), 1, 3);
 
         grid.add(createExpandableField("Default Terms & Conditions", busTerms, "1. Goods once sold will not be taken back...\n2. Interest @18% p.a. will be charged...", 4, 10), 0, 4, 2, 1);
 
@@ -184,8 +181,7 @@ public class SettingsView extends VBox {
         logoImageView.setFitHeight(60);
         logoImageView.setPreserveRatio(true);
 
-        removeLogoBtn.getStyleClass().add("button-icon-subtle");
-        removeLogoBtn.setStyle("-fx-text-fill: #ef4444; -fx-font-weight: bold;");
+        removeLogoBtn.getStyleClass().addAll("button-icon-subtle", "accent-red");
         removeLogoBtn.setOnAction(e -> clearLogo());
 
         logoContainer.getChildren().addAll(logoImageView);
@@ -197,13 +193,10 @@ public class SettingsView extends VBox {
         logoSub.getStyleClass().add("muted-label");
 
         HBox btnBox = new HBox(8);
-        Button uploadLogoBtn = new Button("Upload Logo");
-        uploadLogoBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_UPLOAD, 13, "#d9a13b"));
-        uploadLogoBtn.getStyleClass().add("button-secondary");
+        Button uploadLogoBtn = UiTheme.smallBtn("Upload Logo");
         uploadLogoBtn.setOnAction(e -> pickLogoFile());
 
-        Button appLogoBtn = new Button("Use App Logo");
-        appLogoBtn.getStyleClass().add("button-secondary");
+        Button appLogoBtn = UiTheme.smallBtn("Use App Logo");
         appLogoBtn.setTooltip(new Tooltip("Set bundled InvoiceStudio logo as business logo"));
         appLogoBtn.setOnAction(e -> setAppLogo());
 
@@ -217,9 +210,7 @@ public class SettingsView extends VBox {
     }
 
     private void buildBankSection() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18));
+        VBox card = UiTheme.card(14);
 
         Label secTitle = new Label("BANK & PAYMENT DETAILS");
         secTitle.getStyleClass().add("card-title");
@@ -234,19 +225,17 @@ public class SettingsView extends VBox {
         col2.setPercentWidth(50);
         grid.getColumnConstraints().addAll(col1, col2);
 
-        grid.add(labeledNode("Bank Name", bankName), 0, 0);
-        grid.add(labeledNode("Account Number", bankAccount), 1, 0);
-        grid.add(labeledNode("IFSC Code", bankIfsc), 0, 1);
-        grid.add(labeledNode("UPI ID (e.g. business@okaxis)", bankUpi), 1, 1);
+        grid.add(UiTheme.labeled("Bank Name", bankName), 0, 0);
+        grid.add(UiTheme.labeled("Account Number", bankAccount), 1, 0);
+        grid.add(UiTheme.labeled("IFSC Code", bankIfsc), 0, 1);
+        grid.add(UiTheme.labeled("UPI ID (e.g. business@okaxis)", bankUpi), 1, 1);
 
         card.getChildren().addAll(secTitle, grid);
         getChildren().add(card);
     }
 
     private void buildBillingPrefsSection() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18));
+        VBox card = UiTheme.card(14);
 
         Label secTitle = new Label("BILLING PREFERENCES");
         secTitle.getStyleClass().add("card-title");
@@ -263,14 +252,12 @@ public class SettingsView extends VBox {
         col3.setPercentWidth(33.3);
         grid.getColumnConstraints().addAll(col1, col2, col3);
 
-        grid.add(labeledNode("Currency Symbol", currencyField), 0, 0);
-        grid.add(labeledNode("Bill No Prefix", prefixField), 1, 0);
-        grid.add(labeledNode("Next Bill Number", nextNoField), 2, 0);
+        grid.add(UiTheme.labeled("Currency Symbol", currencyField), 0, 0);
+        grid.add(UiTheme.labeled("Bill No Prefix", prefixField), 1, 0);
+        grid.add(UiTheme.labeled("Next Bill Number", nextNoField), 2, 0);
 
         HBox toggles = new HBox(24);
         toggles.setAlignment(Pos.CENTER_LEFT);
-        interStateBox.getStyleClass().add("check-box");
-        autoRecurringBox.getStyleClass().add("check-box");
         toggles.getChildren().addAll(interStateBox, autoRecurringBox);
 
         card.getChildren().addAll(secTitle, grid, toggles);
@@ -278,35 +265,31 @@ public class SettingsView extends VBox {
     }
 
     private void buildBuyerFieldsSection() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18));
+        VBox card = UiTheme.card(14);
 
         HBox head = new HBox(8);
         head.setAlignment(Pos.CENTER_LEFT);
-        Label ic = IconHelper.createIconLabel(IconHelper.ICON_USERS, 14, "#d9a13b");
+        Label ic = new Label("👥");
         Label title = new Label("BUYER CUSTOM FIELDS");
         title.getStyleClass().add("card-title");
         head.getChildren().addAll(ic, title);
 
         Label sub = new Label("Add custom fields to your customers (e.g. Credit Limit, Payment Terms, Region, Sales Agent). They become variables ({{buyer_<key>}}) and extra CSV columns.");
         sub.getStyleClass().add("muted-label");
+        sub.setWrapText(true);
 
         // Add row
         HBox addRow = new HBox(12);
         addRow.setAlignment(Pos.CENTER_LEFT);
 
         newBuyerFieldLabel.setPromptText("New field name (e.g. Region)");
-        newBuyerFieldLabel.getStyleClass().add("text-input");
         newBuyerFieldLabel.setPrefWidth(220);
 
         newBuyerFieldType.setItems(FXCollections.observableArrayList("text", "number", "date"));
         newBuyerFieldType.setValue("text");
         newBuyerFieldType.setPrefWidth(110);
 
-        Button addBtn = new Button("Add Field");
-        addBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_PLUS, 13, "#d9a13b"));
-        addBtn.getStyleClass().add("button-secondary");
+        Button addBtn = UiTheme.smallBtn("Add Field");
         addBtn.setOnAction(e -> addBuyerField());
 
         addRow.getChildren().addAll(newBuyerFieldLabel, newBuyerFieldType, addBtn);
@@ -327,16 +310,14 @@ public class SettingsView extends VBox {
         for (BuyerFieldDef def : editableBuyerFields) {
             HBox row = new HBox(12);
             row.setAlignment(Pos.CENTER_LEFT);
-            row.getStyleClass().add("table-data-row");
+            row.getStyleClass().add("card-pane-subtle");
             row.setPadding(new Insets(6, 12, 6, 12));
 
             TextField labelEdit = new TextField(def.getLabel());
-            labelEdit.getStyleClass().add("text-input");
             labelEdit.setPrefWidth(180);
             labelEdit.textProperty().addListener((obs, oldV, newV) -> def.setLabel(newV.trim()));
 
-            Label keyPill = new Label("{{buyer_" + def.getKey() + "}}");
-            keyPill.getStyleClass().add("code-pill");
+            Label keyPill = UiTheme.codePill("{{buyer_" + def.getKey() + "}}");
             keyPill.setPrefWidth(160);
 
             ComboBox<String> typeCb = new ComboBox<>(FXCollections.observableArrayList("text", "number", "date"));
@@ -347,8 +328,7 @@ public class SettingsView extends VBox {
             HBox grow = new HBox();
             HBox.setHgrow(grow, Priority.ALWAYS);
 
-            Button del = new Button();
-            del.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_TRASH, 13, "#ef4444"));
+            Button del = new Button("🗑");
             del.getStyleClass().add("button-icon-subtle");
             del.setOnAction(e -> {
                 editableBuyerFields.remove(def);
@@ -364,13 +344,13 @@ public class SettingsView extends VBox {
         String label = newBuyerFieldLabel.getText().trim();
         if (label.isEmpty()) return;
         if (editableBuyerFields.size() >= 12) {
-            Toast.show(this, "Maximum 12 custom buyer fields allowed.");
+            Toast.show(this, "Maximum 12 custom buyer fields allowed.", true);
             return;
         }
         String key = slugify(label);
         boolean exists = editableBuyerFields.stream().anyMatch(f -> f.getKey().equalsIgnoreCase(key));
         if (exists) {
-            Toast.show(this, "A field with this name already exists.");
+            Toast.show(this, "A field with this name already exists.", true);
             return;
         }
         BuyerFieldDef bf = new BuyerFieldDef();
@@ -383,34 +363,33 @@ public class SettingsView extends VBox {
     }
 
     private void buildCustomFontsSection() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18));
+        VBox card = UiTheme.card(14);
 
         HBox head = new HBox(8);
         head.setAlignment(Pos.CENTER_LEFT);
-        Label ic = IconHelper.createIconLabel(IconHelper.ICON_VARIABLE, 14, "#d9a13b");
+        Label ic = new Label("🔤");
         Label title = new Label("CUSTOM FONTS & TYPOGRAPHY");
         title.getStyleClass().add("card-title");
         head.getChildren().addAll(ic, title);
 
         Label sub = new Label("Add Google Web Fonts or load local .ttf / .otf font files from disk to use on your invoices and templates.");
         sub.getStyleClass().add("muted-label");
+        sub.setWrapText(true);
 
-        // Clear Informational Guide Box
+        // Guide Box
         VBox guideBox = new VBox(8);
         guideBox.getStyleClass().add("card-pane-subtle");
         guideBox.setPadding(new Insets(12));
 
         Label guideTitle = new Label("HOW TO ADD & USE CUSTOM FONTS");
-        guideTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 11px; -fx-text-fill: #D9A13B;");
+        guideTitle.getStyleClass().add("section-eyebrow");
 
         Label gInfo1 = new Label("1. Google Fonts / Web Links: Type any font name (e.g. Outfit, Cinzel, Inter, Fira Code, DM Sans) or paste a Google Fonts URL (e.g. https://fonts.google.com/specimen/Outfit). InvoiceStudio will parse the family name and register it.");
-        gInfo1.setStyle("-fx-font-size: 11px; -fx-text-fill: #CBD5E1;");
+        gInfo1.getStyleClass().add("storage-note");
         gInfo1.setWrapText(true);
 
         Label gInfo2 = new Label("2. Local Font Files (.ttf / .otf): If you have downloaded font files on your computer, click 'Browse Local Font (.ttf/.otf)'. The desktop application loads and registers the font directly into JavaFX memory so you can preview and print with it instantly.");
-        gInfo2.setStyle("-fx-font-size: 11px; -fx-text-fill: #CBD5E1;");
+        gInfo2.getStyleClass().add("storage-note");
         gInfo2.setWrapText(true);
 
         guideBox.getChildren().addAll(guideTitle, gInfo1, gInfo2);
@@ -420,23 +399,18 @@ public class SettingsView extends VBox {
         addRow.setAlignment(Pos.CENTER_LEFT);
 
         googleFontInput.setPromptText("Font name or Google Fonts URL (e.g. Outfit)");
-        googleFontInput.getStyleClass().add("text-input");
         googleFontInput.setPrefWidth(260);
 
         googleFontCat.setItems(FXCollections.observableArrayList("sans", "serif", "mono", "display", "handwriting"));
         googleFontCat.setValue("sans");
         googleFontCat.setPrefWidth(110);
 
-        Button addBtn = new Button("Add Font Name / URL");
-        addBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_PLUS, 13, "#d9a13b"));
-        addBtn.getStyleClass().add("button-secondary");
+        Button addBtn = UiTheme.smallBtn("Add Font Name / URL");
         addBtn.setOnAction(e -> addFont());
 
         Separator sep = new Separator(javafx.geometry.Orientation.VERTICAL);
 
-        Button browseFileBtn = new Button("Browse Local Font (.ttf, .otf)...");
-        browseFileBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_UPLOAD, 13, "#10b981"));
-        browseFileBtn.getStyleClass().add("button-secondary");
+        Button browseFileBtn = UiTheme.smallBtn("Browse Local Font (.ttf, .otf)...");
         browseFileBtn.setOnAction(e -> pickLocalFontFile());
 
         addRow.getChildren().addAll(googleFontInput, googleFontCat, addBtn, sep, browseFileBtn);
@@ -457,7 +431,7 @@ public class SettingsView extends VBox {
         for (CustomFontDef font : editableFonts) {
             HBox row = new HBox(12);
             row.setAlignment(Pos.CENTER_LEFT);
-            row.getStyleClass().add("table-data-row");
+            row.getStyleClass().add("card-pane-subtle");
             row.setPadding(new Insets(8, 12, 8, 12));
 
             VBox nameBox = new VBox(2);
@@ -470,7 +444,7 @@ public class SettingsView extends VBox {
             if (isFile && font.getFileUrl() != null && !font.getFileUrl().isEmpty()) {
                 File fl = new File(font.getFileUrl());
                 Label pathLbl = new Label(fl.getName());
-                pathLbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #64748B;");
+                pathLbl.getStyleClass().add("kpi-subtext");
                 pathLbl.setTooltip(new Tooltip(font.getFileUrl()));
                 nameBox.getChildren().add(pathLbl);
             }
@@ -484,11 +458,11 @@ public class SettingsView extends VBox {
             cat.setPrefWidth(70);
 
             Label preview = new Label("ABCDEFGHIJKLM 1234567890");
-            preview.setStyle("-fx-font-family: '" + font.getName() + "'; -fx-text-fill: #d9a13b; -fx-font-size: 13px;");
+            preview.setStyle("-fx-font-family: '" + font.getName() + "';"); // font family is data-driven, allowed
+            preview.getStyleClass().addAll("table-cell-mono", "accent-gold");
             HBox.setHgrow(preview, Priority.ALWAYS);
 
-            Button del = new Button();
-            del.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_TRASH, 13, "#ef4444"));
+            Button del = new Button("🗑");
             del.getStyleClass().add("button-icon-subtle");
             del.setTooltip(new Tooltip("Remove this font"));
             del.setOnAction(e -> {
@@ -527,7 +501,7 @@ public class SettingsView extends VBox {
         final String finalName = fontName;
         boolean exists = editableFonts.stream().anyMatch(f -> f.getName().equalsIgnoreCase(finalName));
         if (exists) {
-            Toast.show(this, "Font already added: " + finalName);
+            Toast.show(this, "Font already added: " + finalName, true);
             return;
         }
 
@@ -542,7 +516,7 @@ public class SettingsView extends VBox {
         editableFonts.add(cf);
         googleFontInput.clear();
         renderCustomFontsList();
-        Toast.show(this, "Added font: " + finalName);
+        Toast.show(this, "Added font: " + finalName, false);
     }
 
     private void pickLocalFontFile() {
@@ -567,7 +541,7 @@ public class SettingsView extends VBox {
                     final String finalName = fontName;
                     boolean exists = editableFonts.stream().anyMatch(f -> f.getName().equalsIgnoreCase(finalName));
                     if (exists) {
-                        Toast.show(this, "Font \"" + finalName + "\" is already in your font list.");
+                        Toast.show(this, "Font \"" + finalName + "\" is already in your font list.", true);
                         return;
                     }
 
@@ -581,27 +555,26 @@ public class SettingsView extends VBox {
                     cf.setCategory(googleFontCat.getValue() != null ? googleFontCat.getValue() : "sans");
                     editableFonts.add(cf);
                     renderCustomFontsList();
-                    Toast.show(this, "Loaded local font: " + finalName);
+                    Toast.show(this, "Loaded local font: " + finalName, false);
                 } else {
-                    Toast.show(this, "Could not load font file. Please verify it is a valid .ttf or .otf file.");
+                    Toast.show(this, "Could not load font file. Please verify it is a valid .ttf or .otf file.", true);
                 }
             } catch (Exception ex) {
                 ex.printStackTrace();
-                Toast.show(this, "Error reading font file: " + ex.getMessage());
+                Toast.show(this, "Error reading font file: " + ex.getMessage(), true);
             }
         }
     }
 
     private void buildPrintCalibrationSection() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18));
+        VBox card = UiTheme.card(14);
 
         Label secTitle = new Label("PRINT CALIBRATION & HARDWARE OFFSETS");
         secTitle.getStyleClass().add("card-title");
 
         Label sub = new Label("Adjust physical print placement (in millimeters) to align precisely with pre-printed stationary, letterhead, and thermal margins.");
         sub.getStyleClass().add("muted-label");
+        sub.setWrapText(true);
 
         GridPane grid = new GridPane();
         grid.setHgap(16);
@@ -613,17 +586,14 @@ public class SettingsView extends VBox {
         col2.setPercentWidth(50);
         grid.getColumnConstraints().addAll(col1, col2);
 
-        grid.add(labeledNode("Horizontal Offset (mm, + moves right)", offsetXField), 0, 0);
-        grid.add(labeledNode("Vertical Offset (mm, + moves down)", offsetYField), 1, 0);
+        grid.add(UiTheme.labeled("Horizontal Offset (mm, + moves right)", offsetXField), 0, 0);
+        grid.add(UiTheme.labeled("Vertical Offset (mm, + moves down)", offsetYField), 1, 0);
 
         HBox bottomRow = new HBox(16);
         bottomRow.setAlignment(Pos.CENTER_LEFT);
-        statusStampBox.getStyleClass().add("check-box");
         HBox.setHgrow(statusStampBox, Priority.ALWAYS);
 
-        Button calibSheetBtn = new Button("Print Calibration Sheet");
-        calibSheetBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_CROSSHAIR, 13, "#d9a13b"));
-        calibSheetBtn.getStyleClass().add("button-secondary");
+        Button calibSheetBtn = UiTheme.smallBtn("Print Calibration Sheet");
         calibSheetBtn.setOnAction(e -> runCalibrationPrint());
 
         bottomRow.getChildren().addAll(statusStampBox, calibSheetBtn);
@@ -640,39 +610,34 @@ public class SettingsView extends VBox {
                 ox = Double.parseDouble(offsetXField.getText().trim());
                 oy = Double.parseDouble(offsetYField.getText().trim());
             } catch (Exception ignore) {}
-            boolean ok = printingService.printCalibrationSheet(ox, oy);
+            boolean ok = app.getPrintingService().printCalibrationSheet(ox, oy);
             if (ok) {
-                Toast.show(this, "Calibration sheet sent to printer.");
+                Toast.show(this, "Calibration sheet sent to printer.", false);
             }
         } catch (Exception e) {
             e.printStackTrace();
-            Toast.show(this, "Print failed: " + e.getMessage());
+            Toast.show(this, "Print failed: " + e.getMessage(), true);
         }
     }
 
     private void buildBackupRestoreSection() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18));
+        VBox card = UiTheme.card(14);
 
         Label secTitle = new Label("DATABASE BACKUP & RESTORE");
         secTitle.getStyleClass().add("card-title");
 
         Label sub = new Label("Export your entire business database (bills, items, buyers, templates, settings) into a single portable JSON file, or restore from a previous backup.");
         sub.getStyleClass().add("muted-label");
+        sub.setWrapText(true);
 
         HBox btnRow = new HBox(16);
         btnRow.setAlignment(Pos.CENTER_LEFT);
 
-        Button exportBtn = new Button("Export Backup JSON");
-        exportBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_DOWNLOAD, 13, "#10b981"));
-        exportBtn.getStyleClass().add("button-secondary");
+        Button exportBtn = UiTheme.secondaryBtn("Export Backup JSON");
         exportBtn.setTooltip(new Tooltip("Export complete database backup to a JSON file"));
         exportBtn.setOnAction(e -> handleExportBackup());
 
-        Button importBtn = new Button("Restore from Backup JSON...");
-        importBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_UPLOAD, 13, "#d9a13b"));
-        importBtn.getStyleClass().add("button-secondary");
+        Button importBtn = UiTheme.secondaryBtn("Restore from Backup JSON...");
         importBtn.setTooltip(new Tooltip("Restore database from previously exported JSON backup"));
         importBtn.setOnAction(e -> handleRestoreBackup());
 
@@ -690,11 +655,11 @@ public class SettingsView extends VBox {
         File file = fc.showSaveDialog(getScene().getWindow());
         if (file != null) {
             try {
-                backupService.exportToFile(file);
-                Toast.show(this, "Backup saved: " + file.getName());
+                app.getBackupService().exportToFile(file);
+                Toast.show(this, "Backup saved: " + file.getName(), false);
             } catch (Exception e) {
                 e.printStackTrace();
-                Toast.show(this, "Backup failed: " + e.getMessage());
+                Toast.show(this, "Backup failed: " + e.getMessage(), true);
             }
         }
     }
@@ -714,14 +679,15 @@ public class SettingsView extends VBox {
             Optional<ButtonType> res = confirm.showAndWait();
             if (res.isPresent() && res.get() == ButtonType.OK) {
                 try {
-                    BackupRestoreService.RestoreResult r = backupService.restoreFromFile(file);
+                    BackupRestoreService.RestoreResult r = app.getBackupService().restoreFromFile(file);
                     Toast.show(this, String.format("Restored: %d bills, %d buyers, %d items, %d templates",
-                            r.billCount, r.buyerCount, r.itemCount, r.templateCount));
+                            r.billCount, r.buyerCount, r.itemCount, r.templateCount), false);
+                    app.getData().invalidateBills();
+                    app.getData().invalidateSettings();
                     reload();
-                    if (onReloadApp != null) onReloadApp.run();
                 } catch (Exception e) {
                     e.printStackTrace();
-                    Toast.show(this, "Restore error: " + e.getMessage());
+                    Toast.show(this, "Restore error: " + e.getMessage(), true);
                 }
             }
         }
@@ -736,7 +702,7 @@ public class SettingsView extends VBox {
         title.getStyleClass().add("card-title");
 
         Label desc = new Label("InvoiceStudio runs entirely offline using a local SQLite database (share.db) with WAL mode enabled. No cloud connection or subscription required. Data is always private and stored locally on this machine.");
-        desc.getStyleClass().add("muted-label");
+        desc.getStyleClass().add("storage-note");
         desc.setWrapText(true);
 
         card.getChildren().addAll(title, desc);
@@ -745,7 +711,7 @@ public class SettingsView extends VBox {
 
     public void reload() {
         try {
-            currentSettings = settingsDao.get();
+            currentSettings = app.getData().getSettings();
             if (currentSettings == null) currentSettings = new Settings();
 
             BusinessProfile b = currentSettings.getBusiness();
@@ -801,7 +767,7 @@ public class SettingsView extends VBox {
             renderCustomFontsList();
         } catch (Exception e) {
             e.printStackTrace();
-            Toast.show(this, "Failed to load settings: " + e.getMessage());
+            Toast.show(this, "Failed to load settings: " + e.getMessage(), true);
         }
     }
 
@@ -833,9 +799,9 @@ public class SettingsView extends VBox {
                 String mime = f.getName().toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
                 currentLogoBase64 = "data:" + mime + ";base64," + base64;
                 updateLogoPreview();
-                Toast.show(this, "Logo loaded. Remember to click Save Settings.");
+                Toast.show(this, "Logo loaded. Remember to click Save Settings.", false);
             } catch (Exception e) {
-                Toast.show(this, "Failed to read image: " + e.getMessage());
+                Toast.show(this, "Failed to read image: " + e.getMessage(), true);
             }
         }
     }
@@ -843,7 +809,7 @@ public class SettingsView extends VBox {
     private void clearLogo() {
         currentLogoBase64 = "";
         updateLogoPreview();
-        Toast.show(this, "Logo removed. Remember to click Save Settings.");
+        Toast.show(this, "Logo removed. Remember to click Save Settings.", false);
     }
 
     private void setAppLogo() {
@@ -852,10 +818,10 @@ public class SettingsView extends VBox {
                 byte[] bytes = in.readAllBytes();
                 currentLogoBase64 = "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes);
                 updateLogoPreview();
-                Toast.show(this, "InvoiceStudio logo loaded. Remember to click Save Settings.");
+                Toast.show(this, "InvoiceStudio logo loaded. Remember to click Save Settings.", false);
             }
         } catch (Exception e) {
-            Toast.show(this, "Failed to load logo: " + e.getMessage());
+            Toast.show(this, "Failed to load logo: " + e.getMessage(), true);
         }
     }
 
@@ -902,13 +868,11 @@ public class SettingsView extends VBox {
             currentSettings.setBuyerFields(new ArrayList<>(editableBuyerFields));
             currentSettings.setCustomFonts(new ArrayList<>(editableFonts));
 
-            settingsDao.save(currentSettings);
-            Toast.show(this, "Settings saved successfully!");
-
-            if (onSaved != null) onSaved.accept(currentSettings);
+            app.getData().saveSettings(currentSettings);
+            Toast.show(this, "Settings saved successfully!", false);
         } catch (Exception e) {
             e.printStackTrace();
-            Toast.show(this, "Failed to save settings: " + e.getMessage());
+            Toast.show(this, "Failed to save settings: " + e.getMessage(), true);
         }
     }
 
@@ -917,7 +881,6 @@ public class SettingsView extends VBox {
         ta.setWrapText(true);
         ta.setPrefRowCount(minRows);
         ta.getStyleClass().add("setting-expandable-textbox");
-        ta.setStyle("-fx-control-inner-background: #8E9EB5; -fx-background-color: #FFFFFF; -fx-text-fill: #000000; -fx-prompt-text-fill: #64748B; -fx-font-family: 'Segoe UI', sans-serif; -fx-font-size: 13px;");
 
         // Auto-expand dynamically as content is typed/pasted
         ta.textProperty().addListener((obs, o, v) -> {
@@ -940,7 +903,7 @@ public class SettingsView extends VBox {
         HBox.setHgrow(sp, Priority.ALWAYS);
 
         Button toggleBtn = new Button("⤢ Expand");
-        toggleBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #8E9EB5; -fx-font-size: 10px; -fx-padding: 1 4; -fx-cursor: hand;");
+        toggleBtn.getStyleClass().add("link-toggle");
         toggleBtn.setOnAction(e -> {
             if (ta.getPrefRowCount() <= minRows + 1) {
                 ta.setPrefRowCount(maxRows);
@@ -955,14 +918,6 @@ public class SettingsView extends VBox {
 
         VBox box = new VBox(4);
         box.getChildren().addAll(header, ta);
-        return box;
-    }
-
-    private VBox labeledNode(String labelText, javafx.scene.Node node) {
-        VBox box = new VBox(4);
-        Label lbl = new Label(labelText);
-        lbl.getStyleClass().add("field-label");
-        box.getChildren().addAll(lbl, node);
         return box;
     }
 

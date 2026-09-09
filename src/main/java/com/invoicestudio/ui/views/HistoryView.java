@@ -1,10 +1,6 @@
 package com.invoicestudio.ui.views;
 
-import com.invoicestudio.db.BillDao;
-import com.invoicestudio.db.SettingsDao;
-import com.invoicestudio.db.TemplateDao;
 import com.invoicestudio.model.*;
-import com.invoicestudio.service.BillingService;
 import com.invoicestudio.service.CsvService;
 import com.invoicestudio.service.PdfExportService;
 import com.invoicestudio.service.PrintingService;
@@ -12,15 +8,15 @@ import com.invoicestudio.ui.BillPreviewPane;
 import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
+import com.invoicestudio.ui.UiTheme;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.*;
-import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 
@@ -33,12 +29,16 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.*;
 
+/**
+ * Billing & Invoice History — v3 redesign.
+ * Feature-complete: search (bill no / buyer / phone), status & doc-type filters,
+ * date-range filter, CSV export of the filtered list, per-row actions
+ * (View/Print/PDF/Pay + Edit, Duplicate, Convert, Repeat, WhatsApp, Receipt,
+ * Mark Paid, Cancel, Delete), zoomable live preview with copy selector.
+ */
 public class HistoryView extends BorderPane {
 
     private final StudioApp app;
-    private final BillDao billDao;
-    private final TemplateDao templateDao;
-    private final SettingsDao settingsDao;
 
     private final TableView<Bill> table = new TableView<>();
     private FilteredList<Bill> filteredBills;
@@ -51,9 +51,6 @@ public class HistoryView extends BorderPane {
 
     public HistoryView(StudioApp app) {
         this.app = app;
-        this.billDao = new BillDao(app.getDb());
-        this.templateDao = new TemplateDao(app.getDb());
-        this.settingsDao = new SettingsDao(app.getDb());
 
         setPadding(new Insets(24));
         getStyleClass().add("bg-app");
@@ -65,7 +62,7 @@ public class HistoryView extends BorderPane {
     }
 
     public void refresh() {
-        List<Bill> bills = billDao.getAllBills();
+        List<Bill> bills = app.getData().getAllBills();
         filteredBills = new FilteredList<>(FXCollections.observableArrayList(bills), b -> true);
         table.setItems(filteredBills);
         applyFilter();
@@ -84,13 +81,11 @@ public class HistoryView extends BorderPane {
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
-        Button exportCsvBtn = new Button("Export CSV");
-        exportCsvBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        Button exportCsvBtn = UiTheme.smallBtn("Export CSV");
         exportCsvBtn.setTooltip(new Tooltip("Export filtered invoices list to CSV"));
         exportCsvBtn.setOnAction(e -> exportFilteredCsv());
 
-        Button newBillBtn = new Button("+ Create Bill");
-        newBillBtn.getStyleClass().addAll("gold-btn");
+        Button newBillBtn = UiTheme.goldBtn("+ Create Bill");
         newBillBtn.setTooltip(new Tooltip("Create New Invoice or Bill"));
         newBillBtn.setOnAction(e -> app.showCreateBill(null, null));
 
@@ -102,6 +97,7 @@ public class HistoryView extends BorderPane {
 
         searchField.setPromptText("Search by Bill No, Buyer Name, Phone...");
         searchField.setPrefWidth(260);
+        searchField.getStyleClass().add("search-field");
         searchField.textProperty().addListener((obs, o, v) -> applyFilter());
 
         statusFilter.setItems(FXCollections.observableArrayList("All Statuses", "Unpaid", "Paid", "Cancelled"));
@@ -118,8 +114,7 @@ public class HistoryView extends BorderPane {
         toPicker.setPromptText("To Date");
         toPicker.setOnAction(e -> applyFilter());
 
-        Button clearFilter = new Button("Clear");
-        clearFilter.getStyleClass().addAll("button-sm", "button-secondary");
+        Button clearFilter = UiTheme.smallBtn("Clear");
         clearFilter.setTooltip(new Tooltip("Reset search and filter fields"));
         clearFilter.setOnAction(e -> {
             searchField.clear();
@@ -156,23 +151,41 @@ public class HistoryView extends BorderPane {
         colBuyer.setPrefWidth(180);
 
         TableColumn<Bill, String> colTotal = new TableColumn<>("Grand Total");
-        colTotal.setCellValueFactory(d -> new SimpleStringProperty(String.format("₹%.2f", d.getValue().getTotals().getGrandTotal())));
+        colTotal.setCellValueFactory(d -> new SimpleStringProperty(
+                String.format("%s%.2f", app.getData().getSettings().getCurrency(), d.getValue().getTotals().getGrandTotal())));
         colTotal.setPrefWidth(110);
 
         TableColumn<Bill, String> colDue = new TableColumn<>("Due Balance");
-        colDue.setCellValueFactory(d -> {
-            Bill b = d.getValue();
-            double paid = b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
-            if (paid == 0 && b.getStatus() == BillStatus.PAID) paid = b.getTotals().getGrandTotal();
-            double due = Math.max(0, b.getTotals().getGrandTotal() - paid);
-            if (b.getStatus() == BillStatus.CANCELLED) due = 0;
-            return new SimpleStringProperty(String.format("₹%.2f", due));
-        });
+        colDue.setCellValueFactory(d -> new SimpleStringProperty(
+                String.format("%s%.2f", app.getData().getSettings().getCurrency(), dueOf(d.getValue()))));
         colDue.setPrefWidth(100);
 
         TableColumn<Bill, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getStatus().getLabel()));
         colStatus.setPrefWidth(85);
+        colStatus.setCellFactory(col -> new TableCell<>() {
+            private final Label pill = new Label();
+            {
+                pill.getStyleClass().add("status-pill");
+                setGraphic(pill);
+            }
+            @Override
+            protected void updateItem(String status, boolean empty) {
+                super.updateItem(status, empty);
+                if (empty || status == null || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                    return;
+                }
+                pill.setText(status);
+                pill.getStyleClass().removeAll("success", "danger", "warning", "neutral");
+                pill.getStyleClass().add(switch (getTableRow().getItem().getStatus()) {
+                    case PAID -> "success";
+                    case CANCELLED -> "danger";
+                    default -> "warning";
+                });
+                setGraphic(pill);
+            }
+        });
 
         TableColumn<Bill, String> colPrints = new TableColumn<>("Prints");
         colPrints.setCellValueFactory(d -> new SimpleStringProperty(String.valueOf(d.getValue().getPrintCount())));
@@ -259,7 +272,7 @@ public class HistoryView extends BorderPane {
                     Bill b = getTableRow() != null ? getTableRow().getItem() : null;
                     if (b != null) {
                         b.setStatus(BillStatus.PAID);
-                        billDao.saveBill(b);
+                        app.getData().saveBill(b);
                         refresh();
                     }
                 });
@@ -269,13 +282,13 @@ public class HistoryView extends BorderPane {
                     Bill b = getTableRow() != null ? getTableRow().getItem() : null;
                     if (b != null) {
                         b.setStatus(BillStatus.CANCELLED);
-                        billDao.saveBill(b);
+                        app.getData().saveBill(b);
                         refresh();
                     }
                 });
 
                 MenuItem delItem = new MenuItem("Delete Bill");
-                delItem.setStyle("-fx-text-fill: #EF4444;");
+                delItem.getStyleClass().add("menu-item-danger");
                 delItem.setOnAction(e -> {
                     Bill b = getTableRow() != null ? getTableRow().getItem() : null;
                     if (b != null) {
@@ -283,7 +296,7 @@ public class HistoryView extends BorderPane {
                         DialogHelper.styleDialog(a);
                         a.showAndWait().ifPresent(ans -> {
                             if (ans == ButtonType.YES) {
-                                billDao.deleteBill(b.getId());
+                                app.getData().deleteBill(b.getId());
                                 refresh();
                                 Toast.show(app.getRootPane(), "Bill Deleted", b.getBillNo() + " removed.", false);
                             }
@@ -308,6 +321,14 @@ public class HistoryView extends BorderPane {
 
         table.getColumns().addAll(colNo, colDate, colType, colBuyer, colTotal, colDue, colStatus, colPrints, colActions);
         return table;
+    }
+
+    private double dueOf(Bill b) {
+        double paid = b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
+        if (paid == 0 && b.getStatus() == BillStatus.PAID) paid = b.getTotals().getGrandTotal();
+        double due = Math.max(0, b.getTotals().getGrandTotal() - paid);
+        if (b.getStatus() == BillStatus.CANCELLED) due = 0;
+        return due;
     }
 
     private void applyFilter() {
@@ -345,14 +366,18 @@ public class HistoryView extends BorderPane {
         });
     }
 
+    // ------------------------------------------------------------------
+    // Preview dialog (zoom toolbar + copy selector + print / pdf)
+    // ------------------------------------------------------------------
+
     private void showBillPreviewDialog(Bill bill) {
         if (bill == null) return;
         Dialog<Void> dlg = new Dialog<>();
         dlg.setTitle("Invoice Preview — " + bill.getBillNo());
         dlg.setHeaderText(bill.getDocType().getTitle() + " • " + bill.getBillNo() + " (Date: " + bill.getDate() + ")");
 
-        Settings settings = settingsDao.getSettings();
-        Template template = templateDao.getTemplateById(bill.getTemplateId());
+        Settings settings = app.getData().getSettings();
+        Template template = app.getData().templates().getTemplateById(bill.getTemplateId());
         if (template == null) template = PresetTemplates.buildClassic();
 
         final Template finalTemplate = template;
@@ -365,30 +390,20 @@ public class HistoryView extends BorderPane {
         // Zoom & Quick Actions Toolbar
         HBox toolbar = new HBox(10);
         toolbar.setAlignment(Pos.CENTER_LEFT);
+        toolbar.getStyleClass().add("items-header-strip");
         toolbar.setPadding(new Insets(8, 14, 8, 14));
-        toolbar.setStyle("-fx-background-color: #0E131A; -fx-border-color: #1E2738; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;");
 
         Label zoomTitle = new Label("Zoom:");
-        zoomTitle.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 12px; -fx-font-weight: bold;");
+        zoomTitle.getStyleClass().add("field-label");
 
-        Button zoomOutBtn = new Button("−");
-        zoomOutBtn.getStyleClass().add("secondary-button");
-        zoomOutBtn.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 3 10; -fx-cursor: hand;");
+        Button zoomOutBtn = UiTheme.smallBtn("−");
 
         Label zoomLabel = new Label("85%");
-        zoomLabel.setStyle("-fx-text-fill: #F5C868; -fx-font-size: 12px; -fx-font-weight: bold; -fx-min-width: 44px; -fx-alignment: center;");
+        zoomLabel.getStyleClass().add("zoom-value");
 
-        Button zoomInBtn = new Button("+");
-        zoomInBtn.getStyleClass().add("secondary-button");
-        zoomInBtn.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 3 10; -fx-cursor: hand;");
-
-        Button zoomResetBtn = new Button("100%");
-        zoomResetBtn.getStyleClass().add("secondary-button");
-        zoomResetBtn.setStyle("-fx-font-size: 11px; -fx-padding: 4 8; -fx-cursor: hand;");
-
-        Button zoomFitBtn = new Button("Fit Width");
-        zoomFitBtn.getStyleClass().add("secondary-button");
-        zoomFitBtn.setStyle("-fx-font-size: 11px; -fx-padding: 4 8; -fx-cursor: hand;");
+        Button zoomInBtn = UiTheme.smallBtn("+");
+        Button zoomResetBtn = UiTheme.smallBtn("100%");
+        Button zoomFitBtn = UiTheme.smallBtn("Fit Width");
 
         Runnable updateZoomUI = () -> {
             zoomLabel.setText((int) Math.round(currentZoom[0] * 100) + "%");
@@ -412,10 +427,9 @@ public class HistoryView extends BorderPane {
 
         // Copy selector
         Label copyLbl = new Label("Copy:");
-        copyLbl.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 12px; -fx-font-weight: bold;");
+        copyLbl.getStyleClass().add("field-label");
         ComboBox<String> copyCombo = new ComboBox<>(FXCollections.observableArrayList("Original", "Duplicate", "Triplicate"));
         copyCombo.setValue("Original");
-        copyCombo.setStyle("-fx-font-size: 11px;");
         copyCombo.setOnAction(e -> {
             int idx = copyCombo.getSelectionModel().getSelectedIndex();
             preview.render(finalTemplate, bill, settings, idx, 1);
@@ -424,22 +438,19 @@ public class HistoryView extends BorderPane {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button printBtn = new Button("🖨 Print Invoice");
-        printBtn.getStyleClass().add("primary-button");
-        printBtn.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 5 14; -fx-cursor: hand;");
+        Button printBtn = UiTheme.goldBtn("🖨 Print Invoice");
+        printBtn.setTooltip(new Tooltip("Send the selected copies to the printer"));
         printBtn.setOnAction(e -> {
             int copies = copyCombo.getSelectionModel().getSelectedIndex() + 1;
             boolean success = PrintingService.printNode(preview, app.getPrimaryStage(), copies, bill.getBillNo());
             if (success) {
-                billDao.incrementPrintCount(bill.getId());
+                app.getData().bills().incrementPrintCount(bill.getId());
                 refresh();
                 Toast.show(app.getRootPane(), "Print Sent", "Sent " + copies + " cop" + (copies == 1 ? "y" : "ies") + " to printer.", false);
             }
         });
 
-        Button exportPdfBtn = new Button("📥 Export PDF");
-        exportPdfBtn.getStyleClass().add("secondary-button");
-        exportPdfBtn.setStyle("-fx-font-size: 12px; -fx-padding: 5 14; -fx-cursor: hand;");
+        Button exportPdfBtn = UiTheme.secondaryBtn("📥 Export PDF");
         exportPdfBtn.setOnAction(e -> exportBillToPdf(bill));
 
         toolbar.getChildren().addAll(
@@ -453,12 +464,13 @@ public class HistoryView extends BorderPane {
         // Preview Wrapper
         StackPane previewWrapper = new StackPane(preview);
         previewWrapper.setAlignment(Pos.TOP_CENTER);
-        previewWrapper.setStyle("-fx-background-color: #0B0E13; -fx-padding: 18;");
+        previewWrapper.getStyleClass().add("preview-stage");
+        previewWrapper.setPadding(new Insets(18));
 
         ScrollPane sp = new ScrollPane(previewWrapper);
         sp.setFitToWidth(true);
         sp.setFitToHeight(true);
-        sp.setStyle("-fx-background-color: transparent; -fx-background: #0B0E13; -fx-border-color: #1E2738; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;");
+        sp.getStyleClass().add("scroll-pane");
 
         zoomFitBtn.setOnAction(e -> {
             double availWidth = sp.getWidth() - 60;
@@ -491,8 +503,8 @@ public class HistoryView extends BorderPane {
         DialogHelper.styleDialog(dlg);
 
         dlg.showAndWait().ifPresent(copies -> {
-            Settings settings = settingsDao.getSettings();
-            Template template = templateDao.getTemplateById(bill.getTemplateId());
+            Settings settings = app.getData().getSettings();
+            Template template = app.getData().templates().getTemplateById(bill.getTemplateId());
             if (template == null) template = PresetTemplates.buildClassic();
 
             BillPreviewPane preview = new BillPreviewPane();
@@ -500,7 +512,7 @@ public class HistoryView extends BorderPane {
 
             boolean success = PrintingService.printNode(preview, app.getPrimaryStage(), copies, bill.getBillNo());
             if (success) {
-                billDao.incrementPrintCount(bill.getId());
+                app.getData().bills().incrementPrintCount(bill.getId());
                 refresh();
                 Toast.show(app.getRootPane(), "Print Sent", "Sent " + copies + " cop" + (copies == 1 ? "y" : "ies") + " to printer.", false);
             }
@@ -516,8 +528,8 @@ public class HistoryView extends BorderPane {
         File dest = fc.showSaveDialog(app.getPrimaryStage());
         if (dest != null) {
             try {
-                Settings settings = settingsDao.getSettings();
-                Template template = templateDao.getTemplateById(bill.getTemplateId());
+                Settings settings = app.getData().getSettings();
+                Template template = app.getData().templates().getTemplateById(bill.getTemplateId());
                 if (template == null) template = PresetTemplates.buildClassic();
 
                 PdfExportService.exportBillPdf(bill, template, settings, dest, 1);
@@ -548,7 +560,7 @@ public class HistoryView extends BorderPane {
         refField.setPromptText("Txn ID / UTR / Cheque No");
         TextField noteField = new TextField();
 
-        g.add(new Label("Amount (₹):"), 0, 0); g.add(amtField, 1, 0);
+        g.add(new Label("Amount:"), 0, 0); g.add(amtField, 1, 0);
         g.add(new Label("Date:"), 0, 1); g.add(pDatePicker, 1, 1);
         g.add(new Label("Method:"), 0, 2); g.add(methodCombo, 1, 2);
         g.add(new Label("Reference / Txn:"), 0, 3); g.add(refField, 1, 3);
@@ -582,9 +594,9 @@ public class HistoryView extends BorderPane {
                 bill.setStatus(BillStatus.PAID);
                 bill.setPaidAt(payment.getDate());
             }
-            billDao.saveBill(bill);
+            app.getData().saveBill(bill);
             refresh();
-            Toast.show(app.getRootPane(), "Payment Recorded", "Recorded payment of ₹" + payment.getAmount(), false);
+            Toast.show(app.getRootPane(), "Payment Recorded", "Recorded payment of " + app.getData().getSettings().getCurrency() + String.format("%.2f", payment.getAmount()), false);
         });
     }
 
@@ -600,7 +612,7 @@ public class HistoryView extends BorderPane {
         File dest = fc.showSaveDialog(app.getPrimaryStage());
         if (dest != null) {
             try {
-                PdfExportService.exportReceiptPdf(bill, p, "RCP-" + bill.getBillNo(), settingsDao.getSettings(), dest);
+                PdfExportService.exportReceiptPdf(bill, p, "RCP-" + bill.getBillNo(), app.getData().getSettings(), dest);
                 Toast.show(app.getRootPane(), "Receipt Saved", "Receipt PDF saved to " + dest.getName(), false);
             } catch (Exception ex) {
                 Toast.show(app.getRootPane(), "Receipt Failed", ex.getMessage(), true);
@@ -610,7 +622,7 @@ public class HistoryView extends BorderPane {
 
     private void shareOnWhatsApp(Bill bill) {
         if (bill == null) return;
-        Settings settings = settingsDao.getSettings();
+        Settings settings = app.getData().getSettings();
         String buyerPhone = bill.getVariables().getOrDefault("buyer_phone", "").replaceAll("[^0-9]", "");
         if (buyerPhone.length() == 10) buyerPhone = "91" + buyerPhone;
 

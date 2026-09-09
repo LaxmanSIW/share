@@ -108,7 +108,7 @@ public class TemplateDesigner extends BorderPane {
         setTop(createToolbar());
 
         SplitPane mainSplit = new SplitPane();
-        mainSplit.setStyle("-fx-background-color: transparent;");
+        mainSplit.getStyleClass().add("bg-transparent");
         Node canvasArea = createCanvasArea();
         Node sidebar = createSidebar();
         mainSplit.getItems().addAll(canvasArea, sidebar);
@@ -126,7 +126,7 @@ public class TemplateDesigner extends BorderPane {
     private Node createToolbar() {
         HBox bar = new HBox(8);
         bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setStyle("-fx-background-color: #0E131A; -fx-padding: 8 16; -fx-border-color: #232B38; -fx-border-width: 0 0 1 0;");
+        bar.getStyleClass().add("designer-toolbar");
 
         Button backBtn = createToolbarBtn("← Back", "Return to Templates Directory", () -> app.showTemplates());
 
@@ -151,7 +151,7 @@ public class TemplateDesigner extends BorderPane {
         // Zoom Controls
         Button zoomOut = createToolbarBtn("−", "Zoom Out (Ctrl -)", () -> setZoom(zoom - 0.1));
         
-        zoomLabel.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 11px; -fx-font-weight: bold; -fx-min-width: 42; -fx-alignment: CENTER;");
+        zoomLabel.getStyleClass().add("zoom-value");
         zoomLabel.setTooltip(new Tooltip("Current Zoom Level"));
 
         Button zoomIn = createToolbarBtn("+", "Zoom In (Ctrl +)", () -> setZoom(zoom + 0.1));
@@ -212,12 +212,18 @@ public class TemplateDesigner extends BorderPane {
     private void updateToolButtons() {
         if (selectToolBtn == null || panToolBtn == null) return;
         if (isPanMode) {
-            selectToolBtn.setStyle("-fx-background-color: #1E2634; -fx-text-fill: #CBD5E1; -fx-font-size: 11px;");
-            panToolBtn.setStyle("-fx-background-color: #D9A13B; -fx-text-fill: #000000; -fx-font-weight: bold; -fx-font-size: 11px;");
+            styleToolButton(selectToolBtn, false);
+            styleToolButton(panToolBtn, true);
         } else {
-            selectToolBtn.setStyle("-fx-background-color: #D9A13B; -fx-text-fill: #000000; -fx-font-weight: bold; -fx-font-size: 11px;");
-            panToolBtn.setStyle("-fx-background-color: #1E2634; -fx-text-fill: #CBD5E1; -fx-font-size: 11px;");
+            styleToolButton(selectToolBtn, true);
+            styleToolButton(panToolBtn, false);
         }
+    }
+
+    /** Toggle tool state via CSS classes only (inline styles would kill hover). */
+    private void styleToolButton(Button b, boolean active) {
+        b.getStyleClass().removeAll("tool-active", "tool-idle");
+        b.getStyleClass().add(active ? "tool-active" : "tool-idle");
     }
 
     private Button createToolbarBtn(String text, String tooltip, Runnable action) {
@@ -256,14 +262,14 @@ public class TemplateDesigner extends BorderPane {
 
     private Node createCanvasArea() {
         canvasScrollPane = new ScrollPane();
-        canvasScrollPane.setStyle("-fx-background: #0B0E13; -fx-background-color: #0B0E13;");
+        canvasScrollPane.getStyleClass().add("scroll-base");
         canvasScrollPane.setFitToWidth(false);
         canvasScrollPane.setFitToHeight(false);
         canvasScrollPane.setPannable(false); // Do not let JavaFX override cursor to pan hand!
         canvasScrollPane.setCursor(Cursor.DEFAULT);
 
         centerWrapper = new StackPane(scaleGroup);
-        centerWrapper.setStyle("-fx-background-color: #0B0E13;");
+        centerWrapper.getStyleClass().add("bg-base");
         centerWrapper.setCursor(Cursor.DEFAULT);
 
         canvasScrollPane.setContent(centerWrapper);
@@ -371,24 +377,24 @@ public class TemplateDesigner extends BorderPane {
         side.setMinWidth(360);
         side.setPrefWidth(420);
         side.setMaxWidth(800);
-        side.setStyle("-fx-background-color: #12161D; -fx-border-color: #232B38; -fx-border-width: 0 0 0 1;");
+        side.getStyleClass().add("designer-side");
 
         Tab propTab = new Tab("Properties");
         propTab.setClosable(false);
         ScrollPane propScroll = new ScrollPane(propBox);
         propScroll.setFitToWidth(true);
-        propScroll.setStyle("-fx-background: #12161D; -fx-background-color: #12161D;");
-        propBox.setStyle("-fx-background-color: #12161D;");
+        propScroll.getStyleClass().add("scroll-side");
+        propBox.getStyleClass().add("bg-side");
         propBox.setPadding(new Insets(16));
         propTab.setContent(propScroll);
 
         Tab layersTab = new Tab("Layers");
         layersTab.setClosable(false);
         VBox layersBox = new VBox(10);
-        layersBox.setStyle("-fx-background-color: #12161D;");
+        layersBox.getStyleClass().add("bg-side");
         layersBox.setPadding(new Insets(14));
 
-        layersList.setStyle("-fx-background-color: #12161D; -fx-control-inner-background: #12161D; -fx-border-color: #232B38; -fx-border-radius: 6; -fx-background-radius: 6;");
+        layersList.getStyleClass().add("layers-list");
         layersList.setCellFactory(lv -> new ListCell<>() {
             @Override
             protected void updateItem(TemplateElement item, boolean empty) {
@@ -403,7 +409,7 @@ public class TemplateDesigner extends BorderPane {
                         desc += ": " + (t.length() > 22 ? t.substring(0, 22) + "..." : t);
                     }
                     setText(desc);
-                    setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
+                    if (!getStyleClass().contains("layer-cell-label")) getStyleClass().add("layer-cell-label");
                 }
             }
         });
@@ -426,7 +432,7 @@ public class TemplateDesigner extends BorderPane {
         layersBox.getChildren().addAll(layersList, layerActions);
         layersTab.setContent(layersBox);
 
-        sideTabs.setStyle("-fx-background-color: #12161D;");
+        sideTabs.getStyleClass().add("bg-side");
         sideTabs.getTabs().addAll(propTab, layersTab);
         side.getChildren().add(sideTabs);
         VBox.setVgrow(sideTabs, Priority.ALWAYS);
@@ -1053,7 +1059,7 @@ public class TemplateDesigner extends BorderPane {
         headerRow.setAlignment(Pos.CENTER_LEFT);
 
         Label typeLbl = new Label(el.getType().name());
-        typeLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-text-fill: #D9A13B; -fx-background-color: rgba(217,161,59,0.15); -fx-padding: 2 8; -fx-background-radius: 4;");
+        typeLbl.getStyleClass().add("element-type-badge");
 
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
@@ -1126,7 +1132,7 @@ public class TemplateDesigner extends BorderPane {
         // Behavior Toggles Box
         VBox toggles = new VBox(8);
         toggles.setPadding(new Insets(8));
-        toggles.setStyle("-fx-background-color: #151B25; -fx-border-color: #232B38; -fx-border-radius: 6; -fx-background-radius: 6;");
+        toggles.getStyleClass().add("toggles-box");
 
         CheckBox repeatCb = new CheckBox("Repeat on multi-page bills");
         repeatCb.setSelected(el.isRepeatOnPages());
@@ -1148,18 +1154,18 @@ public class TemplateDesigner extends BorderPane {
         VBox sec = new VBox(8);
 
         Label textLbl = new Label("Text Content / Template Variables:");
-        textLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1;");
+        textLbl.getStyleClass().add("cell-bold-secondary");
         TextArea ta = new TextArea(el.getText());
         ta.setPrefRowCount(3);
         ta.setWrapText(true);
-        ta.setStyle("-fx-control-inner-background: #0D1117; -fx-background-color: #0D1117; -fx-text-fill: #F4F4F5; -fx-font-family: 'Segoe UI', sans-serif; -fx-font-size: 13px; -fx-border-color: #232B38; -fx-border-radius: 6; -fx-background-radius: 6;");
+        ta.getStyleClass().add("designer-textarea");
         ta.textProperty().addListener((obs, o, v) -> { el.setText(v); refreshCanvas(); });
 
         VBox varSec = new VBox(8);
-        varSec.setStyle("-fx-background-color: #121720; -fx-border-color: #232B38; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 10;");
+        varSec.getStyleClass().add("var-section");
 
         Label varSecLbl = new Label("INSERT TEMPLATE VARIABLES:");
-        varSecLbl.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #D9A13B; -fx-letter-spacing: 1;");
+        varSecLbl.getStyleClass().add("overline-accent");
 
         // 1. Direct Dropdown & + Add Button directly in property view
         ComboBox<VariableDef> varCombo = new ComboBox<>();
@@ -1168,7 +1174,7 @@ public class TemplateDesigner extends BorderPane {
         HBox.setHgrow(varCombo, Priority.ALWAYS);
         List<VariableDef> allVars = getComprehensiveVariablesList();
         varCombo.setItems(FXCollections.observableArrayList(allVars));
-        varCombo.setStyle("-fx-background-color: #0D1117; -fx-border-color: #232B38; -fx-border-radius: 4; -fx-background-radius: 4; -fx-font-size: 11px;");
+        varCombo.getStyleClass().add("designer-combo");
         varCombo.setCellFactory(lv -> new ListCell<>() {
             @Override
             protected void updateItem(VariableDef item, boolean empty) {
@@ -1193,7 +1199,7 @@ public class TemplateDesigner extends BorderPane {
         });
 
         Button dropInsertBtn = new Button("+ Add");
-        dropInsertBtn.setStyle("-fx-background-color: #D9A13B; -fx-text-fill: #0D1117; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 5 12; -fx-cursor: hand; -fx-background-radius: 4;");
+        dropInsertBtn.getStyleClass().add("btn-gold-sm");
         dropInsertBtn.setTooltip(new Tooltip("Add chosen variable into text at cursor position"));
         dropInsertBtn.setOnAction(e -> {
             VariableDef sel = varCombo.getValue();
@@ -1210,7 +1216,7 @@ public class TemplateDesigner extends BorderPane {
         // 2. Browse All Button
         Button varPickerBtn = new Button("⚡ Browse & Search All Variables (35+)");
         varPickerBtn.setMaxWidth(Double.MAX_VALUE);
-        varPickerBtn.setStyle("-fx-background-color: #1A2332; -fx-text-fill: #D9A13B; -fx-font-weight: bold; -fx-font-size: 11px; -fx-border-color: rgba(217,161,59,0.35); -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 6 10; -fx-cursor: hand;");
+        varPickerBtn.getStyleClass().add("btn-outline-gold");
         varPickerBtn.setTooltip(new Tooltip("Open searchable popup with all available placeholders & custom buyer fields"));
         varPickerBtn.setOnAction(e -> showVariablePicker(ta, el));
 
@@ -1257,13 +1263,13 @@ public class TemplateDesigner extends BorderPane {
 
         ToggleButton boldBtn = new ToggleButton("B");
         boldBtn.setSelected(el.getFontWeight() >= 700);
-        boldBtn.setStyle("-fx-font-weight: bold;");
+        boldBtn.getStyleClass().add("text-bold");
         boldBtn.setTooltip(new Tooltip("Bold"));
         boldBtn.setOnAction(e -> { el.setFontWeight(boldBtn.isSelected() ? 700 : 400); refreshCanvas(); });
 
         ToggleButton italicBtn = new ToggleButton("I");
         italicBtn.setSelected(el.isItalic());
-        italicBtn.setStyle("-fx-font-style: italic;");
+        italicBtn.getStyleClass().add("text-italic");
         italicBtn.setTooltip(new Tooltip("Italic"));
         italicBtn.setOnAction(e -> { el.setItalic(italicBtn.isSelected()); refreshCanvas(); });
 
@@ -1333,7 +1339,7 @@ public class TemplateDesigner extends BorderPane {
     private void buildRectProperties(TemplateElement el) {
         VBox sec = new VBox(8);
         Label title = new Label("Shape Properties:");
-        title.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1;");
+        title.getStyleClass().add("prop-title");
 
         GridPane grid = new GridPane();
         grid.setHgap(8); grid.setVgap(8);
@@ -1376,7 +1382,7 @@ public class TemplateDesigner extends BorderPane {
     private void buildLineProperties(TemplateElement el) {
         VBox sec = new VBox(8);
         Label title = new Label("Line Properties:");
-        title.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1;");
+        title.getStyleClass().add("prop-title");
 
         GridPane grid = new GridPane();
         grid.setHgap(8); grid.setVgap(8);
@@ -1408,13 +1414,13 @@ public class TemplateDesigner extends BorderPane {
     private void buildImageProperties(TemplateElement el) {
         VBox sec = new VBox(10);
         Label title = new Label("Image Properties & Source:");
-        title.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1; -fx-font-size: 12px;");
+        title.getStyleClass().add("prop-title");
 
         // Thumbnail Preview Box
         StackPane previewContainer = new StackPane();
         previewContainer.setPrefHeight(90);
         previewContainer.setMaxWidth(Double.MAX_VALUE);
-        previewContainer.setStyle("-fx-background-color: #0D1117; -fx-border-color: #232B38; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 6;");
+        previewContainer.getStyleClass().add("image-preview-box");
 
         ImageView thumbView = new ImageView();
         thumbView.setFitHeight(80);
@@ -1423,7 +1429,7 @@ public class TemplateDesigner extends BorderPane {
         thumbView.setSmooth(true);
 
         Label noImgLbl = new Label("No Image Loaded");
-        noImgLbl.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
+        noImgLbl.getStyleClass().add("text-dim");
 
         Image currentImg = null;
         if (el.isUseBusinessLogo()) {
@@ -1448,7 +1454,7 @@ public class TemplateDesigner extends BorderPane {
 
         CheckBox logoCb = new CheckBox("Use Company Logo from Settings");
         logoCb.setSelected(el.isUseBusinessLogo());
-        logoCb.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 11px;");
+        logoCb.getStyleClass().add("check-plain");
         logoCb.setOnAction(e -> {
             el.setUseBusinessLogo(logoCb.isSelected());
             saveState();
@@ -1481,7 +1487,7 @@ public class TemplateDesigner extends BorderPane {
 
         HBox logoButtons = new HBox(6);
         Button appLogoWhiteBtn = new Button("Use App Logo (Light)");
-        appLogoWhiteBtn.setStyle("-fx-background-color: #1A2332; -fx-text-fill: #D9A13B; -fx-font-size: 10px; -fx-padding: 4 8; -fx-background-radius: 4; -fx-cursor: hand;");
+        appLogoWhiteBtn.getStyleClass().add("btn-gold-chip");
         appLogoWhiteBtn.setOnAction(e -> {
             String b64 = loadResourceAsBase64("/icons/Invoicewhitebackground.png");
             if (b64 != null) {
@@ -1495,7 +1501,7 @@ public class TemplateDesigner extends BorderPane {
         });
 
         Button appLogoDarkBtn = new Button("Use App Logo (Dark)");
-        appLogoDarkBtn.setStyle("-fx-background-color: #1A2332; -fx-text-fill: #D9A13B; -fx-font-size: 10px; -fx-padding: 4 8; -fx-background-radius: 4; -fx-cursor: hand;");
+        appLogoDarkBtn.getStyleClass().add("btn-gold-chip");
         appLogoDarkBtn.setOnAction(e -> {
             String b64 = loadResourceAsBase64("/icons/Invoice black background.png");
             if (b64 != null) {
@@ -1511,7 +1517,7 @@ public class TemplateDesigner extends BorderPane {
         logoButtons.getChildren().addAll(appLogoWhiteBtn, appLogoDarkBtn);
 
         Button clearBtn = new Button("🗑 Clear Image");
-        clearBtn.setStyle("-fx-background-color: #2D1515; -fx-text-fill: #EF4444; -fx-font-size: 10px; -fx-padding: 4 8; -fx-background-radius: 4; -fx-cursor: hand;");
+        clearBtn.getStyleClass().add("btn-danger-chip");
         clearBtn.setOnAction(e -> {
             el.setSrc(null);
             el.setUseBusinessLogo(false);
@@ -1523,10 +1529,10 @@ public class TemplateDesigner extends BorderPane {
         HBox fitRow = new HBox(8);
         fitRow.setAlignment(Pos.CENTER_LEFT);
         Label fitLbl = new Label("Object Fit:");
-        fitLbl.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 11px;");
+        fitLbl.getStyleClass().add("check-plain");
         ComboBox<String> fitCb = new ComboBox<>(FXCollections.observableArrayList("contain", "cover", "fill"));
         fitCb.setValue(el.getObjectFit() != null ? el.getObjectFit() : "contain");
-        fitCb.setStyle("-fx-font-size: 11px;");
+        fitCb.getStyleClass().add("fs-11");
         fitCb.valueProperty().addListener((obs, o, v) -> {
             el.setObjectFit(v);
             saveState();
@@ -1535,7 +1541,7 @@ public class TemplateDesigner extends BorderPane {
         fitRow.getChildren().addAll(fitLbl, fitCb, clearBtn);
 
         Label sizeHint = new Label(String.format("Size: %.1f × %.1f mm", el.getW(), el.getH()));
-        sizeHint.setStyle("-fx-text-fill: #8E9EB5; -fx-font-size: 10px;");
+        sizeHint.getStyleClass().add("text-dim");
 
         sec.getChildren().addAll(title, previewContainer, logoCb, uploadBtn, logoButtons, fitRow, sizeHint);
         propBox.getChildren().add(sec);
@@ -1578,7 +1584,7 @@ public class TemplateDesigner extends BorderPane {
     private void buildQrProperties(TemplateElement el) {
         VBox sec = new VBox(8);
         Label title = new Label("UPI QR Code Properties:");
-        title.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1;");
+        title.getStyleClass().add("prop-title");
 
         ComboBox<String> srcCb = new ComboBox<>(FXCollections.observableArrayList("upi_amount", "upi", "custom"));
         srcCb.setValue(el.getQrSource() != null ? el.getQrSource() : "upi_amount");
@@ -1595,7 +1601,7 @@ public class TemplateDesigner extends BorderPane {
     private void buildBarcodeProperties(TemplateElement el) {
         VBox sec = new VBox(8);
         Label title = new Label("Barcode Properties:");
-        title.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1;");
+        title.getStyleClass().add("prop-title");
 
         TextField tf = new TextField(el.getBarcodeData());
         tf.setPromptText("e.g. {{invoice_no}} or {{po_no}}");
@@ -1612,7 +1618,7 @@ public class TemplateDesigner extends BorderPane {
     private void buildTableProperties(TemplateElement el) {
         VBox sec = new VBox(10);
         Label title = new Label("Itemized Table Settings & Colors:");
-        title.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1;");
+        title.getStyleClass().add("prop-title");
 
         GridPane grid = new GridPane();
         grid.setHgap(8); grid.setVgap(8);
@@ -1653,7 +1659,8 @@ public class TemplateDesigner extends BorderPane {
         }
 
         Label colHeader = new Label("Table Columns (" + cols.size() + "):");
-        colHeader.setStyle("-fx-font-weight: bold; -fx-text-fill: #CBD5E1; -fx-padding: 8 0 0 0;");
+        colHeader.getStyleClass().add("prop-title");
+        colHeader.setPadding(new Insets(8, 0, 0, 0));
 
         VBox colsList = new VBox(6);
         for (int i = 0; i < cols.size(); i++) {
@@ -1662,7 +1669,7 @@ public class TemplateDesigner extends BorderPane {
 
             HBox colRow = new HBox(6);
             colRow.setAlignment(Pos.CENTER_LEFT);
-            colRow.setStyle("-fx-background-color: #141A24; -fx-padding: 4 6; -fx-background-radius: 4; -fx-border-color: #232B38; -fx-border-radius: 4;");
+            colRow.getStyleClass().add("col-row");
 
             TextField lblField = new TextField(c.getLabel());
             lblField.setMinWidth(75);
@@ -1799,17 +1806,17 @@ public class TemplateDesigner extends BorderPane {
             VBox root = new VBox(12);
             root.setPadding(new Insets(18));
             root.setPrefWidth(520);
-            root.setStyle("-fx-background-color: #12161D; -fx-border-color: #D9A13B; -fx-border-width: 1; -fx-background-radius: 8; -fx-border-radius: 8;");
+            root.getStyleClass().add("picker-root");
 
             Label titleLbl = new Label("Insert Template Variable");
-            titleLbl.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #F4F4F5;");
+            titleLbl.getStyleClass().add("picker-title");
 
             Label subLbl = new Label("Choose a placeholder or double-click to insert directly into text:");
-            subLbl.setStyle("-fx-font-size: 12px; -fx-text-fill: #8E9EB5;");
+            subLbl.getStyleClass().add("picker-sub");
 
             TextField filterField = new TextField();
             filterField.setPromptText("Type to filter variables (e.g. buyer, total, gst, date, bank)...");
-            filterField.setStyle("-fx-background-color: #0D1117; -fx-text-fill: #F4F4F5; -fx-font-size: 12px; -fx-border-color: #232B38; -fx-border-radius: 6; -fx-padding: 8 12;");
+            filterField.getStyleClass().add("designer-field");
 
             List<VariableDef> vars = getComprehensiveVariablesList();
             FilteredList<VariableDef> filtered = new FilteredList<>(FXCollections.observableArrayList(vars), v -> true);
@@ -1826,15 +1833,15 @@ public class TemplateDesigner extends BorderPane {
 
             ListView<VariableDef> lv = new ListView<>(filtered);
             lv.setPrefHeight(280);
-            lv.setStyle("-fx-background-color: #0D1117; -fx-control-inner-background: #0D1117; -fx-border-color: #232B38; -fx-border-radius: 6;");
+            lv.getStyleClass().add("designer-list");
             lv.setCellFactory(param -> new ListCell<>() {
                 @Override
                 protected void updateItem(VariableDef item, boolean empty) {
                     super.updateItem(item, empty);
+                    if (!getStyleClass().contains("cell-clear")) getStyleClass().add("cell-clear");
                     if (empty || item == null) {
                         setText(null);
                         setGraphic(null);
-                        setStyle("-fx-background-color: transparent;");
                     } else {
                         HBox row = new HBox(8);
                         row.setAlignment(Pos.CENTER_LEFT);
@@ -1842,14 +1849,14 @@ public class TemplateDesigner extends BorderPane {
                         row.setMouseTransparent(true);
 
                         Label nameLbl = new Label(item.getLabel() != null ? item.getLabel() : item.getKey());
-                        nameLbl.setStyle("-fx-text-fill: #F4F4F5; -fx-font-weight: bold; -fx-font-size: 12px;");
+                        nameLbl.getStyleClass().add("card-title-sm");
                         HBox.setHgrow(nameLbl, Priority.ALWAYS);
 
                         Label keyPill = new Label("{{" + item.getKey() + "}}");
-                        keyPill.setStyle("-fx-font-family: monospace; -fx-font-size: 11px; -fx-text-fill: #D9A13B; -fx-background-color: #1A222D; -fx-border-color: rgba(217,161,59,0.3); -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 6;");
+                        keyPill.getStyleClass().add("key-pill");
 
                         Label typeBadge = new Label(item.getType() != null ? item.getType().toUpperCase() : "GENERAL");
-                        typeBadge.setStyle("-fx-font-size: 9px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5; -fx-background-color: #161E2A; -fx-border-radius: 3; -fx-background-radius: 3; -fx-padding: 2 5;");
+                        typeBadge.getStyleClass().add("type-badge");
 
                         row.getChildren().addAll(nameLbl, keyPill, typeBadge);
                         setGraphic(row);
@@ -1879,11 +1886,11 @@ public class TemplateDesigner extends BorderPane {
             btnBar.setAlignment(Pos.CENTER_RIGHT);
 
             Button cancelBtn = new Button("Cancel");
-            cancelBtn.setStyle("-fx-background-color: #1E2530; -fx-text-fill: #CBD5E1; -fx-font-size: 12px; -fx-padding: 7 16; -fx-cursor: hand; -fx-border-radius: 4; -fx-background-radius: 4;");
+            cancelBtn.getStyleClass().add("btn-ghost");
             cancelBtn.setOnAction(e -> dlg.close());
 
             Button insertBtn = new Button("Insert Variable");
-            insertBtn.setStyle("-fx-background-color: #D9A13B; -fx-text-fill: #0D1117; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 7 18; -fx-cursor: hand; -fx-border-radius: 4; -fx-background-radius: 4;");
+            insertBtn.getStyleClass().add("btn-gold");
             insertBtn.setOnAction(e -> doInsert.run());
 
             btnBar.getChildren().addAll(cancelBtn, insertBtn);
@@ -2019,7 +2026,7 @@ public class TemplateDesigner extends BorderPane {
 
         // Margins Header
         Label mgHeader = new Label("PAGE MARGINS (MM)");
-        mgHeader.setStyle("-fx-font-weight: bold; -fx-text-fill: #D9A13B; -fx-font-size: 11px;");
+        mgHeader.getStyleClass().add("section-eyebrow");
         g.add(mgHeader, 0, 3, 4, 1);
 
         PageConfig.Margins currentMg = template.getPage().getMargin();
@@ -2116,11 +2123,11 @@ public class TemplateDesigner extends BorderPane {
         HBox headerRow = new HBox(8);
         headerRow.setAlignment(Pos.CENTER_LEFT);
         Label titleLbl = new Label("PAGE & MARGIN SETTINGS");
-        titleLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #D9A13B; -fx-letter-spacing: 0.8;");
+        titleLbl.getStyleClass().add("section-eyebrow");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         Label badge = new Label("CANVAS");
-        badge.setStyle("-fx-font-size: 10px; -fx-text-fill: #8E9EB5; -fx-background-color: #1A222D; -fx-padding: 2 6; -fx-background-radius: 4;");
+        badge.getStyleClass().add("type-badge");
         headerRow.getChildren().addAll(titleLbl, spacer, badge);
         propBox.getChildren().add(headerRow);
 
@@ -2135,7 +2142,7 @@ public class TemplateDesigner extends BorderPane {
         dimGrid.add(new Label("Paper Size:"), 0, 0);
         ComboBox<PageSizeName> sizeCb = new ComboBox<>(FXCollections.observableArrayList(PageSizeName.values()));
         sizeCb.setValue(page.getSizeName());
-        sizeCb.setStyle("-fx-font-size: 11px;");
+        sizeCb.getStyleClass().add("fs-11");
         dimGrid.add(sizeCb, 1, 0, 3, 1);
 
         dimGrid.add(new Label("W (mm):"), 0, 1);
@@ -2171,7 +2178,7 @@ public class TemplateDesigner extends BorderPane {
 
         CheckBox autoHCb = new CheckBox("Continuous roll (Auto-height for POS)");
         autoHCb.setSelected(page.isAutoHeight());
-        autoHCb.setStyle("-fx-font-size: 11px; -fx-text-fill: #CBD5E1;");
+        autoHCb.getStyleClass().add("check-plain");
         autoHCb.selectedProperty().addListener((obs, o, v) -> {
             page.setAutoHeight(v);
             refreshCanvas();
@@ -2194,7 +2201,7 @@ public class TemplateDesigner extends BorderPane {
         shiftRow.setAlignment(Pos.CENTER_LEFT);
         CheckBox shiftCb = new CheckBox("Shift elements when margins change");
         shiftCb.setSelected(shiftWithMargins);
-        shiftCb.setStyle("-fx-font-size: 11px; -fx-text-fill: #CBD5E1;");
+        shiftCb.getStyleClass().add("check-plain");
         shiftCb.selectedProperty().addListener((obs, o, v) -> shiftWithMargins = v);
         shiftRow.getChildren().add(shiftCb);
         mgBox.getChildren().add(shiftRow);
@@ -2234,17 +2241,17 @@ public class TemplateDesigner extends BorderPane {
 
         // Quick Preset Chips
         Label presetLbl = new Label("QUICK PRESETS:");
-        presetLbl.setStyle("-fx-font-size: 9px; -fx-font-weight: bold; -fx-text-fill: #94A3B8;");
+        presetLbl.getStyleClass().add("overline-xs");
         FlowPane presetChips = new FlowPane(4, 4);
 
         Button pStd = createToolbarBtn("Standard (8mm)", "Set 8mm margins for all sides", () -> applyMarginPreset(8, 8, 8, 8));
-        pStd.setStyle("-fx-font-size: 10px; -fx-padding: 3 8;");
+        pStd.getStyleClass().add("button-xs");
         Button pCmp = createToolbarBtn("Compact (5mm)", "Set 5mm margins for all sides", () -> applyMarginPreset(5, 5, 5, 5));
-        pCmp.setStyle("-fx-font-size: 10px; -fx-padding: 3 8;");
+        pCmp.getStyleClass().add("button-xs");
         Button pWide = createToolbarBtn("Wide (12mm)", "Set 12mm margins for all sides", () -> applyMarginPreset(12, 12, 12, 12));
-        pWide.setStyle("-fx-font-size: 10px; -fx-padding: 3 8;");
+        pWide.getStyleClass().add("button-xs");
         Button pZero = createToolbarBtn("Zero (0mm)", "Full bleed 0mm margins", () -> applyMarginPreset(0, 0, 0, 0));
-        pZero.setStyle("-fx-font-size: 10px; -fx-padding: 3 8;");
+        pZero.getStyleClass().add("button-xs");
 
         presetChips.getChildren().addAll(pStd, pCmp, pWide, pZero);
         mgBox.getChildren().addAll(presetLbl, presetChips);
@@ -2252,7 +2259,7 @@ public class TemplateDesigner extends BorderPane {
         // Align Action Button
         Button alignBtn = new Button("⚡ Align All Elements to Margins");
         alignBtn.setMaxWidth(Double.MAX_VALUE);
-        alignBtn.setStyle("-fx-background-color: #1A2332; -fx-text-fill: #D9A13B; -fx-font-weight: bold; -fx-font-size: 11px; -fx-border-color: rgba(217,161,59,0.4); -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 7 12; -fx-cursor: hand;");
+        alignBtn.getStyleClass().add("btn-outline-gold");
         alignBtn.setTooltip(new Tooltip("Align outermost unlocked elements with margins and fit wide tables to printable width"));
         alignBtn.setOnAction(e -> alignElementsToMargins());
         mgBox.getChildren().add(alignBtn);
@@ -2260,14 +2267,14 @@ public class TemplateDesigner extends BorderPane {
         // Open Dialog Button
         Button openDlgBtn = new Button("⚙ Open Full Page Dialog...");
         openDlgBtn.setMaxWidth(Double.MAX_VALUE);
-        openDlgBtn.setStyle("-fx-background-color: #121720; -fx-text-fill: #CBD5E1; -fx-font-size: 11px; -fx-border-color: #232B38; -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 6 12; -fx-cursor: hand;");
+        openDlgBtn.getStyleClass().add("btn-ghost-sm");
         openDlgBtn.setOnAction(e -> showPageSettingsDialog());
         mgBox.getChildren().add(openDlgBtn);
 
         // Helper guide description
         Label guideNote = new Label("Dashed blue guides on canvas show the printable margin boundary. All elements will respect these boundaries in bill preview, printing, and PDF export.");
         guideNote.setWrapText(true);
-        guideNote.setStyle("-fx-font-size: 10px; -fx-text-fill: #8E9EB5; -fx-line-spacing: 2;");
+        guideNote.getStyleClass().add("guide-note");
         mgBox.getChildren().add(guideNote);
 
         mgPane.setContent(mgBox);

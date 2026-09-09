@@ -1,0 +1,23 @@
+# Build artifacts
+target/
+dependency-reduced-pom.xml
+
+# Local runtime data (SQLite DB is created next to the working directory)
+*.db
+smoke-test/
+nav-smoke/
+
+# Logs
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db

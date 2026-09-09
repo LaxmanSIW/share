@@ -38,9 +38,9 @@ public class BillPreviewPane extends StackPane {
     public BillPreviewPane() {
         setAlignment(Pos.TOP_CENTER);
         setPadding(new Insets(16));
-        setStyle("-fx-background-color: transparent;");
+        getStyleClass().add("preview-surface");
 
-        pagePane.setStyle("-fx-background-color: #ffffff; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.45), 20, 0, 0, 4);");
+        pagePane.getStyleClass().add("preview-paper");
         getChildren().add(scaleGroup);
     }
 

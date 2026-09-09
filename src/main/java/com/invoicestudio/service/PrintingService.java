@@ -10,6 +10,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.Window;
 
@@ -115,9 +116,8 @@ public class PrintingService {
 
         // Calibration Title & Note
         Text title = new Text("PRINTER CALIBRATION SHEET");
-        title.setFont(Font.font("Segoe UI", 16));
+        title.setFont(Font.font("Segoe UI", FontWeight.BOLD, 16));
         title.setFill(Color.BLACK);
-        title.setStyle("-fx-font-weight: bold; -fx-fill: black;");
         title.setX(30 * mm);
         title.setY(30 * mm);
         shifted.getChildren().add(title);
@@ -127,7 +127,6 @@ public class PrintingService {
                 settings != null ? settings.getPrintOffsetY() : 0));
         note.setFont(Font.font("Segoe UI", 11));
         note.setFill(Color.BLACK);
-        note.setStyle("-fx-fill: black;");
         note.setX(30 * mm);
         note.setY(36 * mm);
         shifted.getChildren().add(note);

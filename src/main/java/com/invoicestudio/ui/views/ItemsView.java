@@ -1,7 +1,5 @@
 package com.invoicestudio.ui.views;
 
-import com.invoicestudio.db.BillDao;
-import com.invoicestudio.db.ItemDao;
 import com.invoicestudio.model.Bill;
 import com.invoicestudio.model.BillItem;
 import com.invoicestudio.model.BillStatus;
@@ -9,9 +7,10 @@ import com.invoicestudio.model.ItemRecord;
 import com.invoicestudio.service.BillingService;
 import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.IconHelper;
+import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
+import com.invoicestudio.ui.UiTheme;
 import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -20,16 +19,17 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.util.*;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+/**
+ * Item Catalog & Sales Reports — v3 redesign.
+ * Features preserved: catalog list with inline stats, search, add/edit/delete items,
+ * "Bill Item" shortcut, analytics tab with units-sold & revenue leaderboards.
+ */
 public class ItemsView extends VBox {
 
-    private final ItemDao itemDao;
-    private final BillDao billDao;
+    private final StudioApp app;
     private final String currency;
-    private final Runnable onChanged;
-    private final Consumer<ItemRecord> onNewBillWithItem;
 
     private List<ItemRecord> allItems = new ArrayList<>();
     private List<Bill> allBills = new ArrayList<>();
@@ -63,17 +63,13 @@ public class ItemsView extends VBox {
         public int billCount = 0;
     }
 
-    public ItemsView(ItemDao itemDao, BillDao billDao, String currency, Runnable onChanged, Consumer<ItemRecord> onNewBillWithItem) {
-        this.itemDao = itemDao;
-        this.billDao = billDao;
-        this.currency = currency != null ? currency : "₹";
-        this.onChanged = onChanged;
-        this.onNewBillWithItem = onNewBillWithItem;
+    public ItemsView(StudioApp app) {
+        this.app = app;
+        this.currency = app.getData().getSettings().getCurrency() != null ? app.getData().getSettings().getCurrency() : "₹";
 
         setSpacing(20);
         setPadding(new Insets(24));
-        getStyleClass().add("root-pane");
-        setStyle("-fx-background-color: #0B0E13;");
+        getStyleClass().add("view-page");
 
         buildHeader();
         buildKpis();
@@ -87,9 +83,10 @@ public class ItemsView extends VBox {
         header.setAlignment(Pos.CENTER_LEFT);
 
         VBox titleBox = new VBox(4);
-        HBox titleRow = new HBox(8);
+        HBox titleRow = new HBox(10);
         titleRow.setAlignment(Pos.CENTER_LEFT);
-        Label titleIcon = IconHelper.createIconLabel(IconHelper.ICON_PACKAGE, 22, "#d9a13b");
+        Label titleIcon = new Label("📦");
+        titleIcon.getStyleClass().addAll("icon-accent", "icon-lg");
         Label title = new Label("Item Catalog & Reports");
         title.getStyleClass().add("view-title");
         titleRow.getChildren().addAll(titleIcon, title);
@@ -110,16 +107,15 @@ public class ItemsView extends VBox {
         catalogTabBtn.setOnAction(e -> switchTab("catalog"));
 
         analyticsTabBtn = new Button("Sales Reports");
-        analyticsTabBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_BAR_CHART, 14, "#8a99ad"));
+        analyticsTabBtn.setGraphic(new Label("📊"));
         analyticsTabBtn.getStyleClass().add("subtab-button");
         analyticsTabBtn.setTooltip(new Tooltip("View item sales reports and analytics"));
         analyticsTabBtn.setOnAction(e -> switchTab("analytics"));
 
         tabSwitch.getChildren().addAll(catalogTabBtn, analyticsTabBtn);
 
-        Button newItemBtn = new Button("New Item");
-        newItemBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_PLUS, 14, "#000000"));
-        newItemBtn.getStyleClass().add("button-primary");
+        Button newItemBtn = UiTheme.goldBtn("New Item");
+        newItemBtn.setGraphic(new Label("＋"));
         newItemBtn.setTooltip(new Tooltip("Add a new product or service to catalog"));
         newItemBtn.setOnAction(e -> openItemDialog(null));
 
@@ -139,35 +135,30 @@ public class ItemsView extends VBox {
         }
 
         // 1. Catalog Items
-        VBox c1 = createKpiCard(IconHelper.ICON_TAG, "CATALOG ITEMS", "#8a99ad");
-        totalItemsVal = new Label("0");
-        totalItemsVal.getStyleClass().add("kpi-value");
-        Label sub1 = new Label("Reusable item masters");
-        sub1.getStyleClass().add("kpi-subtext");
+        VBox c1 = createKpiCard("CATALOG ITEMS", "🏷");
+        totalItemsVal = UiTheme.kpiValue("0");
+        Label sub1 = UiTheme.subLabel("Reusable item masters");
         c1.getChildren().addAll(totalItemsVal, sub1);
 
         // 2. Units Sold
-        VBox c2 = createKpiCard(IconHelper.ICON_TRENDING_UP, "TOTAL UNITS SOLD", "#d9a13b");
-        totalUnitsVal = new Label("0");
-        totalUnitsVal.getStyleClass().addAll("kpi-value", "accent-gold");
-        Label sub2 = new Label("Across active bills");
-        sub2.getStyleClass().add("kpi-subtext");
+        VBox c2 = createKpiCard("TOTAL UNITS SOLD", "📈");
+        totalUnitsVal = UiTheme.kpiValue("0");
+        totalUnitsVal.getStyleClass().add("accent-gold");
+        Label sub2 = UiTheme.subLabel("Across active bills");
         c2.getChildren().addAll(totalUnitsVal, sub2);
 
         // 3. Revenue
-        VBox c3 = createKpiCard(IconHelper.ICON_BAR_CHART, "TOTAL REVENUE", "#10b981");
-        totalRevenueVal = new Label(currency + "0.00");
-        totalRevenueVal.getStyleClass().addAll("kpi-value", "accent-emerald");
-        Label sub3 = new Label("Item sales generated");
-        sub3.getStyleClass().add("kpi-subtext");
+        VBox c3 = createKpiCard("TOTAL REVENUE", "💰");
+        totalRevenueVal = UiTheme.kpiValue(currency + "0.00");
+        totalRevenueVal.getStyleClass().add("accent-emerald");
+        Label sub3 = UiTheme.subLabel("Item sales generated");
         c3.getChildren().addAll(totalRevenueVal, sub3);
 
         // 4. Top Seller
-        VBox c4 = createKpiCard(IconHelper.ICON_SPARKLES, "TOP SELLER", "#f59e0b");
+        VBox c4 = createKpiCard("TOP SELLER", "✨");
         topSellerNameVal = new Label("—");
         topSellerNameVal.getStyleClass().add("kpi-value-small");
-        topSellerQtyVal = new Label("No sales yet");
-        topSellerQtyVal.getStyleClass().add("kpi-subtext");
+        topSellerQtyVal = UiTheme.subLabel("No sales yet");
         c4.getChildren().addAll(topSellerNameVal, topSellerQtyVal);
 
         grid.add(c1, 0, 0);
@@ -178,12 +169,12 @@ public class ItemsView extends VBox {
         getChildren().add(grid);
     }
 
-    private VBox createKpiCard(String icon, String title, String iconColor) {
+    private VBox createKpiCard(String title, String glyph) {
         VBox card = new VBox(6);
         card.getStyleClass().add("kpi-card");
-        HBox top = new HBox(6);
+        HBox top = new HBox(7);
         top.setAlignment(Pos.CENTER_LEFT);
-        Label ic = IconHelper.createIconLabel(icon, 14, iconColor);
+        Label ic = new Label(glyph);
         Label lbl = new Label(title);
         lbl.getStyleClass().add("kpi-title");
         top.getChildren().addAll(ic, lbl);
@@ -198,7 +189,7 @@ public class ItemsView extends VBox {
         toolbar.getStyleClass().add("card-pane");
         toolbar.setPadding(new Insets(12, 16, 12, 16));
 
-        Label sIcon = IconHelper.createIconLabel(IconHelper.ICON_SEARCH, 14, "#8a99ad");
+        Label sIcon = new Label("🔍");
         searchField.setPromptText("Search items by name, HSN/SAC, or unit...");
         searchField.getStyleClass().add("search-field");
         searchField.textProperty().addListener((obs, oldV, newV) -> renderCatalogList());
@@ -222,19 +213,17 @@ public class ItemsView extends VBox {
         if ("catalog".equals(tab)) {
             catalogTabBtn.getStyleClass().add("active");
             analyticsTabBtn.getStyleClass().remove("active");
-            analyticsTabBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_BAR_CHART, 14, "#8a99ad"));
             dynamicBody.getChildren().clear();
             HBox toolbar = new HBox(12);
             toolbar.setAlignment(Pos.CENTER_LEFT);
             toolbar.getStyleClass().add("card-pane");
             toolbar.setPadding(new Insets(12, 16, 12, 16));
-            Label sIcon = IconHelper.createIconLabel(IconHelper.ICON_SEARCH, 14, "#8a99ad");
+            Label sIcon = new Label("🔍");
             toolbar.getChildren().addAll(sIcon, searchField);
             dynamicBody.getChildren().addAll(toolbar, tableContainer);
             renderCatalogList();
         } else {
             analyticsTabBtn.getStyleClass().add("active");
-            analyticsTabBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_BAR_CHART, 14, "#e8c064"));
             catalogTabBtn.getStyleClass().remove("active");
             dynamicBody.getChildren().clear();
             renderAnalytics();
@@ -244,8 +233,8 @@ public class ItemsView extends VBox {
 
     public void reload() {
         try {
-            allItems = itemDao.findAll();
-            allBills = billDao.findAll();
+            allItems = app.getData().items().getAllItems();
+            allBills = app.getData().getAllBills();
             computeStats();
             updateKpis();
             catalogTabBtn.setText("Catalog (" + allItems.size() + ")");
@@ -256,7 +245,7 @@ public class ItemsView extends VBox {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            Toast.show(this, "Failed to load catalog: " + e.getMessage());
+            Toast.show(this, "Failed to load catalog: " + e.getMessage(), true);
         }
     }
 
@@ -288,6 +277,7 @@ public class ItemsView extends VBox {
         double topQty = 0;
 
         for (ItemRecord it : allItems) {
+            if (it.getName() == null) continue;
             ItemStat st = statsMap.get(it.getName().trim().toLowerCase());
             if (st != null) {
                 totalUnits += st.totalQty;
@@ -302,7 +292,7 @@ public class ItemsView extends VBox {
         // Also check uncataloged items from bills
         for (Map.Entry<String, ItemStat> entry : statsMap.entrySet()) {
             if (entry.getValue().totalQty > topQty) {
-                boolean existsInCatalog = allItems.stream().anyMatch(i -> i.getName().equalsIgnoreCase(entry.getKey()));
+                boolean existsInCatalog = allItems.stream().anyMatch(i -> i.getName() != null && i.getName().equalsIgnoreCase(entry.getKey()));
                 if (!existsInCatalog) {
                     topQty = entry.getValue().totalQty;
                     topItem = entry.getKey();
@@ -320,24 +310,17 @@ public class ItemsView extends VBox {
     private void renderCatalogList() {
         tableContainer.getChildren().clear();
 
-        String q = searchField.getText().trim().toLowerCase();
+        String q = searchField.getText() != null ? searchField.getText().trim().toLowerCase() : "";
         List<ItemRecord> filtered = allItems.stream().filter(it -> {
             if (q.isEmpty()) return true;
-            return it.getName().toLowerCase().contains(q)
+            return (it.getName() != null && it.getName().toLowerCase().contains(q))
                     || (it.getHsn() != null && it.getHsn().toLowerCase().contains(q))
                     || (it.getUnit() != null && it.getUnit().toLowerCase().contains(q));
         }).collect(Collectors.toList());
 
         if (filtered.isEmpty()) {
-            VBox empty = new VBox(12);
-            empty.setAlignment(Pos.CENTER);
-            empty.setPadding(new Insets(48));
-            empty.getStyleClass().add("card-pane");
-            Label emptyIcon = IconHelper.createIconLabel(IconHelper.ICON_PACKAGE, 36, "#3a4456");
-            Label emptyText = new Label(allItems.isEmpty() ? "No items in catalog yet. Click 'New Item' above." : "No matching items found.");
-            emptyText.getStyleClass().add("muted-label");
-            empty.getChildren().addAll(emptyIcon, emptyText);
-            tableContainer.getChildren().add(empty);
+            tableContainer.getChildren().add(UiTheme.emptyState("📦",
+                    allItems.isEmpty() ? "No items in catalog yet. Click 'New Item' above." : "No matching items found.", null));
             return;
         }
 
@@ -385,6 +368,8 @@ public class ItemsView extends VBox {
             VBox nameBox = new VBox(3);
             Label nameLbl = new Label(it.getName());
             nameLbl.getStyleClass().add("table-cell-title");
+            HBox.setHgrow(nameBox, Priority.ALWAYS);
+
             HBox badgeRow = new HBox(6);
             badgeRow.setAlignment(Pos.CENTER_LEFT);
             if (it.getHsn() != null && !it.getHsn().trim().isEmpty()) {
@@ -392,11 +377,8 @@ public class ItemsView extends VBox {
                 hsn.getStyleClass().add("badge-hsn");
                 badgeRow.getChildren().add(hsn);
             }
-            Label unitLbl = new Label(it.getUnit() != null ? it.getUnit() : "PCS");
-            unitLbl.getStyleClass().add("badge-neutral");
-            badgeRow.getChildren().add(unitLbl);
+            badgeRow.getChildren().add(UiTheme.pill(it.getUnit() != null ? it.getUnit() : "PCS"));
             nameBox.getChildren().addAll(nameLbl, badgeRow);
-            HBox.setHgrow(nameBox, Priority.ALWAYS);
 
             // Rate
             Label rateLbl = new Label(BillingService.formatMoney(it.getRate(), currency));
@@ -409,7 +391,7 @@ public class ItemsView extends VBox {
             gstLbl.setPrefWidth(80);
 
             // Stats
-            ItemStat st = statsMap.get(it.getName().trim().toLowerCase());
+            ItemStat st = it.getName() != null ? statsMap.get(it.getName().trim().toLowerCase()) : null;
             double soldQty = st != null ? st.totalQty : 0;
             double soldRev = st != null ? st.totalAmount : 0;
 
@@ -429,20 +411,14 @@ public class ItemsView extends VBox {
             Button billBtn = new Button("Bill Item");
             billBtn.getStyleClass().add("button-secondary-small");
             billBtn.setTooltip(new Tooltip("Create a new bill with this item"));
-            billBtn.setOnAction(e -> {
-                if (onNewBillWithItem != null) {
-                    onNewBillWithItem.accept(it);
-                }
-            });
+            billBtn.setOnAction(e -> app.showCreateBill(null, it));
 
-            Button editBtn = new Button();
-            editBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_EDIT, 14, "#8a99ad"));
+            Button editBtn = new Button("✎");
             editBtn.getStyleClass().add("button-icon-subtle");
             editBtn.setTooltip(new Tooltip("Edit item"));
             editBtn.setOnAction(e -> openItemDialog(it));
 
-            Button delBtn = new Button();
-            delBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_TRASH, 14, "#ef4444"));
+            Button delBtn = new Button("🗑");
             delBtn.getStyleClass().add("button-icon-subtle");
             delBtn.setTooltip(new Tooltip("Delete item"));
             delBtn.setOnAction(e -> confirmDelete(it));
@@ -476,7 +452,7 @@ public class ItemsView extends VBox {
 
         HBox c1Head = new HBox(8);
         c1Head.setAlignment(Pos.CENTER_LEFT);
-        Label ic1 = IconHelper.createIconLabel(IconHelper.ICON_BAR_CHART, 14, "#d9a13b");
+        Label ic1 = new Label("📊");
         Label c1Title = new Label("TOP ITEMS BY UNITS SOLD");
         c1Title.getStyleClass().add("card-title");
         HBox.setHgrow(c1Title, Priority.ALWAYS);
@@ -488,13 +464,7 @@ public class ItemsView extends VBox {
         double maxQty = byQty.isEmpty() ? 1 : Math.max(1, byQty.get(0).getValue().totalQty);
 
         if (byQty.isEmpty() || maxQty <= 0) {
-            VBox empty = new VBox(8);
-            empty.setAlignment(Pos.CENTER);
-            empty.setPrefHeight(180);
-            Label emptyLbl = new Label("No sales data recorded yet.");
-            emptyLbl.getStyleClass().add("muted-label");
-            empty.getChildren().add(emptyLbl);
-            c1.getChildren().add(empty);
+            c1.getChildren().add(UiTheme.emptyState("📉", "No sales data recorded yet.", null));
         } else {
             VBox barsList = new VBox(10);
             int count = Math.min(8, byQty.size());
@@ -529,7 +499,7 @@ public class ItemsView extends VBox {
 
         HBox c2Head = new HBox(8);
         c2Head.setAlignment(Pos.CENTER_LEFT);
-        Label ic2 = IconHelper.createIconLabel(IconHelper.ICON_TRENDING_UP, 14, "#10b981");
+        Label ic2 = new Label("📈");
         Label c2Title = new Label("TOP ITEMS BY REVENUE");
         c2Title.getStyleClass().add("card-title");
         HBox.setHgrow(c2Title, Priority.ALWAYS);
@@ -541,13 +511,7 @@ public class ItemsView extends VBox {
         double maxRev = byRev.isEmpty() ? 1 : Math.max(1, byRev.get(0).getValue().totalAmount);
 
         if (byRev.isEmpty() || maxRev <= 0) {
-            VBox empty = new VBox(8);
-            empty.setAlignment(Pos.CENTER);
-            empty.setPrefHeight(180);
-            Label emptyLbl = new Label("No revenue data recorded yet.");
-            emptyLbl.getStyleClass().add("muted-label");
-            empty.getChildren().add(emptyLbl);
-            c2.getChildren().add(empty);
+            c2.getChildren().add(UiTheme.emptyState("💸", "No revenue data recorded yet.", null));
         } else {
             VBox barsList = new VBox(10);
             int count = Math.min(8, byRev.size());
@@ -595,11 +559,9 @@ public class ItemsView extends VBox {
 
         TextField nameField = new TextField(editing != null ? editing.getName() : "");
         nameField.setPromptText("e.g. Website Design & Maintenance");
-        nameField.getStyleClass().add("text-input");
 
         TextField hsnField = new TextField(editing != null && editing.getHsn() != null ? editing.getHsn() : "");
         hsnField.setPromptText("e.g. 998311");
-        hsnField.getStyleClass().add("text-input");
 
         ComboBox<String> unitBox = new ComboBox<>(FXCollections.observableArrayList(COMMON_UNITS));
         unitBox.setEditable(true);
@@ -607,7 +569,6 @@ public class ItemsView extends VBox {
         unitBox.setMaxWidth(Double.MAX_VALUE);
 
         TextField rateField = new TextField(editing != null ? String.valueOf(editing.getRate()) : "0");
-        rateField.getStyleClass().add("text-input");
 
         ComboBox<Integer> gstBox = new ComboBox<>(FXCollections.observableArrayList(COMMON_GST));
         gstBox.setValue(editing != null ? (int) editing.getGst() : 18);
@@ -615,25 +576,23 @@ public class ItemsView extends VBox {
 
         VBox form = new VBox(12);
         form.getChildren().addAll(
-                labeledNode("Item Name / Description *", nameField),
-                labeledNode("HSN / SAC Code", hsnField),
-                labeledNode("Unit of Measurement", unitBox),
-                labeledNode("Default Unit Rate (" + currency + ")", rateField),
-                labeledNode("Default GST Rate (%)", gstBox)
+                UiTheme.labeled("Item Name / Description *", nameField),
+                UiTheme.labeled("HSN / SAC Code", hsnField),
+                UiTheme.labeled("Unit of Measurement", unitBox),
+                UiTheme.labeled("Default Unit Rate (" + currency + ")", rateField),
+                UiTheme.labeled("Default GST Rate (%)", gstBox)
         );
 
         HBox btnRow = new HBox(12);
         btnRow.setAlignment(Pos.CENTER_RIGHT);
-        Button cancelBtn = new Button("Cancel");
-        cancelBtn.getStyleClass().add("button-secondary");
+        Button cancelBtn = UiTheme.secondaryBtn("Cancel");
         cancelBtn.setOnAction(e -> dlg.close());
 
-        Button saveBtn = new Button(editing == null ? "Add Item" : "Save Changes");
-        saveBtn.getStyleClass().add("button-primary");
+        Button saveBtn = UiTheme.primaryBtn(editing == null ? "Add Item" : "Save Changes");
         saveBtn.setOnAction(e -> {
             String name = nameField.getText().trim();
             if (name.isEmpty()) {
-                Toast.show(this, "Item name is required.");
+                Toast.show(this, "Item name is required.", true);
                 return;
             }
             double rate = 0;
@@ -654,23 +613,22 @@ public class ItemsView extends VBox {
                     it.setUnit(unit);
                     it.setRate(rate);
                     it.setGst(gst);
-                    itemDao.insert(it);
-                    Toast.show(this, "Item added: " + name);
+                    app.getData().items().insert(it);
+                    Toast.show(this, "Item added: " + name, false);
                 } else {
                     editing.setName(name);
                     editing.setHsn(hsn);
                     editing.setUnit(unit);
                     editing.setRate(rate);
                     editing.setGst(gst);
-                    itemDao.update(editing);
-                    Toast.show(this, "Item updated: " + name);
+                    app.getData().items().update(editing);
+                    Toast.show(this, "Item updated: " + name, false);
                 }
                 dlg.close();
                 reload();
-                if (onChanged != null) onChanged.run();
             } catch (Exception ex) {
                 ex.printStackTrace();
-                Toast.show(this, "Failed to save item: " + ex.getMessage());
+                Toast.show(this, "Failed to save item: " + ex.getMessage(), true);
             }
         });
 
@@ -692,21 +650,12 @@ public class ItemsView extends VBox {
         Optional<ButtonType> res = alert.showAndWait();
         if (res.isPresent() && res.get() == ButtonType.OK) {
             try {
-                itemDao.delete(it.getId());
-                Toast.show(this, "Item deleted.");
+                app.getData().items().delete(it.getId());
+                Toast.show(this, "Item deleted.", false);
                 reload();
-                if (onChanged != null) onChanged.run();
             } catch (Exception e) {
-                Toast.show(this, "Could not delete item: " + e.getMessage());
+                Toast.show(this, "Could not delete item: " + e.getMessage(), true);
             }
         }
-    }
-
-    private VBox labeledNode(String text, javafx.scene.Node node) {
-        VBox box = new VBox(4);
-        Label lbl = new Label(text);
-        lbl.getStyleClass().add("field-label");
-        box.getChildren().addAll(lbl, node);
-        return box;
     }
 }

@@ -60,7 +60,7 @@ public class TemplatesView extends BorderPane {
         Label title = new Label("Templates Gallery");
         title.getStyleClass().add("heading-l");
         Label sub = new Label("Design and manage layout templates for standard printers and thermal rolls.");
-        sub.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
+        sub.getStyleClass().add("text-muted");
         titleBox.getChildren().addAll(title, sub);
 
         Region sp = new Region();
@@ -94,7 +94,7 @@ public class TemplatesView extends BorderPane {
         // 2. Built-in Preset Library
         VBox presetSec = new VBox(12);
         Label pTitle = new Label("PRESET STARTERS (CLICK TO ADD TO YOUR TEMPLATES)");
-        pTitle.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #D9A13B; -fx-letter-spacing: 1.5;");
+        pTitle.getStyleClass().add("overline-accent");
         presetSec.getChildren().add(pTitle);
 
         FlowPane presetGrid = new FlowPane(16, 16);
@@ -112,7 +112,7 @@ public class TemplatesView extends BorderPane {
         // 3. User Saved Templates
         VBox userSec = new VBox(12);
         Label uTitle = new Label("YOUR SAVED TEMPLATES (" + templates.size() + ")");
-        uTitle.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #94A3B8; -fx-letter-spacing: 1.5;");
+        uTitle.getStyleClass().add("overline");
         userSec.getChildren().add(uTitle);
 
         FlowPane userGrid = new FlowPane(16, 16);
@@ -125,22 +125,22 @@ public class TemplatesView extends BorderPane {
 
     private Node buildPresetCard(String name, String size, String desc, String accentColor, Runnable onAdd) {
         VBox card = new VBox(8);
-        card.getStyleClass().add("card");
+        card.getStyleClass().addAll("card", "template-card");
         card.setPrefWidth(260);
-        card.setStyle("-fx-background-color: #151B25; -fx-padding: 14; -fx-background-radius: 8; -fx-border-color: #232B38; -fx-border-radius: 8;");
 
         HBox header = new HBox(8);
         header.setAlignment(Pos.CENTER_LEFT);
         Label nameLbl = new Label(name);
-        nameLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #F4F4F5;");
+        nameLbl.getStyleClass().add("card-title-sm");
         HBox.setHgrow(nameLbl, Priority.ALWAYS);
 
         Label badge = new Label(size);
-        badge.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-background-color: " + accentColor + "; -fx-text-fill: white; -fx-padding: 2 6; -fx-background-radius: 4;");
+        badge.getStyleClass().add("badge-accent-solid");
+        badge.setStyle("-fx-background-color: " + accentColor + ";"); // accent color is data-driven
         header.getChildren().addAll(nameLbl, badge);
 
         Label descLbl = new Label(desc);
-        descLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
+        descLbl.getStyleClass().add("text-muted");
         descLbl.setWrapText(true);
         descLbl.setPrefHeight(36);
 
@@ -155,22 +155,21 @@ public class TemplatesView extends BorderPane {
 
     private Node buildUserTemplateCard(Template t, Settings settings) {
         VBox card = new VBox(10);
-        card.getStyleClass().add("card");
+        card.getStyleClass().addAll("card", "template-card");
         card.setPrefWidth(280);
-        card.setStyle("-fx-background-color: #151B25; -fx-padding: 16; -fx-background-radius: 8; -fx-border-color: #232B38; -fx-border-radius: 8;");
 
         HBox top = new HBox(8);
         top.setAlignment(Pos.CENTER_LEFT);
         Label nameLbl = new Label(t.getName());
-        nameLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-text-fill: #F4F4F5;");
+        nameLbl.getStyleClass().add("card-title");
         HBox.setHgrow(nameLbl, Priority.ALWAYS);
 
         Label badge = new Label(t.getPage().getSizeName().getLabel());
-        badge.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-background-color: #232B38; -fx-text-fill: #D9A13B; -fx-padding: 2 6; -fx-background-radius: 4;");
+        badge.getStyleClass().add("badge-hsn");
         top.getChildren().addAll(nameLbl, badge);
 
         Label meta = new Label(t.getElements().size() + " layout elements • " + (t.getPage().isAutoHeight() ? "Continuous roll" : (int) t.getPage().getWidth() + "x" + (int) t.getPage().getHeight() + " mm"));
-        meta.setStyle("-fx-font-size: 10px; -fx-text-fill: #64748B;");
+        meta.getStyleClass().add("text-dim");
 
         // Action buttons
         HBox actions = new HBox(8);

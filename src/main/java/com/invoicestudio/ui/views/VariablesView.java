@@ -1,13 +1,12 @@
 package com.invoicestudio.ui.views;
 
-import com.invoicestudio.db.SettingsDao;
-import com.invoicestudio.db.VariableDao;
 import com.invoicestudio.model.BuyerFieldDef;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.VariableDef;
 import com.invoicestudio.ui.DialogHelper;
-import com.invoicestudio.ui.IconHelper;
+import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
+import com.invoicestudio.ui.UiTheme;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -16,11 +15,15 @@ import javafx.scene.layout.*;
 
 import java.util.List;
 
+/**
+ * Variables — v3 redesign.
+ * Custom placeholder management with built-in variable reference,
+ * buyer custom fields overview and the custom variables table.
+ * Row hover is now pure CSS (previously two inline-styled mouse listeners per row).
+ */
 public class VariablesView extends VBox {
 
-    private final VariableDao variableDao;
-    private final SettingsDao settingsDao;
-    private final Runnable onReload;
+    private final StudioApp app;
 
     private final TextField labelInput = new TextField();
     private final TextField keyInput = new TextField();
@@ -56,15 +59,12 @@ public class VariablesView extends VBox {
 
     private record VarPair(String label, String key) {}
 
-    public VariablesView(VariableDao variableDao, SettingsDao settingsDao, Runnable onReload) {
-        this.variableDao = variableDao;
-        this.settingsDao = settingsDao;
-        this.onReload = onReload;
+    public VariablesView(StudioApp app) {
+        this.app = app;
 
         setSpacing(20);
         setPadding(new Insets(24));
-        getStyleClass().add("root-pane");
-        setStyle("-fx-background-color: #0B0E13;");
+        getStyleClass().add("view-page");
 
         buildHeader();
         buildAddForm();
@@ -77,9 +77,10 @@ public class VariablesView extends VBox {
 
     private void buildHeader() {
         VBox titleBox = new VBox(4);
-        HBox titleRow = new HBox(8);
+        HBox titleRow = new HBox(10);
         titleRow.setAlignment(Pos.CENTER_LEFT);
-        Label titleIcon = IconHelper.createIconLabel(IconHelper.ICON_VARIABLE, 22, "#D9A13B");
+        Label titleIcon = new Label("χ");
+        titleIcon.getStyleClass().addAll("icon-accent", "icon-lg");
         Label title = new Label("Variables");
         title.getStyleClass().add("view-title");
         titleRow.getChildren().addAll(titleIcon, title);
@@ -91,17 +92,14 @@ public class VariablesView extends VBox {
     }
 
     private void buildAddForm() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18, 20, 18, 20));
+        VBox card = UiTheme.card(14);
 
         HBox head = new HBox(8);
         head.setAlignment(Pos.CENTER_LEFT);
         Label secTitle = new Label("ADD CUSTOM VARIABLE");
         secTitle.getStyleClass().add("card-title");
-        secTitle.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #E2E8F0;");
-        Label subHint = new Label("Create custom placeholders for your bill templates");
-        subHint.setStyle("-fx-font-size: 11px; -fx-text-fill: #8E9EB5;");
+        Label subHint = new Label("· Create custom placeholders for your bill templates");
+        subHint.getStyleClass().add("kpi-subtext");
         head.getChildren().addAll(secTitle, subHint);
 
         HBox formRow = new HBox(14);
@@ -111,12 +109,7 @@ public class VariablesView extends VBox {
         VBox labelBox = new VBox(6);
         Label lbl = new Label("LABEL *");
         lbl.getStyleClass().add("field-label");
-        lbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
         labelInput.setPromptText("e.g. Delivery Date");
-        labelInput.getStyleClass().add("text-input");
-        labelInput.setPrefHeight(36);
-        labelInput.setMinHeight(36);
-        labelInput.setStyle("-fx-font-size: 12px;");
         labelInput.textProperty().addListener((obs, oldV, newV) -> {
             if (keyInput.getText().trim().isEmpty() || slugify(oldV).equals(keyInput.getText().trim())) {
                 keyInput.setText(slugify(newV));
@@ -129,25 +122,19 @@ public class VariablesView extends VBox {
         VBox keyBox = new VBox(6);
         Label klbl = new Label("KEY (PLACEHOLDER)");
         klbl.getStyleClass().add("field-label");
-        klbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
 
         HBox keyGroup = new HBox(6);
         keyGroup.setAlignment(Pos.CENTER_LEFT);
-        keyGroup.setPrefHeight(36);
-        keyGroup.setMinHeight(36);
 
         Label bra1 = new Label("{{");
-        bra1.setStyle("-fx-font-family: monospace; -fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #D9A13B;");
+        bra1.getStyleClass().addAll("code-pill");
         keyInput.setPromptText("delivery_date");
-        keyInput.getStyleClass().addAll("text-input", "code-input");
-        keyInput.setPrefHeight(36);
-        keyInput.setMinHeight(36);
-        keyInput.setStyle("-fx-font-size: 12px; -fx-font-family: monospace;");
+        keyInput.getStyleClass().add("code-input");
         HBox.setHgrow(keyInput, Priority.ALWAYS);
         keyInput.setMaxWidth(Double.MAX_VALUE);
 
         Label bra2 = new Label("}}");
-        bra2.setStyle("-fx-font-family: monospace; -fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #D9A13B;");
+        bra2.getStyleClass().addAll("code-pill");
         keyGroup.getChildren().addAll(bra1, keyInput, bra2);
         HBox.setHgrow(keyGroup, Priority.ALWAYS);
 
@@ -158,23 +145,15 @@ public class VariablesView extends VBox {
         VBox typeBox = new VBox(6);
         Label tlbl = new Label("TYPE");
         tlbl.getStyleClass().add("field-label");
-        tlbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
         typeSelect.setItems(FXCollections.observableArrayList("text", "number", "date"));
         typeSelect.setValue("text");
         typeSelect.setPrefWidth(120);
-        typeSelect.setPrefHeight(36);
-        typeSelect.setMinHeight(36);
-        typeSelect.setStyle("-fx-font-size: 12px;");
         typeBox.getChildren().addAll(tlbl, typeSelect);
 
         // Add button
-        Button addBtn = new Button("Add Variable");
-        addBtn.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_PLUS, 14, "#000000"));
-        addBtn.getStyleClass().add("button-primary");
-        addBtn.setPrefHeight(36);
-        addBtn.setMinHeight(36);
-        addBtn.setPrefWidth(130);
-        addBtn.setStyle("-fx-font-size: 12px; -fx-font-weight: bold;");
+        Button addBtn = UiTheme.goldBtn("Add Variable");
+        addBtn.setGraphic(new Label("＋"));
+        addBtn.setPrefWidth(140);
         addBtn.setOnAction(e -> handleAdd());
 
         formRow.getChildren().addAll(labelBox, keyBox, typeBox, addBtn);
@@ -199,12 +178,11 @@ public class VariablesView extends VBox {
             v.setLabel(label);
             v.setType(typeSelect.getValue() != null ? typeSelect.getValue() : "text");
             v.setBuiltin(false);
-            variableDao.saveVariable(v);
+            app.getData().variables().saveVariable(v);
             Toast.show(this, "Variable Added", "Variable {{" + key + "}} created successfully.", false);
             labelInput.clear();
             keyInput.clear();
             reload();
-            if (onReload != null) onReload.run();
         } catch (Exception e) {
             e.printStackTrace();
             Toast.show(this, "Error", "Failed to add variable: " + e.getMessage(), true);
@@ -212,17 +190,14 @@ public class VariablesView extends VBox {
     }
 
     private void buildBuiltinSection() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18, 20, 18, 20));
+        VBox card = UiTheme.card(14);
 
         HBox head = new HBox(8);
         head.setAlignment(Pos.CENTER_LEFT);
         Label title = new Label("BUILT-IN BILL VARIABLES");
         title.getStyleClass().add("card-title");
-        title.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #E2E8F0;");
         Label count = new Label("· " + BUILTIN_VARS.size() + " SYSTEM FIELDS");
-        count.setStyle("-fx-font-size: 11px; -fx-font-weight: 600; -fx-text-fill: #8E9EB5;");
+        count.getStyleClass().add("kpi-subtext");
         head.getChildren().addAll(title, count);
 
         GridPane grid = new GridPane();
@@ -240,18 +215,13 @@ public class VariablesView extends VBox {
             HBox item = new HBox(10);
             item.setAlignment(Pos.CENTER_LEFT);
             item.setPadding(new Insets(7, 12, 7, 12));
-            item.setStyle("-fx-background-color: #12161E; -fx-border-color: #1E2633; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;");
-            item.setOnMouseEntered(e -> item.setStyle("-fx-background-color: #171E29; -fx-border-color: #2D3A4D; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;"));
-            item.setOnMouseExited(e -> item.setStyle("-fx-background-color: #12161E; -fx-border-color: #1E2633; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;"));
+            item.getStyleClass().add("card-pane-subtle");
 
             Label lbl = new Label(vp.label());
-            lbl.setStyle("-fx-font-size: 12px; -fx-font-weight: 500; -fx-text-fill: #E2E8F0;");
             lbl.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(lbl, Priority.ALWAYS);
 
-            Label keyPill = new Label("{{" + vp.key() + "}}");
-            keyPill.getStyleClass().add("code-pill");
-            keyPill.setStyle("-fx-font-family: monospace; -fx-font-size: 11px; -fx-text-fill: #D9A13B; -fx-background-color: #1A212C; -fx-border-color: rgba(217, 161, 59, 0.25); -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 7;");
+            Label keyPill = UiTheme.codePill("{{" + vp.key() + "}}");
 
             item.getChildren().addAll(lbl, keyPill);
             grid.add(item, col, row);
@@ -266,10 +236,9 @@ public class VariablesView extends VBox {
         HBox footerBox = new HBox(8);
         footerBox.setAlignment(Pos.CENTER_LEFT);
         footerBox.setPadding(new Insets(4, 4, 0, 4));
-        Label infoIcon = IconHelper.createIconLabel(IconHelper.ICON_CHECK, 13, "#8E9EB5");
         Label footer = new Label("Plus automatic computed totals: {{subtotal}} {{cgst}} {{sgst}} {{igst}} {{grand_total}} {{amount_in_words}} {{balance_due}} {{paid_amount}} {{amount_paid_words}}...");
-        footer.setStyle("-fx-font-size: 11px; -fx-text-fill: #8E9EB5;");
-        footerBox.getChildren().addAll(infoIcon, footer);
+        footer.getStyleClass().add("kpi-subtext");
+        footerBox.getChildren().addAll(footer);
 
         card.getChildren().addAll(head, grid, footerBox);
         getChildren().add(card);
@@ -281,17 +250,14 @@ public class VariablesView extends VBox {
     }
 
     private void buildCustomListSection() {
-        VBox card = new VBox(14);
-        card.getStyleClass().add("card-pane");
-        card.setPadding(new Insets(18, 20, 18, 20));
+        VBox card = UiTheme.card(14);
 
         HBox head = new HBox(8);
         head.setAlignment(Pos.CENTER_LEFT);
         Label title = new Label("YOUR CUSTOM VARIABLES");
         title.getStyleClass().add("card-title");
-        title.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #E2E8F0;");
-        Label subHint = new Label("User-defined placeholders available across templates");
-        subHint.setStyle("-fx-font-size: 11px; -fx-text-fill: #8E9EB5;");
+        Label subHint = new Label("· User-defined placeholders available across templates");
+        subHint.getStyleClass().add("kpi-subtext");
         head.getChildren().addAll(title, subHint);
 
         customVarsContainer.setSpacing(6);
@@ -308,21 +274,18 @@ public class VariablesView extends VBox {
     private void renderBuyerFields() {
         buyerFieldsContainer.getChildren().clear();
         try {
-            Settings s = settingsDao.get();
+            Settings s = app.getData().getSettings();
             List<BuyerFieldDef> fields = s != null && s.getBuyerFields() != null ? s.getBuyerFields() : List.of();
             if (fields.isEmpty()) return;
 
-            VBox card = new VBox(14);
-            card.getStyleClass().add("card-pane");
-            card.setPadding(new Insets(18, 20, 18, 20));
+            VBox card = UiTheme.card(14);
 
             HBox head = new HBox(8);
             head.setAlignment(Pos.CENTER_LEFT);
             Label title = new Label("BUYER CUSTOM FIELDS");
             title.getStyleClass().add("card-title");
-            title.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #E2E8F0;");
             Label count = new Label("· " + fields.size() + " CONFIGURED (Defined in Settings)");
-            count.setStyle("-fx-font-size: 11px; -fx-font-weight: 600; -fx-text-fill: #8E9EB5;");
+            count.getStyleClass().add("kpi-subtext");
             head.getChildren().addAll(title, count);
 
             GridPane grid = new GridPane();
@@ -340,24 +303,17 @@ public class VariablesView extends VBox {
                 HBox item = new HBox(10);
                 item.setAlignment(Pos.CENTER_LEFT);
                 item.setPadding(new Insets(7, 12, 7, 12));
-                item.setStyle("-fx-background-color: #12161E; -fx-border-color: #1E2633; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;");
-                item.setOnMouseEntered(e -> item.setStyle("-fx-background-color: #171E29; -fx-border-color: #2D3A4D; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;"));
-                item.setOnMouseExited(e -> item.setStyle("-fx-background-color: #12161E; -fx-border-color: #1E2633; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;"));
+                item.getStyleClass().add("card-pane-subtle");
 
                 HBox left = new HBox(6);
                 left.setAlignment(Pos.CENTER_LEFT);
                 Label lbl = new Label(bf.getLabel());
-                lbl.setStyle("-fx-font-size: 12px; -fx-font-weight: 500; -fx-text-fill: #E2E8F0;");
-
-                Label typeBadge = new Label(bf.getType() != null ? bf.getType().toUpperCase() : "TEXT");
-                typeBadge.setStyle("-fx-font-size: 9px; -fx-font-weight: bold; -fx-text-fill: #94A3B8; -fx-background-color: #1E2738; -fx-background-radius: 3; -fx-padding: 1 5;");
+                Label typeBadge = UiTheme.pill(bf.getType() != null ? bf.getType().toUpperCase() : "TEXT");
                 left.getChildren().addAll(lbl, typeBadge);
                 left.setMaxWidth(Double.MAX_VALUE);
                 HBox.setHgrow(left, Priority.ALWAYS);
 
-                Label keyPill = new Label("{{buyer_" + bf.getKey() + "}}");
-                keyPill.getStyleClass().add("code-pill");
-                keyPill.setStyle("-fx-font-family: monospace; -fx-font-size: 11px; -fx-text-fill: #D9A13B; -fx-background-color: #1A212C; -fx-border-color: rgba(217, 161, 59, 0.25); -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 7;");
+                Label keyPill = UiTheme.codePill("{{buyer_" + bf.getKey() + "}}");
 
                 item.getChildren().addAll(left, keyPill);
                 grid.add(item, col, row);
@@ -379,53 +335,40 @@ public class VariablesView extends VBox {
     private void renderCustomList() {
         customVarsContainer.getChildren().clear();
         try {
-            List<VariableDef> list = variableDao.findAll();
+            List<VariableDef> list = app.getData().variables().getAllVariables();
             if (list.isEmpty()) {
-                VBox empty = new VBox(10);
-                empty.setAlignment(Pos.CENTER);
-                empty.setPadding(new Insets(32, 20, 32, 20));
-                empty.setStyle("-fx-background-color: #12161D; -fx-border-color: #1E2633; -fx-border-width: 1; -fx-border-style: dashed; -fx-border-radius: 8; -fx-background-radius: 8;");
-                Label ic = IconHelper.createIconLabel(IconHelper.ICON_VARIABLE, 32, "#3A4456");
-                Label txt = new Label("No custom variables created yet");
-                txt.setStyle("-fx-font-size: 13px; -fx-font-weight: 600; -fx-text-fill: #CBD5E1;");
-                Label subTxt = new Label("Use the form above to add custom placeholders for your invoices");
-                subTxt.setStyle("-fx-font-size: 11px; -fx-text-fill: #64748B;");
-                empty.getChildren().addAll(ic, txt, subTxt);
-                customVarsContainer.getChildren().add(empty);
+                customVarsContainer.getChildren().add(UiTheme.emptyState("χ",
+                        "No custom variables created yet",
+                        "Use the form above to add custom placeholders for your invoices"));
                 return;
             }
 
-            // Header row with precise column widths matching data rows
+            // Header row
             HBox th = new HBox(16);
             th.setAlignment(Pos.CENTER_LEFT);
             th.getStyleClass().add("table-header-row");
             th.setPadding(new Insets(10, 16, 10, 16));
-            th.setStyle("-fx-background-color: #141A24; -fx-border-color: #232B38; -fx-border-width: 0 0 1 0; -fx-background-radius: 6 6 0 0;");
 
             Label hLabel = new Label("VARIABLE LABEL");
             hLabel.getStyleClass().add("table-th");
-            hLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
             hLabel.setMinWidth(180);
             hLabel.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(hLabel, Priority.ALWAYS);
 
             Label hKey = new Label("PLACEHOLDER KEY");
             hKey.getStyleClass().add("table-th");
-            hKey.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
             hKey.setPrefWidth(260);
             hKey.setMinWidth(260);
             hKey.setMaxWidth(260);
 
             Label hType = new Label("DATA TYPE");
             hType.getStyleClass().add("table-th");
-            hType.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
             hType.setPrefWidth(110);
             hType.setMinWidth(110);
             hType.setMaxWidth(110);
 
             Label hAct = new Label("ACTION");
             hAct.getStyleClass().add("table-th");
-            hAct.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5;");
             hAct.setPrefWidth(80);
             hAct.setMinWidth(80);
             hAct.setMaxWidth(80);
@@ -439,50 +382,38 @@ public class VariablesView extends VBox {
                 row.setAlignment(Pos.CENTER_LEFT);
                 row.getStyleClass().add("table-data-row");
                 row.setPadding(new Insets(10, 16, 10, 16));
-                row.setStyle("-fx-background-color: #12161D; -fx-border-color: #1A222D; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;");
-                row.setOnMouseEntered(e -> row.setStyle("-fx-background-color: #171E29; -fx-border-color: #2D3A4D; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;"));
-                row.setOnMouseExited(e -> row.setStyle("-fx-background-color: #12161D; -fx-border-color: #1A222D; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;"));
 
                 // Column 1: Label
                 Label lbl = new Label(vd.getLabel());
-                lbl.setStyle("-fx-font-size: 13px; -fx-font-weight: 600; -fx-text-fill: #F4F4F5;");
+                lbl.getStyleClass().add("table-cell-title");
                 lbl.setMinWidth(180);
                 lbl.setMaxWidth(Double.MAX_VALUE);
                 HBox.setHgrow(lbl, Priority.ALWAYS);
 
-                // Column 2: Placeholder Key Container (exact width 260px)
+                // Column 2: Placeholder Key (fixed width)
                 HBox keyCol = new HBox();
                 keyCol.setAlignment(Pos.CENTER_LEFT);
                 keyCol.setPrefWidth(260);
                 keyCol.setMinWidth(260);
                 keyCol.setMaxWidth(260);
+                keyCol.getChildren().add(UiTheme.codePill("{{" + vd.getKey() + "}}"));
 
-                Label keyPill = new Label("{{" + vd.getKey() + "}}");
-                keyPill.getStyleClass().add("code-pill");
-                keyPill.setStyle("-fx-font-family: monospace; -fx-font-size: 11px; -fx-text-fill: #D9A13B; -fx-background-color: #1A212C; -fx-border-color: rgba(217, 161, 59, 0.25); -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 3 8;");
-                keyCol.getChildren().add(keyPill);
-
-                // Column 3: Type Container (exact width 110px)
+                // Column 3: Type (fixed width)
                 HBox typeCol = new HBox();
                 typeCol.setAlignment(Pos.CENTER_LEFT);
                 typeCol.setPrefWidth(110);
                 typeCol.setMinWidth(110);
                 typeCol.setMaxWidth(110);
+                typeCol.getChildren().add(UiTheme.pill(vd.getType() != null ? vd.getType().toUpperCase() : "TEXT"));
 
-                Label typeBadge = new Label(vd.getType() != null ? vd.getType().toUpperCase() : "TEXT");
-                typeBadge.getStyleClass().add("badge-neutral");
-                typeBadge.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #94A3B8; -fx-background-color: #1E2738; -fx-background-radius: 4; -fx-padding: 3 8;");
-                typeCol.getChildren().add(typeBadge);
-
-                // Column 4: Action Container (exact width 80px)
+                // Column 4: Action (fixed width)
                 HBox actCol = new HBox();
                 actCol.setAlignment(Pos.CENTER_RIGHT);
                 actCol.setPrefWidth(80);
                 actCol.setMinWidth(80);
                 actCol.setMaxWidth(80);
 
-                Button del = new Button();
-                del.setGraphic(IconHelper.createIconLabel(IconHelper.ICON_TRASH, 14, "#EF4444"));
+                Button del = new Button("🗑");
                 del.getStyleClass().add("button-icon-subtle");
                 del.setTooltip(new Tooltip("Delete variable"));
                 del.setOnAction(e -> {
@@ -494,10 +425,9 @@ public class VariablesView extends VBox {
                     confirm.showAndWait().ifPresent(res -> {
                         if (res == ButtonType.YES) {
                             try {
-                                variableDao.deleteVariable(vd.getKey());
+                                app.getData().variables().deleteVariable(vd.getKey());
                                 Toast.show(this, "Variable Deleted", "Variable {{" + vd.getKey() + "}} was removed.", false);
                                 reload();
-                                if (onReload != null) onReload.run();
                             } catch (Exception ex) {
                                 Toast.show(this, "Delete Failed", ex.getMessage(), true);
                             }

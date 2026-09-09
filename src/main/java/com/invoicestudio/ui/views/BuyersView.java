@@ -1,8 +1,5 @@
 package com.invoicestudio.ui.views;
 
-import com.invoicestudio.db.BillDao;
-import com.invoicestudio.db.BuyerDao;
-import com.invoicestudio.db.SettingsDao;
 import com.invoicestudio.model.Bill;
 import com.invoicestudio.model.BillPayment;
 import com.invoicestudio.model.BillStatus;
@@ -11,9 +8,9 @@ import com.invoicestudio.model.BuyerFieldDef;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.service.CsvService;
 import com.invoicestudio.ui.DialogHelper;
-import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
+import com.invoicestudio.ui.UiTheme;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -30,30 +27,36 @@ import java.io.FileWriter;
 import java.nio.file.Files;
 import java.time.LocalDate;
 import java.util.*;
-import java.util.stream.Collectors;
 
+/**
+ * Buyer & Customer Directory — v3 redesign.
+ *
+ * PERFORMANCE FIX (this was the app's worst bottleneck):
+ * The old build computed "bills of this buyer" with a full {@code getAllBills()}
+ * DB scan INSIDE every table-cell renderer — hundreds of scans per frame.
+ * Now: a single buyer→bills map is built once per refresh from the DataManager
+ * cache and every cell / KPI reads from it.
+ */
 public class BuyersView extends BorderPane {
 
     private final StudioApp app;
-    private final BuyerDao buyerDao;
-    private final BillDao billDao;
-    private final SettingsDao settingsDao;
 
     private final TableView<Buyer> table = new TableView<>();
     private FilteredList<Buyer> filteredBuyers;
     private final TextField searchField = new TextField();
     private final Label resultCountLbl = new Label("0 customers");
 
-    // KPI Summary Header Cards
-    private final Label statTotalBuyers = new Label("0");
-    private final Label statTotalDue = new Label("₹0.00");
-    private final Label statGstRegistered = new Label("0");
+    // KPI Summary values
+    private final Label statTotalBuyers = UiTheme.kpiValue("0");
+    private final Label statTotalDue = UiTheme.kpiValue("₹0.00");
+    private final Label statGstRegistered = UiTheme.kpiValue("0");
+
+    /** Built once per refresh: buyer name (lower-case) → their bills. */
+    private Map<String, List<Bill>> billsByBuyer = Map.of();
+    private List<Buyer> allBuyers = List.of();
 
     public BuyersView(StudioApp app) {
         this.app = app;
-        this.buyerDao = new BuyerDao(app.getDb());
-        this.billDao = new BillDao(app.getDb());
-        this.settingsDao = new SettingsDao(app.getDb());
 
         setPadding(new Insets(24));
         getStyleClass().add("bg-app");
@@ -66,11 +69,23 @@ public class BuyersView extends BorderPane {
 
     public void refresh() {
         rebuildTableColumns();
-        List<Buyer> list = buyerDao.getAllBuyers();
-        filteredBuyers = new FilteredList<>(FXCollections.observableArrayList(list), b -> true);
+        allBuyers = app.getData().buyers().getAllBuyers();
+
+        // ONE pass over cached bills → buyer→bills map (was per-cell before!)
+        List<Bill> allBills = app.getData().getAllBills();
+        Map<String, List<Bill>> map = new HashMap<>();
+        for (Bill bill : allBills) {
+            String buyer = bill.getVariables().getOrDefault("buyer_name", "");
+            if (!buyer.isBlank()) {
+                map.computeIfAbsent(buyer.toLowerCase(), k -> new ArrayList<>()).add(bill);
+            }
+        }
+        billsByBuyer = map;
+
+        filteredBuyers = new FilteredList<>(FXCollections.observableArrayList(allBuyers), b -> true);
         table.setItems(filteredBuyers);
         applyFilter();
-        updateSummaryStats(list);
+        updateSummaryStats(allBuyers, allBills);
     }
 
     private Node createTopBar() {
@@ -85,40 +100,36 @@ public class BuyersView extends BorderPane {
         Label title = new Label("Buyer & Customer Directory");
         title.getStyleClass().add("heading-l");
         Label subtitle = new Label("Manage customer profiles, place of supply, billing statements & custom fields.");
-        subtitle.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
+        subtitle.getStyleClass().add("view-subtitle");
         titleBox.getChildren().addAll(title, subtitle);
 
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
-        Button sampleCsvBtn = new Button("Sample CSV");
-        sampleCsvBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        Button sampleCsvBtn = UiTheme.smallBtn("Sample CSV");
         sampleCsvBtn.setTooltip(new Tooltip("Download sample CSV spreadsheet structure for buyers"));
         sampleCsvBtn.setOnAction(e -> downloadSampleCsv());
 
-        Button importCsvBtn = new Button("Import CSV");
-        importCsvBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        Button importCsvBtn = UiTheme.smallBtn("Import CSV");
         importCsvBtn.setTooltip(new Tooltip("Bulk import buyers from CSV spreadsheet"));
         importCsvBtn.setOnAction(e -> showImportDialog());
 
-        Button exportCsvBtn = new Button("Export CSV");
-        exportCsvBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        Button exportCsvBtn = UiTheme.smallBtn("Export CSV");
         exportCsvBtn.setTooltip(new Tooltip("Export customer directory including all custom fields to CSV"));
         exportCsvBtn.setOnAction(e -> exportBuyersCsv());
 
-        Button addBtn = new Button("+ Add Buyer");
-        addBtn.getStyleClass().addAll("gold-btn");
+        Button addBtn = UiTheme.goldBtn("+ Add Buyer");
         addBtn.setTooltip(new Tooltip("Create a new customer profile"));
         addBtn.setOnAction(e -> showBuyerFormDialog(null));
 
         bar1.getChildren().addAll(titleBox, sp, sampleCsvBtn, importCsvBtn, exportCsvBtn, addBtn);
 
-        // 2. Modern 3-Card KPI Summary Banner
+        // 2. KPI Summary Banner
         HBox statsGrid = new HBox(16);
         statsGrid.getChildren().addAll(
-                buildMetricCard("TOTAL CUSTOMERS", statTotalBuyers, "Active directory profiles", "#D9A13B"),
-                buildMetricCard("OUTSTANDING DUE", statTotalDue, "Total pending receivables", "#F87171"),
-                buildMetricCard("GST REGISTERED", statGstRegistered, "Profiles with verified GSTIN", "#34D399")
+                UiTheme.kpiCard("TOTAL CUSTOMERS", statTotalBuyers, "Active directory profiles", "accent-gold"),
+                UiTheme.kpiCard("OUTSTANDING DUE", statTotalDue, "Total pending receivables", "accent-red"),
+                UiTheme.kpiCard("GST REGISTERED", statGstRegistered, "Profiles with verified GSTIN", "accent-emerald")
         );
 
         // 3. Search and Quick Filter Bar
@@ -127,18 +138,17 @@ public class BuyersView extends BorderPane {
 
         searchField.setPromptText("Search by Customer Name, Phone, GSTIN, State or Custom Fields...");
         searchField.setPrefWidth(420);
-        searchField.getStyleClass().add("text-field");
+        searchField.getStyleClass().add("search-field");
         searchField.textProperty().addListener((obs, o, v) -> applyFilter());
 
-        Button clearSearchBtn = new Button("✕");
-        clearSearchBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        Button clearSearchBtn = UiTheme.smallBtn("✕");
         clearSearchBtn.setTooltip(new Tooltip("Clear search filter"));
         clearSearchBtn.setOnAction(e -> searchField.clear());
 
         Region filterSp = new Region();
         HBox.setHgrow(filterSp, Priority.ALWAYS);
 
-        resultCountLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #94A3B8;");
+        resultCountLbl.getStyleClass().add("result-count");
 
         filterRow.getChildren().addAll(searchField, clearSearchBtn, filterSp, resultCountLbl);
 
@@ -146,32 +156,14 @@ public class BuyersView extends BorderPane {
         return box;
     }
 
-    private Node buildMetricCard(String labelText, Label valLbl, String subText, String accentColor) {
-        VBox card = new VBox(4);
-        card.setPadding(new Insets(12, 16, 12, 16));
-        card.setStyle("-fx-background-color: #12161E; -fx-border-color: #1E2738; -fx-border-width: 1; -fx-border-radius: 8; -fx-background-radius: 8;");
-        HBox.setHgrow(card, Priority.ALWAYS);
-
-        Label lbl = new Label(labelText);
-        lbl.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #8E9EB5; -fx-letter-spacing: 1.2;");
-
-        valLbl.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: " + accentColor + ";");
-
-        Label sub = new Label(subText);
-        sub.setStyle("-fx-font-size: 10px; -fx-text-fill: #64748B;");
-
-        card.getChildren().addAll(lbl, valLbl, sub);
-        return card;
-    }
-
-    private void updateSummaryStats(List<Buyer> buyers) {
+    private void updateSummaryStats(List<Buyer> buyers, List<Bill> allBills) {
         if (buyers == null) buyers = List.of();
         statTotalBuyers.setText(String.valueOf(buyers.size()));
 
         long gstCount = buyers.stream().filter(b -> b.getGst() != null && !b.getGst().isBlank()).count();
         statGstRegistered.setText(gstCount + " of " + buyers.size());
 
-        List<Bill> allBills = billDao.getAllBills();
+        String cur = app.getData().getSettings().getCurrency();
         double totalDue = 0;
         for (Bill bill : allBills) {
             if (bill.getStatus() == BillStatus.CANCELLED) continue;
@@ -179,7 +171,7 @@ public class BuyersView extends BorderPane {
             if (paid == 0 && bill.getStatus() == BillStatus.PAID) continue;
             totalDue += Math.max(0, bill.getTotals().getGrandTotal() - paid);
         }
-        statTotalDue.setText(String.format("₹%.2f", totalDue));
+        statTotalDue.setText(String.format("%s%.2f", cur, totalDue));
     }
 
     private Node createTableArea() {
@@ -187,16 +179,8 @@ public class BuyersView extends BorderPane {
         table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
 
         // Empty state placeholder
-        VBox emptyBox = new VBox(10);
-        emptyBox.setAlignment(Pos.CENTER);
-        emptyBox.setPadding(new Insets(30));
-        Label emptyIcon = new Label("👥");
-        emptyIcon.setStyle("-fx-font-size: 32px;");
-        Label emptyTitle = new Label("No Customer Profiles Found");
-        emptyTitle.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #94A3B8;");
-        Label emptySub = new Label("Click '+ Add Buyer' or adjust your search filter to find records.");
-        emptySub.setStyle("-fx-font-size: 11px; -fx-text-fill: #64748B;");
-        emptyBox.getChildren().addAll(emptyIcon, emptyTitle, emptySub);
+        VBox emptyBox = UiTheme.emptyState("👥", "No Customer Profiles Found",
+                "Click '+ Add Buyer' or adjust your search filter to find records.");
         table.setPlaceholder(emptyBox);
 
         rebuildTableColumns();
@@ -227,17 +211,17 @@ public class BuyersView extends BorderPane {
 
                     String initial = !b.getName().isBlank() ? b.getName().substring(0, 1).toUpperCase() : "C";
                     Label avatar = new Label(initial);
-                    avatar.setStyle("-fx-background-color: #1A222D; -fx-text-fill: #D9A13B; -fx-font-weight: bold; -fx-font-size: 11px; -fx-min-width: 26; -fx-min-height: 26; -fx-alignment: CENTER; -fx-background-radius: 13; -fx-border-color: rgba(217,161,59,0.3); -fx-border-radius: 13;");
+                    avatar.getStyleClass().add("avatar-circle");
 
                     VBox textBox = new VBox(2);
                     Label nameLbl = new Label(b.getName());
-                    nameLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: #F4F4F5;");
+                    nameLbl.getStyleClass().add("table-cell-title");
 
                     String sub = b.getAddress() != null && !b.getAddress().isBlank()
                             ? (b.getAddress().length() > 32 ? b.getAddress().substring(0, 30) + "…" : b.getAddress())
                             : (b.getPhone() != null && !b.getPhone().isBlank() ? b.getPhone() : "No address specified");
                     Label subLbl = new Label(sub);
-                    subLbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #8E9EB5;");
+                    subLbl.getStyleClass().add("kpi-subtext");
 
                     textBox.getChildren().addAll(nameLbl, subLbl);
                     box.getChildren().addAll(avatar, textBox);
@@ -251,14 +235,13 @@ public class BuyersView extends BorderPane {
         colPhone.setPrefWidth(120);
         colPhone.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getPhone() != null && !d.getValue().getPhone().isBlank() ? d.getValue().getPhone() : "—"));
         colPhone.setCellFactory(col -> new TableCell<>() {
+            {
+                getStyleClass().add("table-cell-mono");
+            }
             @Override
             protected void updateItem(String s, boolean empty) {
                 super.updateItem(s, empty);
-                if (empty || s == null) setText(null);
-                else {
-                    setText(s);
-                    setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 12px; -fx-alignment: CENTER_LEFT;");
-                }
+                setText(empty || s == null ? null : s);
             }
         });
 
@@ -274,12 +257,10 @@ public class BuyersView extends BorderPane {
                     setGraphic(null);
                     setText(null);
                 } else if (gst == null || gst.isBlank()) {
-                    Label unreg = new Label("Unregistered");
-                    unreg.setStyle("-fx-font-size: 10px; -fx-text-fill: #64748B; -fx-padding: 2 6; -fx-background-color: #151B25; -fx-background-radius: 4;");
-                    setGraphic(unreg);
+                    setGraphic(UiTheme.pill("Unregistered"));
                 } else {
                     Label badge = new Label(gst);
-                    badge.setStyle("-fx-font-family: monospace; -fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #D9A13B; -fx-background-color: #1A222D; -fx-border-color: rgba(217,161,59,0.3); -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 6;");
+                    badge.getStyleClass().add("gstin-badge");
                     setGraphic(badge);
                 }
             }
@@ -295,23 +276,12 @@ public class BuyersView extends BorderPane {
             if (!code.isEmpty()) return new SimpleStringProperty("Code: " + code);
             return new SimpleStringProperty(!st.isEmpty() ? st : "—");
         });
-        colState.setCellFactory(col -> new TableCell<>() {
-            @Override
-            protected void updateItem(String s, boolean empty) {
-                super.updateItem(s, empty);
-                if (empty || s == null) setText(null);
-                else {
-                    setText(s);
-                    setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 12px; -fx-alignment: CENTER_LEFT;");
-                }
-            }
-        });
 
-        // Add base columns
+        // Base columns
         table.getColumns().addAll(colName, colPhone, colGst, colState);
 
         // 5. Dynamic Custom Buyer Fields (Configured in Settings!)
-        Settings settings = settingsDao.getSettings();
+        Settings settings = app.getData().getSettings();
         List<BuyerFieldDef> customDefs = settings != null && settings.getBuyerFields() != null ? settings.getBuyerFields() : List.of();
         for (BuyerFieldDef def : customDefs) {
             TableColumn<Buyer, String> colCust = new TableColumn<>(def.getLabel());
@@ -327,58 +297,28 @@ public class BuyersView extends BorderPane {
                 }
                 return new SimpleStringProperty(val != null && !val.isBlank() ? val : "—");
             });
-            colCust.setCellFactory(col -> new TableCell<>() {
-                @Override
-                protected void updateItem(String val, boolean empty) {
-                    super.updateItem(val, empty);
-                    if (empty || val == null) {
-                        setText(null);
-                        setGraphic(null);
-                    } else if ("—".equals(val)) {
-                        setText("—");
-                        setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px; -fx-alignment: CENTER_LEFT;");
-                    } else {
-                        Label tag = new Label(val);
-                        tag.setStyle("-fx-font-size: 11px; -fx-text-fill: #E2E8F0; -fx-background-color: #171F2C; -fx-border-color: #28354A; -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 6;");
-                        setGraphic(tag);
-                        setText(null);
-                    }
-                }
-            });
             table.getColumns().add(colCust);
         }
 
         // 6. Total Billed Column
         TableColumn<Buyer, Double> colBilled = new TableColumn<>("Total Billed");
         colBilled.setPrefWidth(120);
-        colBilled.setCellValueFactory(d -> {
-            double billed = getBuyerBills(d.getValue()).stream().mapToDouble(b -> b.getTotals().getGrandTotal()).sum();
-            return new SimpleObjectProperty<>(billed);
-        });
+        colBilled.setCellValueFactory(d -> new SimpleObjectProperty<>(getBuyerBilled(d.getValue())));
         colBilled.setCellFactory(col -> new TableCell<>() {
+            {
+                getStyleClass().add("table-cell-mono");
+            }
             @Override
             protected void updateItem(Double amt, boolean empty) {
                 super.updateItem(amt, empty);
-                if (empty || amt == null) setText(null);
-                else {
-                    setText(String.format("₹%.2f", amt));
-                    setStyle("-fx-text-fill: #E2E8F0; -fx-font-weight: bold; -fx-font-size: 12px; -fx-alignment: CENTER_RIGHT;");
-                }
+                setText(empty || amt == null ? null : String.format("%s%.2f", app.getData().getSettings().getCurrency(), amt));
             }
         });
 
         // 7. Balance Due Column (with settled / due pill badges)
         TableColumn<Buyer, Double> colDue = new TableColumn<>("Balance Due");
         colDue.setPrefWidth(130);
-        colDue.setCellValueFactory(d -> {
-            List<Bill> bills = getBuyerBills(d.getValue());
-            double totalDue = bills.stream().mapToDouble(b -> {
-                double paid = b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
-                if (paid == 0 && b.getStatus() == BillStatus.PAID) return 0;
-                return Math.max(0, b.getTotals().getGrandTotal() - paid);
-            }).sum();
-            return new SimpleObjectProperty<>(totalDue);
-        });
+        colDue.setCellValueFactory(d -> new SimpleObjectProperty<>(getBuyerDue(d.getValue())));
         colDue.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(Double due, boolean empty) {
@@ -387,13 +327,9 @@ public class BuyersView extends BorderPane {
                     setGraphic(null);
                     setText(null);
                 } else if (due <= 0.001) {
-                    Label settled = new Label("✓ Settled");
-                    settled.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #34D399; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-border-color: rgba(16, 185, 129, 0.35); -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 2 8;");
-                    setGraphic(settled);
+                    setGraphic(UiTheme.statusPill("✓ Settled", "success"));
                 } else {
-                    Label dueBadge = new Label(String.format("₹%.2f Due", due));
-                    dueBadge.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #F87171; -fx-background-color: rgba(239, 68, 68, 0.15); -fx-border-color: rgba(239, 68, 68, 0.35); -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 2 8;");
-                    setGraphic(dueBadge);
+                    setGraphic(UiTheme.statusPill(String.format("%s%.2f Due", app.getData().getSettings().getCurrency(), due), "danger"));
                 }
             }
         });
@@ -427,9 +363,8 @@ public class BuyersView extends BorderPane {
                 delBtn.setOnAction(e -> {
                     Buyer b = getTableRow().getItem();
                     if (b != null) {
-                        buyerDao.deleteBuyer(b.getId());
+                        app.getData().buyers().deleteBuyer(b.getId());
                         refresh();
-                        app.reloadAllData();
                         Toast.show(app.getRootPane(), "Buyer Deleted", b.getName() + " removed.", false);
                     }
                 });
@@ -470,16 +405,31 @@ public class BuyersView extends BorderPane {
         });
 
         int visible = filteredBuyers.size();
-        int total = buyerDao.getAllBuyers().size();
+        int total = allBuyers.size();
         resultCountLbl.setText("Showing " + visible + " of " + total + " customers");
     }
 
     private List<Bill> getBuyerBills(Buyer b) {
-        if (b == null) return List.of();
-        return billDao.getAllBills().stream()
-                .filter(bill -> b.getName().equalsIgnoreCase(bill.getVariables().getOrDefault("buyer_name", "")))
-                .collect(Collectors.toList());
+        if (b == null || b.getName() == null) return List.of();
+        return billsByBuyer.getOrDefault(b.getName().toLowerCase(), List.of());
     }
+
+    private double getBuyerBilled(Buyer b) {
+        return getBuyerBills(b).stream().mapToDouble(bi -> bi.getTotals().getGrandTotal()).sum();
+    }
+
+    private double getBuyerDue(Buyer b) {
+        return getBuyerBills(b).stream().mapToDouble(bi -> {
+            double paid = bi.getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
+            if (paid == 0 && bi.getStatus() == BillStatus.PAID) return 0;
+            if (bi.getStatus() == BillStatus.CANCELLED) return 0;
+            return Math.max(0, bi.getTotals().getGrandTotal() - paid);
+        }).sum();
+    }
+
+    // ------------------------------------------------------------------
+    // Buyer form dialog
+    // ------------------------------------------------------------------
 
     private void showBuyerFormDialog(Buyer existing) {
         Dialog<Buyer> dlg = new Dialog<>();
@@ -520,7 +470,7 @@ public class BuyersView extends BorderPane {
         stateF.setPromptText("e.g. Maharashtra");
         HBox.setHgrow(stateF, Priority.ALWAYS);
         Label scLbl = new Label("Code:");
-        scLbl.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+        scLbl.getStyleClass().add("kpi-subtext");
         stateBox.getChildren().addAll(stateF, scLbl, stateCodeF);
 
         g.add(new Label("Customer Name:"), 0, 0); g.add(nameF, 1, 0);
@@ -530,7 +480,7 @@ public class BuyersView extends BorderPane {
         g.add(new Label("Place of Supply:"), 0, 4); g.add(stateBox, 1, 4);
 
         // Query custom buyer fields defined under Settings
-        Settings settings = settingsDao.getSettings();
+        Settings settings = app.getData().getSettings();
         List<BuyerFieldDef> defs = settings != null && settings.getBuyerFields() != null ? settings.getBuyerFields() : List.of();
         Map<String, TextField> customInputs = new LinkedHashMap<>();
 
@@ -541,7 +491,7 @@ public class BuyersView extends BorderPane {
             g.add(sep, 0, rowIdx++, 2, 1);
 
             Label customSecHeader = new Label("Custom Fields (from Settings):");
-            customSecHeader.setStyle("-fx-font-weight: bold; -fx-text-fill: #D9A13B; -fx-font-size: 11px;");
+            customSecHeader.getStyleClass().add("section-eyebrow");
             g.add(customSecHeader, 0, rowIdx++, 2, 1);
 
             Map<String, String> existingCustom = existing != null && existing.getCustom() != null ? existing.getCustom() : Map.of();
@@ -551,9 +501,7 @@ public class BuyersView extends BorderPane {
                 cf.setPromptText(def.getLabel() + " (" + (def.getType() != null ? def.getType() : "text") + ")");
                 customInputs.put(def.getKey(), cf);
 
-                Label fLbl = new Label(def.getLabel() + ":");
-                fLbl.setStyle("-fx-text-fill: #E2E8F0;");
-                g.add(fLbl, 0, rowIdx);
+                g.add(new Label(def.getLabel() + ":"), 0, rowIdx);
                 g.add(cf, 1, rowIdx);
                 rowIdx++;
             }
@@ -585,17 +533,20 @@ public class BuyersView extends BorderPane {
                 Toast.show(app.getRootPane(), "Validation Error", "Name is required.", true);
                 return;
             }
-            buyerDao.saveBuyer(b);
+            app.getData().buyers().saveBuyer(b);
             refresh();
-            app.reloadAllData();
             Toast.show(app.getRootPane(), "Buyer Saved", b.getName() + " saved.", false);
         });
     }
 
+    // ------------------------------------------------------------------
+    // Statement / ledger dialog
+    // ------------------------------------------------------------------
+
     private void showStatementDialog(Buyer b) {
         if (b == null) return;
+        String cur = app.getData().getSettings().getCurrency();
         List<Bill> bills = getBuyerBills(b);
-        Settings settings = settingsDao.getSettings();
 
         Dialog<Void> dlg = new Dialog<>();
         dlg.setTitle("Account Statement — " + b.getName());
@@ -609,6 +560,8 @@ public class BuyersView extends BorderPane {
 
         TableView<Bill> stTable = new TableView<>();
         stTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        stTable.getStyleClass().add("table-view");
+
         TableColumn<Bill, String> cDate = new TableColumn<>("Date");
         cDate.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getDate()));
         cDate.setPrefWidth(95);
@@ -618,23 +571,23 @@ public class BuyersView extends BorderPane {
         cNo.setPrefWidth(110);
 
         TableColumn<Bill, String> cTotal = new TableColumn<>("Grand Total");
-        cTotal.setCellValueFactory(d -> new SimpleStringProperty(String.format("₹%.2f", d.getValue().getTotals().getGrandTotal())));
+        cTotal.setCellValueFactory(d -> new SimpleStringProperty(String.format("%s%.2f", cur, d.getValue().getTotals().getGrandTotal())));
         cTotal.setPrefWidth(120);
 
         TableColumn<Bill, String> cPaid = new TableColumn<>("Paid");
         cPaid.setCellValueFactory(d -> {
             double p = d.getValue().getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
             if (p == 0 && d.getValue().getStatus() == BillStatus.PAID) p = d.getValue().getTotals().getGrandTotal();
-            return new SimpleStringProperty(String.format("₹%.2f", p));
+            return new SimpleStringProperty(String.format("%s%.2f", cur, p));
         });
         cPaid.setPrefWidth(110);
 
         TableColumn<Bill, String> cBal = new TableColumn<>("Balance Due");
         cBal.setCellValueFactory(d -> {
             double p = d.getValue().getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
-            if (p == 0 && d.getValue().getStatus() == BillStatus.PAID) return new SimpleStringProperty("₹0.00");
+            if (p == 0 && d.getValue().getStatus() == BillStatus.PAID) return new SimpleStringProperty(String.format("%s%.2f", cur, 0.0));
             double bal = Math.max(0, d.getValue().getTotals().getGrandTotal() - p);
-            return new SimpleStringProperty(String.format("₹%.2f", bal));
+            return new SimpleStringProperty(String.format("%s%.2f", cur, bal));
         });
         cBal.setPrefWidth(120);
 
@@ -656,13 +609,15 @@ public class BuyersView extends BorderPane {
 
         HBox summary = new HBox(20);
         summary.setAlignment(Pos.CENTER_RIGHT);
-        summary.setStyle("-fx-background-color: #12161E; -fx-padding: 10 14; -fx-border-color: #1E2738; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;");
-        Label lBilled = new Label(String.format("Total Billed: ₹%.2f", sumBilled));
-        lBilled.setStyle("-fx-font-weight: bold; -fx-text-fill: #E2E8F0;");
-        Label lPaid = new Label(String.format("Paid: ₹%.2f", sumPaid));
-        lPaid.setStyle("-fx-font-weight: bold; -fx-text-fill: #34D399;");
-        Label lDue = new Label(String.format("Due: ₹%.2f", sumDue));
-        lDue.setStyle("-fx-font-weight: bold; -fx-text-fill: #F87171;");
+        summary.getStyleClass().add("card-pane-subtle");
+        summary.setPadding(new Insets(10, 14, 10, 14));
+
+        Label lBilled = new Label(String.format("Total Billed: %s%.2f", cur, sumBilled));
+        lBilled.getStyleClass().add("table-cell-title");
+        Label lPaid = new Label(String.format("Paid: %s%.2f", cur, sumPaid));
+        lPaid.getStyleClass().addAll("table-cell-title", "accent-emerald");
+        Label lDue = new Label(String.format("Due: %s%.2f", cur, sumDue));
+        lDue.getStyleClass().addAll("table-cell-title", "accent-red");
         summary.getChildren().addAll(lBilled, lPaid, lDue);
 
         content.getChildren().addAll(stTable, summary);
@@ -671,6 +626,10 @@ public class BuyersView extends BorderPane {
         DialogHelper.styleDialog(dlg, 600, 420);
         dlg.showAndWait();
     }
+
+    // ------------------------------------------------------------------
+    // CSV import / export
+    // ------------------------------------------------------------------
 
     private void showImportDialog() {
         FileChooser fc = new FileChooser();
@@ -699,7 +658,7 @@ public class BuyersView extends BorderPane {
             updateExistingCb.setSelected(true);
 
             Label info = new Label("Detected " + rows.size() + " total rows. Headers: " + String.join(", ", rows.get(0)));
-            info.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
+            info.getStyleClass().add("kpi-subtext");
 
             box.getChildren().addAll(info, updateExistingCb);
             dlg.getDialogPane().setContent(box);
@@ -709,7 +668,7 @@ public class BuyersView extends BorderPane {
             dlg.showAndWait().ifPresent(ans -> {
                 if (ans == ButtonType.OK) {
                     List<String> headers = rows.get(0);
-                    List<BuyerFieldDef> defs = settingsDao.getSettings().getBuyerFields();
+                    List<BuyerFieldDef> defs = app.getData().getSettings().getBuyerFields();
                     int imported = 0;
                     for (int i = 1; i < rows.size(); i++) {
                         List<String> r = rows.get(i);
@@ -721,7 +680,7 @@ public class BuyersView extends BorderPane {
                         String phone = r.size() > 3 ? r.get(3).trim() : "";
                         String state = r.size() > 4 ? r.get(4).trim() : "";
 
-                        Buyer existing = buyerDao.findByName(name);
+                        Buyer existing = app.getData().buyers().findByName(name);
                         if (existing != null && !updateExistingCb.isSelected()) continue;
 
                         String id = existing != null ? existing.getId() : "byr_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
@@ -744,11 +703,10 @@ public class BuyersView extends BorderPane {
                         }
                         b.setCustom(customMap);
 
-                        buyerDao.saveBuyer(b);
+                        app.getData().buyers().saveBuyer(b);
                         imported++;
                     }
                     refresh();
-                    app.reloadAllData();
                     Toast.show(app.getRootPane(), "Import Complete", "Successfully imported " + imported + " customers.", false);
                 }
             });
@@ -765,7 +723,7 @@ public class BuyersView extends BorderPane {
         File dest = fc.showSaveDialog(app.getPrimaryStage());
         if (dest != null) {
             try (FileWriter fw = new FileWriter(dest)) {
-                fw.write(CsvService.getSampleBuyerCsv(settingsDao.getSettings().getBuyerFields()));
+                fw.write(CsvService.getSampleBuyerCsv(app.getData().getSettings().getBuyerFields()));
                 Toast.show(app.getRootPane(), "Sample CSV Saved", "Saved to " + dest.getName(), false);
             } catch (Exception ex) {
                 Toast.show(app.getRootPane(), "Save Failed", ex.getMessage(), true);
@@ -781,7 +739,7 @@ public class BuyersView extends BorderPane {
         File dest = fc.showSaveDialog(app.getPrimaryStage());
         if (dest != null) {
             try (FileWriter fw = new FileWriter(dest)) {
-                fw.write(CsvService.exportBuyers(new ArrayList<>(filteredBuyers), settingsDao.getSettings().getBuyerFields()));
+                fw.write(CsvService.exportBuyers(new ArrayList<>(filteredBuyers), app.getData().getSettings().getBuyerFields()));
                 Toast.show(app.getRootPane(), "Export Successful", "Saved " + filteredBuyers.size() + " buyers.", false);
             } catch (Exception ex) {
                 Toast.show(app.getRootPane(), "Export Failed", ex.getMessage(), true);

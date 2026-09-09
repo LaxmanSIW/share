@@ -1,54 +1,77 @@
 package com.invoicestudio.ui;
 
-import com.invoicestudio.db.*;
+import com.invoicestudio.db.DatabaseManager;
 import com.invoicestudio.model.*;
 import com.invoicestudio.service.*;
 import com.invoicestudio.ui.views.*;
+import javafx.animation.FadeTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.control.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 
 import java.io.InputStream;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+/**
+ * InvoiceStudio — application shell (v3, "Obsidian & Gold").
+ *
+ * Production-hardened shell:
+ * - Sidebar navigation (VS Code style) with active gold indicator + hover states.
+ * - View caching: heavy views are built once and refreshed on show, navigation
+ *   is instant instead of rebuilding the whole scene graph per click.
+ * - Fade transition between views.
+ * - Window geometry persisted between runs (WindowStateManager).
+ * - All shared DAO access via DataManager (single connection surface, bill cache).
+ * - Startup work that touches the DB runs on a background executor.
+ */
 public class StudioApp extends Application {
 
     private Stage primaryStage;
     private StackPane rootPane;
     private BorderPane mainLayout;
     private StackPane mainContentPane;
+    private VBox sidebar;
 
-    private DatabaseManager db;
-    private BillDao billDao;
-    private TemplateDao templateDao;
-    private SettingsDao settingsDao;
-    private BuyerDao buyerDao;
-    private ItemDao itemDao;
-    private VariableDao variableDao;
+    private DataManager data;
     private BackupRestoreService backupService;
     private PrintingService printingService;
 
     private String currentView = "dashboard";
     private final Map<String, Button> navButtons = new HashMap<>();
+    private final Map<String, Node> viewCache = new HashMap<>();
+    private boolean sidebarCollapsed = false;
+
+    /** Single background worker for DB-touching tasks (SQLite is single-writer anyway). */
+    private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "invoicestudio-db");
+        t.setDaemon(true);
+        return t;
+    });
+
+    private record NavItem(String id, String label, String icon, Runnable action) {}
 
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
 
-        // 1. Initialize Database & DAOs
-        initDatabase();
+        initServices();
 
-        // 2. Build Root Layout
         rootPane = new StackPane();
         rootPane.getStyleClass().add("root-container");
-        rootPane.setStyle("-fx-background-color: #0B0E13;");
 
         mainLayout = new BorderPane();
         mainLayout.getStyleClass().add("main-layout");
@@ -57,14 +80,12 @@ public class StudioApp extends Application {
         mainContentPane.getStyleClass().add("content-area");
         mainLayout.setCenter(mainContentPane);
 
-        // Header Navigation Bar
-        HBox header = buildHeader();
-        mainLayout.setTop(header);
+        sidebar = buildSidebar();
+        mainLayout.setLeft(sidebar);
 
         rootPane.getChildren().add(mainLayout);
 
-        // 3. Create Scene & Attach Stylesheet
-        Scene scene = new Scene(rootPane, 1280, 800);
+        Scene scene = new Scene(rootPane, 1440, 900);
         String css = getClass().getResource("/css/globalfile.css") != null
                 ? getClass().getResource("/css/globalfile.css").toExternalForm()
                 : null;
@@ -74,10 +95,9 @@ public class StudioApp extends Application {
 
         stage.setScene(scene);
         stage.setTitle("InvoiceStudio — Bill Design & Print");
-        stage.setMinWidth(1050);
-        stage.setMinHeight(650);
+        stage.setMinWidth(1024);
+        stage.setMinHeight(640);
 
-        // Window Icon
         try {
             InputStream iconStream = getClass().getResourceAsStream("/icons/Invoicewhitebackground.png");
             if (iconStream != null) {
@@ -85,112 +105,126 @@ public class StudioApp extends Application {
             }
         } catch (Exception ignored) {}
 
+        new WindowStateManager().applyAndTrack(stage, 1440, 900, 1024, 640);
         stage.show();
 
-        // 4. Initial Navigation
-        showDashboard();
-
-        // 5. Run Auto-Recurring Sweep if enabled
-        checkRecurringSweep();
+        // Build an empty shell immediately, then hydrate data in background:
+        // the window appears instantly instead of blocking on SQLite + seeding.
+        showLoading();
+        dbExecutor.execute(() -> {
+            try {
+                data.seedIfEmpty();
+                Platform.runLater(() -> {
+                    showDashboardInternal();
+                    checkRecurringSweepAsync();
+                });
+            } catch (Exception e) {
+                Platform.runLater(this::showDashboardInternal);
+            }
+        });
     }
 
-    private void initDatabase() {
-        try {
-            db = DatabaseManager.getInstance();
-            billDao = new BillDao(db);
-            templateDao = new TemplateDao(db);
-            settingsDao = new SettingsDao(db);
-            buyerDao = new BuyerDao(db);
-            itemDao = new ItemDao(db);
-            variableDao = new VariableDao(db);
-            backupService = new BackupRestoreService(db);
-            printingService = new PrintingService();
+    @Override
+    public void stop() {
+        dbExecutor.shutdownNow();
+    }
 
-            // Seed default settings if empty
-            if (settingsDao.getSettings() == null) {
-                settingsDao.saveSettings(new Settings());
-            }
+    /** Create the shared data layer + long-lived services. Kept cheap: heavy DB work is deferred. */
+    private void initServices() {
+        DatabaseManager db = DatabaseManager.getInstance();
+        data = DataManager.init(db);
+        backupService = new BackupRestoreService(db);
+        printingService = new PrintingService();
 
-            // Seed default preset templates if empty
-            List<Template> existing = templateDao.getAllTemplates();
-            if (existing.isEmpty()) {
-                for (Template t : PresetTemplates.getAllPresets()) {
-                    templateDao.saveTemplate(t);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        // Seed default settings row synchronously (a single tiny query).
+        if (data.settingsDao().getSettings() == null) {
+            data.saveSettings(new Settings());
         }
     }
 
-    private HBox buildHeader() {
-        HBox header = new HBox(16);
-        header.setAlignment(Pos.CENTER_LEFT);
-        header.setPadding(new Insets(10, 20, 10, 20));
-        header.getStyleClass().add("app-header");
-        header.setStyle("-fx-background-color: #0B0E13; -fx-border-color: #232B38; -fx-border-width: 0 0 1 0;");
+    // ------------------------------------------------------------------
+    // Sidebar
+    // ------------------------------------------------------------------
 
-        // Brand Logo & Title (Clicking returns to Dashboard)
-        HBox brand = new HBox(10);
+    private VBox buildSidebar() {
+        VBox side = new VBox();
+        side.getStyleClass().add("app-sidebar");
+
+        // Brand block (click = dashboard)
+        VBox brand = new VBox(2);
+        brand.getStyleClass().add("sidebar-brand");
         brand.setAlignment(Pos.CENTER_LEFT);
-        brand.setStyle("-fx-cursor: hand;");
-        brand.setOnMouseClicked(e -> showDashboard());
+
+        HBox brandRow = new HBox(10);
+        brandRow.setAlignment(Pos.CENTER_LEFT);
 
         StackPane iconBox = new StackPane();
-        iconBox.setPrefSize(32, 32);
-        iconBox.setMaxSize(32, 32);
-        iconBox.setStyle("-fx-background-color: #D9A13B; -fx-background-radius: 6;");
-        Label iconLbl = IconHelper.createIconLabel(IconHelper.ICON_RECEIPT, 16, "#0B0E13");
+        iconBox.getStyleClass().add("brand-icon");
+        iconBox.setPrefSize(34, 34);
+        iconBox.setMaxSize(34, 34);
+        Label iconLbl = IconHelper.createIconLabel(IconHelper.ICON_RECEIPT, 17, "#0B0E13");
+        iconLbl.getStyleClass().add("brand-icon-glyph");
         iconBox.getChildren().add(iconLbl);
 
-        VBox titleBox = new VBox(0);
-        HBox titleRow = new HBox(0);
-        Label title1 = new Label("Invoice");
-        title1.setStyle("-fx-font-weight: bold; -fx-font-size: 15px; -fx-text-fill: #F4F4F5;");
-        Label title2 = new Label("Studio");
-        title2.setStyle("-fx-font-weight: bold; -fx-font-size: 15px; -fx-text-fill: #D9A13B;");
-        titleRow.getChildren().addAll(title1, title2);
-
+        VBox titleBox = new VBox(1);
+        Label title = new Label("InvoiceStudio");
+        title.getStyleClass().add("sidebar-brand-text");
         Label subtitle = new Label("BILL DESIGN & PRINT");
-        subtitle.setStyle("-fx-font-size: 9px; -fx-text-fill: #94A3B8; -fx-letter-spacing: 1.5; -fx-font-weight: bold;");
-        titleBox.getChildren().addAll(titleRow, subtitle);
+        subtitle.getStyleClass().add("sidebar-brand-sub");
+        titleBox.getChildren().addAll(title, subtitle);
 
-        brand.getChildren().addAll(iconBox, titleBox);
+        brandRow.getChildren().addAll(iconBox, titleBox);
+        brand.getChildren().add(brandRow);
+        brand.setOnMouseClicked(e -> showDashboard());
 
-        // Center Navigation Tabs
-        HBox navBar = new HBox(4);
-        navBar.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(navBar, Priority.ALWAYS);
+        // Navigation
+        VBox nav = new VBox(2);
+        nav.getStyleClass().add("sidebar-nav");
+        VBox.setVgrow(nav, Priority.NEVER);
 
-        addNavButton(navBar, "dashboard", "Dashboard", IconHelper.ICON_DASHBOARD, this::showDashboard);
-        addNavButton(navBar, "templates", "Templates", IconHelper.ICON_TEMPLATES, this::showTemplates);
-        addNavButton(navBar, "new", "Create Bill", IconHelper.ICON_RECEIPT, this::showCreateBill);
-        addNavButton(navBar, "history", "History", IconHelper.ICON_HISTORY, this::showHistory);
-        addNavButton(navBar, "buyers", "Buyers", IconHelper.ICON_USERS, this::showBuyers);
-        addNavButton(navBar, "items", "Items", IconHelper.ICON_PACKAGE, this::showItems);
-        addNavButton(navBar, "variables", "Variables", IconHelper.ICON_VARIABLE, this::showVariables);
-        addNavButton(navBar, "settings", "Settings", IconHelper.ICON_SETTINGS, this::showSettings);
+        Label sectionMain = new Label("WORKSPACE");
+        sectionMain.getStyleClass().add("sidebar-section-label");
 
-        // Right Action: "+ New Bill"
-        Button newBillBtn = new Button("+ New Bill");
-        newBillBtn.getStyleClass().addAll("gold-btn");
-        newBillBtn.setStyle("-fx-background-color: #D9A13B; -fx-text-fill: #0B0E13; -fx-font-weight: bold; " +
-                "-fx-font-size: 12px; -fx-background-radius: 6; -fx-padding: 6 14; -fx-cursor: hand;");
+        Label sectionManage = new Label("MANAGE");
+        sectionManage.getStyleClass().add("sidebar-section-label");
+
+        nav.getChildren().add(sectionMain);
+        addNavButton(nav, "dashboard", "Dashboard", IconHelper.ICON_DASHBOARD, this::showDashboard);
+        addNavButton(nav, "new", "Create Bill", IconHelper.ICON_RECEIPT, this::showCreateBill);
+        addNavButton(nav, "history", "History", IconHelper.ICON_HISTORY, this::showHistory);
+        nav.getChildren().add(sectionManage);
+        addNavButton(nav, "templates", "Templates", IconHelper.ICON_TEMPLATES, this::showTemplates);
+        addNavButton(nav, "buyers", "Buyers", IconHelper.ICON_USERS, this::showBuyers);
+        addNavButton(nav, "items", "Items", IconHelper.ICON_PACKAGE, this::showItems);
+        addNavButton(nav, "variables", "Variables", IconHelper.ICON_VARIABLE, this::showVariables);
+        addNavButton(nav, "settings", "Settings", IconHelper.ICON_SETTINGS, this::showSettings);
+
+        // Push footer down
+        Region filler = new Region();
+        VBox.setVgrow(filler, Priority.ALWAYS);
+
+        // Footer: collapse toggle + new bill CTA
+        VBox footer = new VBox(10);
+        footer.getStyleClass().add("sidebar-footer");
+
+        Button newBillBtn = new Button("+  New Bill");
+        newBillBtn.getStyleClass().addAll("gold-btn", "sidebar-cta");
+        newBillBtn.setMaxWidth(Double.MAX_VALUE);
+        newBillBtn.setTooltip(new Tooltip("Create a new invoice (Ctrl+N)"));
         newBillBtn.setOnAction(e -> showCreateBill());
+        footer.getChildren().add(newBillBtn);
 
-        header.getChildren().addAll(brand, navBar, newBillBtn);
-        return header;
+        side.getChildren().addAll(brand, nav, filler, footer);
+        return side;
     }
 
-    private void addNavButton(HBox container, String id, String label, String iconName, Runnable action) {
+    private void addNavButton(VBox container, String id, String label, String iconName, Runnable action) {
         Button btn = new Button(label);
-        btn.setGraphic(IconHelper.getIcon(iconName, 14, "#94A3B8"));
-        btn.getStyleClass().add("nav-button");
-        btn.setStyle("-fx-background-color: transparent; -fx-text-fill: #94A3B8; -fx-font-size: 12px; " +
-                "-fx-font-weight: 600; -fx-padding: 6 12; -fx-background-radius: 6; -fx-cursor: hand;");
-
+        btn.setGraphic(IconHelper.getIcon(iconName, 15, "#94A3B8"));
+        btn.getStyleClass().add("sidebar-nav-btn");
+        btn.setMaxWidth(Double.MAX_VALUE);
+        btn.setAlignment(Pos.CENTER_LEFT);
         btn.setOnAction(e -> action.run());
-
         navButtons.put(id, btn);
         container.getChildren().add(btn);
     }
@@ -201,42 +235,111 @@ public class StudioApp extends Application {
             Button btn = entry.getValue();
             boolean isActive = entry.getKey().equalsIgnoreCase(activeId) ||
                     ("designer".equalsIgnoreCase(activeId) && "templates".equalsIgnoreCase(entry.getKey()));
-
+            btn.getStyleClass().remove("active");
             if (isActive) {
-                btn.setStyle("-fx-background-color: #1E2738; -fx-text-fill: #F2CA6B; -fx-font-size: 12px; " +
-                        "-fx-font-weight: bold; -fx-padding: 6 12; -fx-background-radius: 6; -fx-cursor: hand;");
                 btn.getStyleClass().add("active");
+                btn.setGraphic(IconHelper.getIcon(navIconFor(entry.getKey()), 15, "#F2CA6B"));
             } else {
-                btn.setStyle("-fx-background-color: transparent; -fx-text-fill: #94A3B8; -fx-font-size: 12px; " +
-                        "-fx-font-weight: 600; -fx-padding: 6 12; -fx-background-radius: 6; -fx-cursor: hand;");
-                btn.getStyleClass().remove("active");
+                btn.setGraphic(IconHelper.getIcon(navIconFor(entry.getKey()), 15, "#94A3B8"));
             }
         }
     }
 
+    private String navIconFor(String id) {
+        return switch (id) {
+            case "dashboard" -> IconHelper.ICON_DASHBOARD;
+            case "templates" -> IconHelper.ICON_TEMPLATES;
+            case "new" -> IconHelper.ICON_RECEIPT;
+            case "history" -> IconHelper.ICON_HISTORY;
+            case "buyers" -> IconHelper.ICON_USERS;
+            case "items" -> IconHelper.ICON_PACKAGE;
+            case "variables" -> IconHelper.ICON_VARIABLE;
+            case "settings" -> IconHelper.ICON_SETTINGS;
+            default -> IconHelper.ICON_RECEIPT;
+        };
+    }
+
+    // ------------------------------------------------------------------
+    // View switching with cache + fade transition
+    // ------------------------------------------------------------------
+
     private void setView(String id, Node viewNode) {
+        setView(id, viewNode, true);
+    }
+
+    private void setView(String id, Node viewNode, boolean animate) {
         updateNavActive(id);
-        if (viewNode instanceof VBox) {
-            ScrollPane scroll = new ScrollPane(viewNode);
+
+        Node content = viewNode;
+        if (content instanceof VBox) {
+            // Wrap bare vertical lists in a scroll container so long content stays reachable.
+            ScrollPane scroll = new ScrollPane(content);
             scroll.setFitToWidth(true);
             scroll.setFitToHeight(false);
             scroll.getStyleClass().add("scroll-pane");
-            scroll.setStyle("-fx-background-color: transparent; -fx-background: #0B0E13; -fx-border-color: transparent; -fx-padding: 0;");
-            mainContentPane.getChildren().setAll(scroll);
-        } else {
-            mainContentPane.getChildren().setAll(viewNode);
+            content = scroll;
+        }
+
+        mainContentPane.getChildren().setAll(content);
+
+        if (animate) {
+            content.setOpacity(0);
+            FadeTransition ft = new FadeTransition(Duration.millis(150), content);
+            ft.setFromValue(0);
+            ft.setToValue(1);
+            ft.play();
         }
     }
 
+    /** Cached views are refreshed (data re-read) but NOT rebuilt → instant nav. */
+    private Node cached(String id, java.util.function.Supplier<Node> factory, Runnable refresher) {
+        Node view = viewCache.get(id);
+        if (view == null) {
+            view = factory.get();
+            viewCache.put(id, view);
+        } else if (refresher != null) {
+            try {
+                refresher.run();
+            } catch (Exception ignored) {}
+        }
+        return view;
+    }
+
+    private void showLoading() {
+        VBox loading = new VBox(12);
+        loading.setAlignment(Pos.CENTER);
+        loading.getStyleClass().add("loading-pane");
+        Label glyph = new Label("⌛");
+        glyph.getStyleClass().add("loading-glyph");
+        Label text = new Label("Preparing your workspace…");
+        text.getStyleClass().add("loading-text");
+        loading.getChildren().addAll(glyph, text);
+        mainContentPane.getChildren().setAll(loading);
+    }
+
+    // ------------------------------------------------------------------
+    // Public navigation API (used by all views)
+    // ------------------------------------------------------------------
+
     public void showDashboard() {
-        setView("dashboard", new DashboardView(this));
+        if (data == null) return;
+        setView("dashboard", cached("dashboard",
+                () -> new DashboardView(this),
+                () -> ((DashboardView) viewCache.get("dashboard")).refresh()));
+    }
+
+    private void showDashboardInternal() {
+        setView("dashboard", cached("dashboard", () -> new DashboardView(this), null), false);
     }
 
     public void showTemplates() {
-        setView("templates", new TemplatesView(this));
+        setView("templates", cached("templates",
+                () -> new TemplatesView(this),
+                () -> ((TemplatesView) viewCache.get("templates")).refresh()));
     }
 
     public void showTemplateDesigner(Template template) {
+        // Designer is stateful per template → always a fresh instance.
         setView("designer", new TemplateDesigner(this, template));
     }
 
@@ -249,31 +352,38 @@ public class StudioApp extends Application {
     }
 
     public void showCreateBill(String initialTemplateId, ItemRecord initialItem) {
+        // CreateBill holds unsaved form state → always fresh.
         setView("new", new CreateBillView(this, null, initialTemplateId, initialItem));
     }
 
     public void showHistory() {
-        setView("history", new HistoryView(this));
+        setView("history", cached("history",
+                () -> new HistoryView(this),
+                () -> ((HistoryView) viewCache.get("history")).refresh()));
     }
 
     public void showBuyers() {
-        setView("buyers", new BuyersView(this));
+        setView("buyers", cached("buyers",
+                () -> new BuyersView(this),
+                () -> ((BuyersView) viewCache.get("buyers")).refresh()));
     }
 
     public void showItems() {
-        String currency = settingsDao.getSettings() != null ? settingsDao.getSettings().getCurrency() : "₹";
-        setView("items", new ItemsView(itemDao, billDao, currency, this::reloadAllData, item -> showCreateBill(null, item)));
+        setView("items", cached("items",
+                () -> new ItemsView(this),
+                () -> ((ItemsView) viewCache.get("items")).reload()));
     }
 
     public void showVariables() {
-        setView("variables", new VariablesView(variableDao, settingsDao, this::reloadAllData));
+        setView("variables", cached("variables",
+                () -> new VariablesView(this),
+                () -> ((VariablesView) viewCache.get("variables")).reload()));
     }
 
     public void showSettings() {
-        setView("settings", new SettingsView(settingsDao, backupService, printingService, s -> {
-            settingsDao.saveSettings(s);
-            reloadAllData();
-        }, this::reloadAllData));
+        setView("settings", cached("settings",
+                () -> new SettingsView(this),
+                () -> ((SettingsView) viewCache.get("settings")).reload()));
     }
 
     public void editBill(Bill bill) {
@@ -285,7 +395,7 @@ public class StudioApp extends Application {
             showCreateBill();
             return;
         }
-        Settings settings = settingsDao.getSettings();
+        Settings settings = data.getSettings();
         Bill copy = new Bill();
         copy.setBillNo(BillingService.nextBillNo(settings));
         copy.setDate(BillingService.todayISO());
@@ -306,7 +416,7 @@ public class StudioApp extends Application {
             showCreateBill();
             return;
         }
-        Settings settings = settingsDao.getSettings();
+        Settings settings = data.getSettings();
         Bill converted = new Bill();
         converted.setBillNo(BillingService.nextBillNo(settings));
         converted.setDate(BillingService.todayISO());
@@ -327,7 +437,7 @@ public class StudioApp extends Application {
             showCreateBill();
             return;
         }
-        Settings settings = settingsDao.getSettings();
+        Settings settings = data.getSettings();
         Bill next = BillingService.repeatBill(bill, settings);
         next.setBillNo(BillingService.nextBillNo(settings));
 
@@ -335,6 +445,7 @@ public class StudioApp extends Application {
     }
 
     public void reloadAllData() {
+        // Views refresh themselves on show now; just refresh the active one.
         switch (currentView) {
             case "dashboard" -> showDashboard();
             case "templates" -> showTemplates();
@@ -347,25 +458,46 @@ public class StudioApp extends Application {
         }
     }
 
-    private void checkRecurringSweep() {
-        Platform.runLater(() -> {
+    private void checkRecurringSweepAsync() {
+        dbExecutor.execute(() -> {
             try {
-                RecurringEngine engine = new RecurringEngine(db);
+                RecurringEngine engine = new RecurringEngine(data.getDb());
                 RecurringEngine.SweepResult res = engine.runSweep(false);
                 if (res != null && res.ran && res.created != null && !res.created.isEmpty()) {
-                    Toast.show(rootPane, "Recurring Invoices",
-                            "Auto-created " + res.created.size() + " due recurring invoice(s).", false);
+                    Platform.runLater(() -> {
+                        Toast.show(rootPane, "Recurring Invoices",
+                                "Auto-created " + res.created.size() + " due recurring invoice(s).", false);
+                        if ("dashboard".equals(currentView)) {
+                            showDashboard();
+                        }
+                    });
                 }
             } catch (Exception ignored) {}
         });
     }
 
+    // ------------------------------------------------------------------
+    // Accessors used by views
+    // ------------------------------------------------------------------
+
     public DatabaseManager getDb() {
-        return db;
+        return data != null ? data.getDb() : null;
+    }
+
+    public DataManager getData() {
+        return data;
+    }
+
+    public BackupRestoreService getBackupService() {
+        return backupService;
+    }
+
+    public PrintingService getPrintingService() {
+        return printingService;
     }
 
     public RecurringEngine getRecurringEngine() {
-        return new RecurringEngine(db);
+        return new RecurringEngine(data.getDb());
     }
 
     public Stage getPrimaryStage() {
@@ -377,6 +509,7 @@ public class StudioApp extends Application {
     }
 
     public static void main(String[] args) {
+        System.setProperty("invoicestudio.init", "1");
         launch(args);
     }
 }
