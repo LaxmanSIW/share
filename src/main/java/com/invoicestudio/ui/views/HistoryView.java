@@ -349,21 +349,136 @@ public class HistoryView extends BorderPane {
         if (bill == null) return;
         Dialog<Void> dlg = new Dialog<>();
         dlg.setTitle("Invoice Preview — " + bill.getBillNo());
-        dlg.setHeaderText(bill.getDocType().getTitle() + " • " + bill.getBillNo());
+        dlg.setHeaderText(bill.getDocType().getTitle() + " • " + bill.getBillNo() + " (Date: " + bill.getDate() + ")");
 
         Settings settings = settingsDao.getSettings();
         Template template = templateDao.getTemplateById(bill.getTemplateId());
         if (template == null) template = PresetTemplates.buildClassic();
 
-        BillPreviewPane preview = new BillPreviewPane();
-        preview.setZoom(0.8);
-        preview.render(template, bill, settings, 0, 1);
+        final Template finalTemplate = template;
+        final double[] currentZoom = {0.85};
 
-        ScrollPane sp = new ScrollPane(preview);
-        sp.setPrefSize(780, 580);
-        dlg.getDialogPane().setContent(sp);
+        BillPreviewPane preview = new BillPreviewPane();
+        preview.setZoom(currentZoom[0]);
+        preview.render(finalTemplate, bill, settings, 0, 1);
+
+        // Zoom & Quick Actions Toolbar
+        HBox toolbar = new HBox(10);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+        toolbar.setPadding(new Insets(8, 14, 8, 14));
+        toolbar.setStyle("-fx-background-color: #0E131A; -fx-border-color: #1E2738; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;");
+
+        Label zoomTitle = new Label("Zoom:");
+        zoomTitle.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 12px; -fx-font-weight: bold;");
+
+        Button zoomOutBtn = new Button("−");
+        zoomOutBtn.getStyleClass().add("secondary-button");
+        zoomOutBtn.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 3 10; -fx-cursor: hand;");
+
+        Label zoomLabel = new Label("85%");
+        zoomLabel.setStyle("-fx-text-fill: #F5C868; -fx-font-size: 12px; -fx-font-weight: bold; -fx-min-width: 44px; -fx-alignment: center;");
+
+        Button zoomInBtn = new Button("+");
+        zoomInBtn.getStyleClass().add("secondary-button");
+        zoomInBtn.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 3 10; -fx-cursor: hand;");
+
+        Button zoomResetBtn = new Button("100%");
+        zoomResetBtn.getStyleClass().add("secondary-button");
+        zoomResetBtn.setStyle("-fx-font-size: 11px; -fx-padding: 4 8; -fx-cursor: hand;");
+
+        Button zoomFitBtn = new Button("Fit Width");
+        zoomFitBtn.getStyleClass().add("secondary-button");
+        zoomFitBtn.setStyle("-fx-font-size: 11px; -fx-padding: 4 8; -fx-cursor: hand;");
+
+        Runnable updateZoomUI = () -> {
+            zoomLabel.setText((int) Math.round(currentZoom[0] * 100) + "%");
+            preview.setZoom(currentZoom[0]);
+        };
+
+        zoomInBtn.setOnAction(e -> {
+            currentZoom[0] = Math.min(2.5, currentZoom[0] + 0.15);
+            updateZoomUI.run();
+        });
+
+        zoomOutBtn.setOnAction(e -> {
+            currentZoom[0] = Math.max(0.3, currentZoom[0] - 0.15);
+            updateZoomUI.run();
+        });
+
+        zoomResetBtn.setOnAction(e -> {
+            currentZoom[0] = 1.0;
+            updateZoomUI.run();
+        });
+
+        // Copy selector
+        Label copyLbl = new Label("Copy:");
+        copyLbl.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 12px; -fx-font-weight: bold;");
+        ComboBox<String> copyCombo = new ComboBox<>(FXCollections.observableArrayList("Original", "Duplicate", "Triplicate"));
+        copyCombo.setValue("Original");
+        copyCombo.setStyle("-fx-font-size: 11px;");
+        copyCombo.setOnAction(e -> {
+            int idx = copyCombo.getSelectionModel().getSelectedIndex();
+            preview.render(finalTemplate, bill, settings, idx, 1);
+        });
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button printBtn = new Button("🖨 Print Invoice");
+        printBtn.getStyleClass().add("primary-button");
+        printBtn.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 5 14; -fx-cursor: hand;");
+        printBtn.setOnAction(e -> {
+            int copies = copyCombo.getSelectionModel().getSelectedIndex() + 1;
+            boolean success = PrintingService.printNode(preview, app.getPrimaryStage(), copies, bill.getBillNo());
+            if (success) {
+                billDao.incrementPrintCount(bill.getId());
+                refresh();
+                Toast.show(app.getRootPane(), "Print Sent", "Sent " + copies + " cop" + (copies == 1 ? "y" : "ies") + " to printer.", false);
+            }
+        });
+
+        Button exportPdfBtn = new Button("📥 Export PDF");
+        exportPdfBtn.getStyleClass().add("secondary-button");
+        exportPdfBtn.setStyle("-fx-font-size: 12px; -fx-padding: 5 14; -fx-cursor: hand;");
+        exportPdfBtn.setOnAction(e -> exportBillToPdf(bill));
+
+        toolbar.getChildren().addAll(
+                zoomTitle, zoomOutBtn, zoomLabel, zoomInBtn, zoomResetBtn, zoomFitBtn,
+                new Separator(javafx.geometry.Orientation.VERTICAL),
+                copyLbl, copyCombo,
+                spacer,
+                printBtn, exportPdfBtn
+        );
+
+        // Preview Wrapper
+        StackPane previewWrapper = new StackPane(preview);
+        previewWrapper.setAlignment(Pos.TOP_CENTER);
+        previewWrapper.setStyle("-fx-background-color: #0B0E13; -fx-padding: 18;");
+
+        ScrollPane sp = new ScrollPane(previewWrapper);
+        sp.setFitToWidth(true);
+        sp.setFitToHeight(true);
+        sp.setStyle("-fx-background-color: transparent; -fx-background: #0B0E13; -fx-border-color: #1E2738; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;");
+
+        zoomFitBtn.setOnAction(e -> {
+            double availWidth = sp.getWidth() - 60;
+            double pageMm = finalTemplate.getPage() != null ? finalTemplate.getPage().getWidth() : 210.0;
+            double pagePx = pageMm * 3.7795275591;
+            if (pagePx > 0 && availWidth > 0) {
+                currentZoom[0] = Math.max(0.3, Math.min(2.0, availWidth / pagePx));
+                updateZoomUI.run();
+            }
+        });
+
+        VBox container = new VBox(10, toolbar, sp);
+        VBox.setVgrow(sp, Priority.ALWAYS);
+        container.setPrefSize(960, 720);
+        container.setMaxWidth(Double.MAX_VALUE);
+        container.setMaxHeight(Double.MAX_VALUE);
+
+        dlg.getDialogPane().setContent(container);
         dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
-        DialogHelper.styleDialog(dlg);
+        DialogHelper.styleDialog(dlg, 640, 480);
         dlg.showAndWait();
     }
 

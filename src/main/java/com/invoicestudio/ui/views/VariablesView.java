@@ -5,6 +5,7 @@ import com.invoicestudio.db.VariableDao;
 import com.invoicestudio.model.BuyerFieldDef;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.VariableDef;
+import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.Toast;
 import javafx.collections.FXCollections;
@@ -188,7 +189,7 @@ public class VariablesView extends VBox {
             key = slugify(label);
         }
         if (label.isEmpty() || key.isEmpty()) {
-            Toast.show(this, "Please enter both a label and key.");
+            Toast.show(this, "Validation", "Please enter both a label and key.", true);
             return;
         }
 
@@ -197,15 +198,16 @@ public class VariablesView extends VBox {
             v.setKey(key);
             v.setLabel(label);
             v.setType(typeSelect.getValue() != null ? typeSelect.getValue() : "text");
-            variableDao.insert(v);
-            Toast.show(this, "Variable {{" + key + "}} added!");
+            v.setBuiltin(false);
+            variableDao.saveVariable(v);
+            Toast.show(this, "Variable Added", "Variable {{" + key + "}} created successfully.", false);
             labelInput.clear();
             keyInput.clear();
             reload();
             if (onReload != null) onReload.run();
         } catch (Exception e) {
             e.printStackTrace();
-            Toast.show(this, "Failed to add variable: " + e.getMessage());
+            Toast.show(this, "Error", "Failed to add variable: " + e.getMessage(), true);
         }
     }
 
@@ -484,14 +486,23 @@ public class VariablesView extends VBox {
                 del.getStyleClass().add("button-icon-subtle");
                 del.setTooltip(new Tooltip("Delete variable"));
                 del.setOnAction(e -> {
-                    try {
-                        variableDao.delete(vd.getKey());
-                        Toast.show(this, "Variable {{" + vd.getKey() + "}} deleted.");
-                        reload();
-                        if (onReload != null) onReload.run();
-                    } catch (Exception ex) {
-                        Toast.show(this, "Failed to delete: " + ex.getMessage());
-                    }
+                    Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "Delete variable {{" + vd.getKey() + "}}?", ButtonType.YES, ButtonType.NO);
+                    confirm.setTitle("Delete Variable");
+                    confirm.setHeaderText("Delete Variable: " + vd.getLabel());
+                    confirm.setContentText("Are you sure you want to delete placeholder {{" + vd.getKey() + "}}?");
+                    DialogHelper.styleDialog(confirm, 420, 200);
+                    confirm.showAndWait().ifPresent(res -> {
+                        if (res == ButtonType.YES) {
+                            try {
+                                variableDao.deleteVariable(vd.getKey());
+                                Toast.show(this, "Variable Deleted", "Variable {{" + vd.getKey() + "}} was removed.", false);
+                                reload();
+                                if (onReload != null) onReload.run();
+                            } catch (Exception ex) {
+                                Toast.show(this, "Delete Failed", ex.getMessage(), true);
+                            }
+                        }
+                    });
                 });
                 actCol.getChildren().add(del);
 

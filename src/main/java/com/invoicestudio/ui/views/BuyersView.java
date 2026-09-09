@@ -602,9 +602,13 @@ public class BuyersView extends BorderPane {
         dlg.setHeaderText("Statement of account for " + b.getName());
 
         VBox content = new VBox(12);
-        content.setPrefWidth(680); content.setPrefHeight(440);
+        content.setPrefWidth(740);
+        content.setPrefHeight(480);
+        content.setMaxWidth(Double.MAX_VALUE);
+        content.setMaxHeight(Double.MAX_VALUE);
 
         TableView<Bill> stTable = new TableView<>();
+        stTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         TableColumn<Bill, String> cDate = new TableColumn<>("Date");
         cDate.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getDate()));
         cDate.setPrefWidth(95);
@@ -664,7 +668,7 @@ public class BuyersView extends BorderPane {
         content.getChildren().addAll(stTable, summary);
         dlg.getDialogPane().setContent(content);
         dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
-        DialogHelper.styleDialog(dlg);
+        DialogHelper.styleDialog(dlg, 600, 420);
         dlg.showAndWait();
     }
 

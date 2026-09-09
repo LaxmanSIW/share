@@ -66,13 +66,16 @@ public class VariableDao {
         }
     }
 
-    public void deleteVariable(String key) {
+    public boolean deleteVariable(String key) {
+        if (key == null || key.isBlank()) return false;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("DELETE FROM variables WHERE key = ? AND builtin = 0")) {
-            ps.setString(1, key);
-            ps.executeUpdate();
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM variables WHERE key = ?")) {
+            ps.setString(1, key.trim());
+            int rows = ps.executeUpdate();
+            return rows > 0;
         } catch (Exception e) {
             e.printStackTrace();
+            return false;
         }
     }
 

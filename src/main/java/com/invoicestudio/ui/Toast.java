@@ -59,17 +59,21 @@ public class Toast {
     }
 
     public static void show(Node node, String message) {
+        show(node, "Notice", message, false);
+    }
+
+    public static void show(Node node, String title, String message, boolean isError) {
         if (node == null) return;
         Pane root = null;
-        if (node instanceof StackPane sp) {
+        if (node.getScene() != null && node.getScene().getRoot() instanceof Pane p) {
+            root = p;
+        } else if (node instanceof StackPane sp) {
             root = sp;
         } else if (node instanceof Pane p) {
             root = p;
-        } else if (node.getScene() != null && node.getScene().getRoot() instanceof Pane p) {
-            root = p;
         }
         if (root != null) {
-            show(root, "Notice", message, false);
+            show(root, title, message, isError);
         }
     }
 }
