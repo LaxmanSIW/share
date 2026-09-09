@@ -1,0 +1,67 @@
+name: Windows Installer
+
+# Builds the Windows MSI (bundled Java, desktop + start-menu shortcuts) so no
+# local Windows toolchain is required. Trigger from the Actions tab
+# (workflow_dispatch), or push a tag like v2.0.1 to also attach it to a Release.
+# Windows-only on purpose: JavaFX natives and the bundled JRE must match the
+# target OS, and jpackage cannot cross-compile.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  msi:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build fat jar
+        shell: pwsh
+        run: mvn -B -ntp package -DskipTests
+
+      - name: Ensure WiX Toolset (MSI backend for jpackage)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset -y --no-progress
+            "C:\Program Files (x86)\WiX Toolset v3.14\bin" |
+              Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          } else {
+            "WiX already present on runner"
+          }
+
+      - name: Package MSI (desktop + start-menu shortcuts, bundled Java 21)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force packaging/input | Out-Null
+          Copy-Item target/invoice-studio-desktop-2.0.1.jar packaging/input/
+          jpackage --type msi `
+            --name InvoiceStudio `
+            --description "Billing & Invoice Design Studio" `
+            --app-version 2.0.1 --vendor InvoiceStudio `
+            --icon packaging/InvoiceStudio.ico `
+            --input packaging/input `
+            --main-jar invoice-studio-desktop-2.0.1.jar `
+            --main-class com.invoicestudio.Launcher `
+            --win-shortcut --win-menu --win-dir-chooser `
+            --dest packaging/dist
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InvoiceStudio-2.0.1-windows-installer
+          path: packaging/dist/*.msi
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packaging/dist/*.msi

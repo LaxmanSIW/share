@@ -2,6 +2,11 @@
 target/
 dependency-reduced-pom.xml
 
+# Installer build outputs (packaging/ sources ARE committed)
+packaging/input/
+packaging/dist/
+packaging/app-image/
+
 # Local runtime data (SQLite DB is created next to the working directory)
 *.db
 smoke-test/

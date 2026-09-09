@@ -17,7 +17,9 @@ public class DatabaseManager {
 
     public static synchronized DatabaseManager getInstance() {
         if (instance == null) {
-            instance = new DatabaseManager("jdbc:sqlite:invoicestudio.db");
+            // Per-user data dir (see AppDirs) so installed copies work out of
+            // write-protected Program Files; legacy CWD DBs are migrated once.
+            instance = new DatabaseManager(com.invoicestudio.AppDirs.databaseUrl());
         }
         return instance;
     }
