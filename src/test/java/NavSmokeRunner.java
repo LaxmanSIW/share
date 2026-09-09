@@ -12,6 +12,9 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.DialogPane;
 import javafx.scene.control.TabPane;
 import javafx.scene.image.WritableImage;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.MenuButton;
+import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.util.Duration;
@@ -111,6 +114,24 @@ public class NavSmokeRunner extends StudioApp {
                 r -> contentNodeCount() > 40));
         steps.add(new Step("04-sidebar-history-click", () -> clickSidebar("History"),
                 r -> firstButton("View") != null));
+        steps.add(new Step("04b-status-combo-open", () -> Platform.runLater(() -> {
+                    Node cb = contentArea().lookup(".combo-box");
+                    if (cb instanceof ComboBox<?> c) c.show();
+                    else fail("status-combo-open", "no combo-box in content");
+                }), r -> !openPopups().isEmpty()));
+        steps.add(new Step("04c-status-combo-close", () -> Platform.runLater(() -> {
+                    shotPopups("popup-status-combo");
+                    openPopups().forEach(PopupWindow::hide);
+                }), r -> openPopups().isEmpty()));
+        steps.add(new Step("04d-more-menu-open", () -> Platform.runLater(() -> {
+                    MenuButton mb = firstMenuButton();
+                    if (mb != null) mb.show();
+                    else fail("more-menu-open", "no MenuButton in content");
+                }), r -> !openPopups().isEmpty()));
+        steps.add(new Step("04e-more-menu-close", () -> Platform.runLater(() -> {
+                    shotPopups("popup-more-menu");
+                    openPopups().forEach(PopupWindow::hide);
+                }), r -> openPopups().isEmpty()));
         steps.add(new Step("05-history-view-dialog-open", () -> fireAsync(firstButton("View"), "View"),
                 NavSmokeRunner::isDialogOpen));
         steps.add(new Step("05b-history-view-dialog-close", () -> closeDialogAsync(),
@@ -393,6 +414,40 @@ public class NavSmokeRunner extends StudioApp {
     }
 
     boolean isDialogOpen() { return findOpenDialogPane() != null; }
+
+    static List<PopupWindow> openPopups() {
+        List<PopupWindow> out = new ArrayList<>();
+        for (Window w : Window.getWindows()) {
+            if (w instanceof PopupWindow p) out.add(p);
+        }
+        return out;
+    }
+
+    MenuButton firstMenuButton() {
+        return findFirstNode(contentArea(), MenuButton.class);
+    }
+
+    static <T extends Node> T findFirstNode(Parent root, Class<T> type) {
+        if (type.isInstance(root)) return type.cast(root);
+        for (Node ch : root.getChildrenUnmodifiable()) {
+            if (type.isInstance(ch)) return type.cast(ch);
+            if (ch instanceof Parent p) {
+                T found = findFirstNode(p, type);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    static void shotPopups(String base) {
+        List<PopupWindow> pops = openPopups();
+        for (int i = 0; i < pops.size(); i++) {
+            if (pops.get(i).getScene() != null) {
+                shotNode(pops.get(i).getScene(), String.format("%s-%d", base, i + 1));
+            }
+        }
+        if (pops.isEmpty()) System.out.println("[POPUP] none open for " + base);
+    }
 
     /**
      * Screenshots the open dialog's own scene, then closes it via its own

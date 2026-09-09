@@ -406,6 +406,40 @@ Label {
     -fx-background-color: -color-border;
 }
 
+/* MenuButton — row action menus ("..."), matches .button-secondary visual.
+   Its internal arrow-button keeps Modena's light background unless overridden. */
+.menu-button {
+    -fx-background-color: -color-surface-raised;
+    -fx-text-fill: #CBD5E1;
+    -fx-border-color: -color-border-strong;
+    -fx-border-radius: 7;
+    -fx-background-radius: 7;
+    -fx-font-size: 12px;
+}
+
+.menu-button:hover,
+.menu-button:showing,
+.menu-button:armed {
+    -fx-background-color: #243044;
+    -fx-border-color: #3D4C66;
+    -fx-text-fill: -color-text;
+}
+
+.menu-button > .arrow-button {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+}
+
+.menu-button > .arrow-button > .arrow {
+    -fx-background-color: #CBD5E1;
+}
+
+.menu-button:hover > .arrow-button > .arrow,
+.menu-button:showing > .arrow-button > .arrow,
+.menu-button:armed > .arrow-button > .arrow {
+    -fx-background-color: -color-accent;
+}
+
 /* Danger */
 .button-danger {
     -fx-background-color: rgba(239, 68, 68, 0.10);
@@ -593,8 +627,22 @@ Label {
     -fx-padding: 6 10 6 10;
 }
 
-.combo-box .arrow, .combo-box .arrow-button {
-    -fx-background-color: -color-text-secondary;
+.combo-box > .arrow-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 0 7 7 0;
+}
+
+.combo-box:hover > .arrow-button {
+    -fx-background-color: rgba(217, 161, 59, 0.10);
+}
+
+.combo-box:showing > .arrow-button,
+.combo-box:pressed > .arrow-button {
+    -fx-background-color: rgba(217, 161, 59, 0.20);
+}
+
+.combo-box > .arrow-button > .arrow {
+    -fx-background-color: -color-accent;
 }
 
 .combo-box-popup .list-view {
@@ -634,6 +682,105 @@ Label {
 
 .date-picker:focused {
     -fx-border-color: -color-border-focus;
+}
+
+.date-picker > .arrow-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 0 7 7 0;
+}
+
+.date-picker:hover > .arrow-button {
+    -fx-background-color: rgba(217, 161, 59, 0.10);
+}
+
+.date-picker > .arrow-button > .arrow {
+    -fx-background-color: -color-accent;
+}
+
+/* ChoiceBox (print-copies selectors etc.) */
+.choice-box {
+    -fx-background-color: #0E131B;
+    -fx-text-fill: -color-text;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 7;
+    -fx-background-radius: 7;
+    -fx-font-size: 12px;
+}
+
+.choice-box:hover {
+    -fx-border-color: -color-border-strong;
+}
+
+.choice-box > .open-button {
+    -fx-background-color: transparent;
+}
+
+.choice-box > .open-button > .arrow {
+    -fx-background-color: -color-accent;
+}
+
+/* Spinner — number fields (Template Designer property panel) */
+.spinner {
+    -fx-background-color: #0E131B;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 7;
+    -fx-background-radius: 7;
+}
+
+.spinner:hover {
+    -fx-border-color: -color-border-strong;
+}
+
+.spinner:focused,
+.spinner .text-field:focused {
+    -fx-border-color: -color-border-focus;
+}
+
+.spinner > .text-field {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-text-fill: -color-text;
+    -fx-prompt-text-fill: -color-text-tertiary;
+    -fx-highlight-fill: rgba(217, 161, 59, 0.35);
+    -fx-highlight-text-fill: -color-text;
+    -fx-border-color: transparent;
+    -fx-font-size: 12px;
+}
+
+.spinner > .increment-arrow-button,
+.spinner > .decrement-arrow-button {
+    -fx-background-color: #1A2433;
+    -fx-background-insets: 0;
+}
+
+.spinner > .increment-arrow-button {
+    -fx-background-radius: 0 6 0 0;
+}
+
+.spinner > .decrement-arrow-button {
+    -fx-background-radius: 0 0 6 0;
+}
+
+.spinner > .increment-arrow-button:hover,
+.spinner > .decrement-arrow-button:hover {
+    -fx-background-color: #26344A;
+}
+
+.spinner > .increment-arrow-button:pressed,
+.spinner > .decrement-arrow-button:pressed {
+    -fx-background-color: rgba(217, 161, 59, 0.22);
+}
+
+.spinner > .increment-arrow-button > .increment-arrow,
+.spinner > .decrement-arrow-button > .decrement-arrow {
+    -fx-background-color: -color-text-secondary;
+}
+
+.spinner:hover > .increment-arrow-button > .increment-arrow,
+.spinner:hover > .decrement-arrow-button > .decrement-arrow,
+.spinner > .increment-arrow-button:pressed > .increment-arrow,
+.spinner > .decrement-arrow-button:pressed > .decrement-arrow {
+    -fx-background-color: -color-accent;
 }
 
 .date-picker .cell {
