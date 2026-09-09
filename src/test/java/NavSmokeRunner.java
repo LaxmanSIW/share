@@ -10,10 +10,14 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.DialogPane;
+import javafx.scene.control.ListView;
+import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TextField;
 import javafx.scene.image.WritableImage;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.MenuButton;
+import javafx.scene.layout.HBox;
 import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
 import javafx.stage.Window;
@@ -59,6 +63,7 @@ public class NavSmokeRunner extends StudioApp {
     Stage stage;
     int stepIndex = 0;
     int dialogShotSeq = 0;
+    List<String> colOrderBefore;
     final List<Step> steps = new ArrayList<>();
 
     record Step(String name, Runnable action, Predicate<NavSmokeRunner> verify) {}
@@ -156,6 +161,17 @@ public class NavSmokeRunner extends StudioApp {
                 r -> firstContentButton("Designer") != null));
         steps.add(new Step("14-open-template-designer", () -> safeFire(firstContentButton("Designer"), "Designer"),
                 r -> contentNodeCount() > 50));
+
+        // -- Template Designer: TABLE column reorder via ▲▼ property-panel buttons --
+        steps.add(new Step("14b-designer-select-table-layer", () -> selectTableLayer(),
+                r -> columnLabelOrder() != null && columnLabelOrder().size() >= 3));
+        steps.add(new Step("14c-col-move-up-row2", () -> { colOrderBefore = columnLabelOrder(); fireColMove("▲", 1); },
+                r -> verifySwapped(colOrderBefore, 0, 1)));
+        steps.add(new Step("14d-col-move-down-row1", () -> { colOrderBefore = columnLabelOrder(); fireColMove("▼", 0); },
+                r -> verifySwapped(colOrderBefore, 0, 1)));
+        steps.add(new Step("14e-col-move-boundaries", () -> {},
+                r -> boundaryButtonsDisabled()));
+
         steps.add(new Step("15-leave-designer-templates", () -> clickSidebar("Templates"),
                 r -> firstContentButton("Designer") != null));
 
@@ -383,6 +399,111 @@ public class NavSmokeRunner extends StudioApp {
     void safeFire(Button btn, String what) {
         if (btn == null) throw new IllegalStateException("button not found: " + what);
         btn.fire();
+    }
+
+    // ------------------------------------------------------------------
+    // Designer column-reorder helpers (▲▼ buttons in properties panel)
+    // ------------------------------------------------------------------
+
+    /** Selects the first TABLE element through the Layers list — the same
+     *  selection-model path a user click uses, which rebuilds the properties
+     *  panel with the column manager. Also force-selects the Properties tab. */
+    @SuppressWarnings("unchecked")
+    void selectTableLayer() {
+        for (Node n : stage.getScene().getRoot().lookupAll(".tab-pane")) {
+            if (n instanceof TabPane tp) {
+                for (Tab t : tp.getTabs()) {
+                    if ("Properties".equals(t.getText())) tp.getSelectionModel().select(t);
+                }
+            }
+        }
+        Node n = stage.getScene().getRoot().lookup(".layers-list");
+        if (!(n instanceof ListView)) throw new IllegalStateException("layers list not found");
+        ListView<TemplateElement> lv = (ListView<TemplateElement>) n;
+        for (int i = 0; i < lv.getItems().size(); i++) {
+            TemplateElement te = lv.getItems().get(i);
+            if (te.getType() == ElementType.TABLE) {
+                lv.getSelectionModel().select(i);
+                return;
+            }
+        }
+        throw new IllegalStateException("no TABLE element in template");
+    }
+
+    /** Column label texts of the properties-panel column manager, in row order. */
+    List<String> columnLabelOrder() {
+        List<HBox> rows = new ArrayList<>();
+        collectColRows(stage.getScene().getRoot(), rows);
+        if (rows.isEmpty()) return null;
+        List<String> out = new ArrayList<>();
+        for (HBox row : rows) {
+            for (Node ch : row.getChildren()) {
+                if (ch instanceof TextField tf) { out.add(tf.getText()); break; }
+            }
+        }
+        return out.size() == rows.size() ? out : null;
+    }
+
+    static void collectColRows(Node n, List<HBox> out) {
+        if (n == null) return;
+        if (n instanceof HBox hb && hb.getStyleClass().contains("col-row")) { out.add(hb); return; }
+        if (n instanceof Parent p) {
+            for (Node ch : p.getChildrenUnmodifiable()) collectColRows(ch, out);
+        }
+    }
+
+    /** Fires the ▲/▼ button of column row {@code rowIdx} (real button action). */
+    void fireColMove(String text, int rowIdx) {
+        List<Button> btns = new ArrayList<>();
+        collectColMoveButtons(stage.getScene().getRoot(), text, btns);
+        if (rowIdx >= btns.size()) {
+            throw new IllegalStateException("col-move-btn not found: '" + text + "' row " + rowIdx
+                    + " (found " + btns.size() + ")");
+        }
+        Button b = btns.get(rowIdx);
+        if (b.isDisabled()) {
+            throw new IllegalStateException("move button unexpectedly disabled: '" + text + "' row " + rowIdx);
+        }
+        b.fire();
+    }
+
+    static void collectColMoveButtons(Node n, String text, List<Button> out) {
+        if (n == null) return;
+        if (n instanceof Button b && text.equals(b.getText())
+                && b.getStyleClass().contains("col-move-btn")) out.add(b);
+        if (n instanceof Parent p) {
+            for (Node ch : p.getChildrenUnmodifiable()) collectColMoveButtons(ch, text, out);
+        }
+    }
+
+    /** True if {@code now} equals {@code before} with rows i and j exchanged. */
+    boolean verifySwapped(List<String> before, int i, int j) {
+        List<String> now = columnLabelOrder();
+        if (before == null || now == null || before.size() != now.size()) return false;
+        for (int k = 0; k < now.size(); k++) {
+            int expect = (k == i) ? j : (k == j) ? i : k;
+            if (!now.get(k).equals(before.get(expect))) return false;
+        }
+        return true;
+    }
+
+    /** First row's ▲ and last row's ▼ must be disabled; interior ones enabled. */
+    boolean boundaryButtonsDisabled() {
+        List<String> order = columnLabelOrder();
+        if (order == null || order.isEmpty()) return false;
+        List<Button> ups = new ArrayList<>();
+        List<Button> downs = new ArrayList<>();
+        collectColMoveButtons(stage.getScene().getRoot(), "▲", ups);
+        collectColMoveButtons(stage.getScene().getRoot(), "▼", downs);
+        int n = order.size();
+        if (ups.size() != n || downs.size() != n) return false;
+        if (!ups.get(0).isDisabled()) return false;
+        if (!downs.get(n - 1).isDisabled()) return false;
+        if (n > 1) {
+            if (downs.get(0).isDisabled()) return false;
+            if (ups.get(n - 1).isDisabled()) return false;
+        }
+        return true;
     }
 
     /**

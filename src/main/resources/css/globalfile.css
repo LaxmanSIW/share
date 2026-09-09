@@ -1925,6 +1925,51 @@ Label {
     -fx-border-radius: 4;
 }
 
+/* --- Designer table-column reorder (▲▼) controls ---
+   Must override every .button:* state — pseudo selectors beat a bare
+   .col-move-btn regardless of file order. */
+.col-move-stack {
+    -fx-min-width: 18;
+    -fx-max-width: 18;
+    -fx-alignment: center;
+}
+
+.col-move-btn {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 4;
+    -fx-border-color: transparent;
+    -fx-border-width: 1;
+    -fx-border-radius: 4;
+    -fx-text-fill: #8E9EB5;
+    -fx-font-size: 8px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 3 0 3;
+    -fx-min-height: 12;
+    -fx-max-height: 12;
+    -fx-min-width: 18;
+    -fx-max-width: 18;
+    -fx-alignment: CENTER;
+    -fx-cursor: hand;
+}
+
+.col-move-btn:hover {
+    -fx-background-color: rgba(217, 161, 59, 0.12);
+    -fx-text-fill: -color-accent;
+}
+
+.col-move-btn:pressed {
+    -fx-background-color: rgba(217, 161, 59, 0.30);
+    -fx-text-fill: -color-accent;
+}
+
+.col-move-btn:disabled {
+    -fx-opacity: 1;
+    -fx-background-color: transparent;
+    -fx-text-fill: #39424F;
+    -fx-cursor: default;
+}
+
 .guide-note {
     -fx-font-size: 10px;
     -fx-text-fill: #8E9EB5;

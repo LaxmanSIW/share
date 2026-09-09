@@ -1662,6 +1662,9 @@ public class TemplateDesigner extends BorderPane {
         colHeader.getStyleClass().add("prop-title");
         colHeader.setPadding(new Insets(8, 0, 0, 0));
 
+        Label colHint = new Label("Tip: use ▲ ▼ on a column to reorder it");
+        colHint.getStyleClass().add("guide-note");
+
         VBox colsList = new VBox(6);
         for (int i = 0; i < cols.size(); i++) {
             TableColumn c = cols.get(i);
@@ -1699,28 +1702,50 @@ public class TemplateDesigner extends BorderPane {
             alignCombo.setPrefWidth(60);
             alignCombo.valueProperty().addListener((obs, o, v) -> { c.setAlign(v); refreshCanvas(); });
 
+            // Reorder controls (▲▼) — reposition a column without remove/re-add.
+            // New order flows straight into canvas, live preview and PDF export,
+            // which all iterate el.getColumns() in list order.
+            Button upBtn = new Button("▲");
+            Button downBtn = new Button("▼");
+            upBtn.getStyleClass().add("col-move-btn");
+            downBtn.getStyleClass().add("col-move-btn");
+            upBtn.setTooltip(new Tooltip("Move column up (earlier in table)"));
+            downBtn.setTooltip(new Tooltip("Move column down (later in table)"));
+            upBtn.setDisable(idx == 0);
+            downBtn.setDisable(idx == cols.size() - 1);
+            upBtn.setFocusTraversable(false);
+            downBtn.setFocusTraversable(false);
+            upBtn.setOnAction(e -> moveColumn(el, idx, idx - 1));
+            downBtn.setOnAction(e -> moveColumn(el, idx, idx + 1));
+
+            VBox moveStack = new VBox(0, upBtn, downBtn);
+            moveStack.getStyleClass().add("col-move-stack");
+
             Button rmBtn = new Button("✕");
             rmBtn.getStyleClass().addAll("button-sm", "button-danger");
             rmBtn.setTooltip(new Tooltip("Remove column"));
             rmBtn.setOnAction(e -> {
                 el.getColumns().remove(idx);
+                saveState();
                 updatePropertiesPanel();
                 refreshCanvas();
             });
 
-            colRow.getChildren().addAll(lblField, keyCombo, widthSpin, alignCombo, rmBtn);
+            colRow.getChildren().addAll(moveStack, lblField, keyCombo, widthSpin, alignCombo, rmBtn);
             colsList.getChildren().add(colRow);
         }
 
         HBox colActions = new HBox(8);
         Button addColBtn = createToolbarBtn("+ Add Column", "Add a new column to the table", () -> {
             el.getColumns().add(new TableColumn("desc", "New Column", 15.0, "left"));
+            saveState();
             updatePropertiesPanel();
             refreshCanvas();
         });
 
         Button presetGst = createToolbarBtn("GST Standard (8)", "Reset to standard 8-column GST table", () -> {
             el.setColumns(PresetTemplates.defaultItemColumns());
+            saveState();
             updatePropertiesPanel();
             refreshCanvas();
         });
@@ -1733,14 +1758,35 @@ public class TemplateDesigner extends BorderPane {
             sc.add(new TableColumn("rate", "Rate", 16, "right"));
             sc.add(new TableColumn("amount", "Amount", 16, "right"));
             el.setColumns(sc);
+            saveState();
             updatePropertiesPanel();
             refreshCanvas();
         });
 
         colActions.getChildren().addAll(addColBtn, presetGst, presetSimple);
 
-        sec.getChildren().addAll(title, grid, zebraCb, colHeader, colsList, colActions);
+        sec.getChildren().addAll(title, grid, zebraCb, colHeader, colHint, colsList, colActions);
         propBox.getChildren().add(sec);
+    }
+
+    /**
+     * Moves a table column from position {@code from} to {@code to} by swapping
+     * the two entries in the column list, then snapshots undo state and rebuilds
+     * the properties panel + canvas. Bounds-checked so a stale click can never
+     * throw. Canvas, live preview and the PDF exporter all iterate
+     * {@link TemplateElement#getColumns()} in order, so the reorder is reflected
+     * everywhere automatically.
+     */
+    private void moveColumn(TemplateElement el, int from, int to) {
+        List<TableColumn> cols = el.getColumns();
+        if (cols == null || from < 0 || to < 0
+                || from >= cols.size() || to >= cols.size() || from == to) {
+            return;
+        }
+        Collections.swap(cols, from, to);
+        saveState();
+        updatePropertiesPanel();
+        refreshCanvas();
     }
 
     private String colorToHex(Color c) {
