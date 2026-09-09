@@ -218,7 +218,16 @@ public class StudioApp extends Application {
 
     private void setView(String id, Node viewNode) {
         updateNavActive(id);
-        mainContentPane.getChildren().setAll(viewNode);
+        if (viewNode instanceof VBox) {
+            ScrollPane scroll = new ScrollPane(viewNode);
+            scroll.setFitToWidth(true);
+            scroll.setFitToHeight(false);
+            scroll.getStyleClass().add("scroll-pane");
+            scroll.setStyle("-fx-background-color: transparent; -fx-background: #0B0E13; -fx-border-color: transparent; -fx-padding: 0;");
+            mainContentPane.getChildren().setAll(scroll);
+        } else {
+            mainContentPane.getChildren().setAll(viewNode);
+        }
     }
 
     public void showDashboard() {
