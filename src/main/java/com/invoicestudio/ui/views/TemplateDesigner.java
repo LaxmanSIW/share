@@ -139,63 +139,61 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private Node createToolbar() {
-        HBox bar = new HBox(8);
+        HBox bar = new HBox(6);
         bar.setAlignment(Pos.CENTER_LEFT);
+        bar.setPadding(new Insets(6, 10, 6, 10));
         bar.getStyleClass().add("designer-toolbar");
 
         Button backBtn = createToolbarBtn("← Back", "Return to Templates Directory", () -> app.showTemplates());
 
         nameField.setText(template.getName());
-        nameField.setPrefWidth(180);
+        nameField.setPrefWidth(150);
+        nameField.setMinWidth(100);
         nameField.setTooltip(new Tooltip("Template Name"));
         nameField.textProperty().addListener((obs, old, val) -> template.setName(val));
 
         Separator s1 = new Separator(javafx.geometry.Orientation.VERTICAL);
 
-        // Element add buttons
+        // Core Element Add Buttons
         Button addText = createToolbarBtn("+ Text", "Add dynamic or static text label", () -> addElement(ElementType.TEXT));
         Button addImage = createToolbarBtn("+ Image", "Add business logo or graphic image", () -> addElement(ElementType.IMAGE));
         Button addTable = createToolbarBtn("+ Table", "Add line-item billing table with GST", () -> addElement(ElementType.TABLE));
-        Button addLine = createToolbarBtn("+ Line", "Add dividing line (horizontal/vertical)", () -> addElement(ElementType.LINE));
-        Button addRect = createToolbarBtn("+ Rect", "Add background rectangle or card", () -> addElement(ElementType.RECT));
-        Button addQr = createToolbarBtn("+ QR Code", "Add dynamic UPI payment QR code", () -> addElement(ElementType.QRCODE));
-        Button addBarcode = createToolbarBtn("+ Barcode", "Add Code 128 invoice barcode", () -> addElement(ElementType.BARCODE));
+
+        // Shapes Dropdown MenuButton
+        MenuButton shapesMenu = new MenuButton("⬜ Shapes");
+        shapesMenu.getStyleClass().addAll("button-sm", "menu-button");
+        shapesMenu.setTooltip(new Tooltip("Add shapes (Rectangle, Rounded Card, Lines)"));
+        shapesMenu.setMinWidth(Region.USE_PREF_SIZE);
+
+        MenuItem rectItem = new MenuItem("⬜  Rectangle / Box");
+        rectItem.setOnAction(e -> addElement(ElementType.RECT));
+
+        MenuItem roundRectItem = new MenuItem("▢  Rounded Card");
+        roundRectItem.setOnAction(e -> addRoundedRect());
+
+        MenuItem lineHItem = new MenuItem("─  Horizontal Line");
+        lineHItem.setOnAction(e -> addLine("h"));
+
+        MenuItem lineVItem = new MenuItem("│  Vertical Line");
+        lineVItem.setOnAction(e -> addLine("v"));
+
+        shapesMenu.getItems().addAll(rectItem, roundRectItem, lineHItem, lineVItem);
+
+        // Codes Dropdown MenuButton
+        MenuButton codeMenu = new MenuButton("▦ Code");
+        codeMenu.getStyleClass().addAll("button-sm", "menu-button");
+        codeMenu.setTooltip(new Tooltip("Add dynamic QR or Barcode"));
+        codeMenu.setMinWidth(Region.USE_PREF_SIZE);
+
+        MenuItem qrItem = new MenuItem("⛶  UPI QR Code");
+        qrItem.setOnAction(e -> addElement(ElementType.QRCODE));
+
+        MenuItem barItem = new MenuItem("║▌  Invoice Barcode");
+        barItem.setOnAction(e -> addElement(ElementType.BARCODE));
+
+        codeMenu.getItems().addAll(qrItem, barItem);
 
         Separator s2 = new Separator(javafx.geometry.Orientation.VERTICAL);
-
-        // Zoom Controls
-        Button zoomOut = createToolbarBtn("−", "Zoom Out (Ctrl -)", () -> setZoom(zoom - 0.1));
-        
-        zoomLabel.getStyleClass().add("zoom-value");
-        zoomLabel.setTooltip(new Tooltip("Current Zoom Level"));
-
-        Button zoomIn = createToolbarBtn("+", "Zoom In (Ctrl +)", () -> setZoom(zoom + 0.1));
-        Button zoom100 = createToolbarBtn("100%", "Reset Zoom to 100% (Ctrl 0)", () -> setZoom(1.0));
-        Button zoomFit = createToolbarBtn("Fit", "Fit Page in Canvas Viewport", () -> setZoom(0.85));
-
-        CheckBox gridCb = new CheckBox("Grid");
-        gridCb.setSelected(true);
-        gridCb.setTooltip(new Tooltip("Toggle 1mm background alignment grid"));
-        gridCb.selectedProperty().addListener((obs, old, val) -> {
-            showGrid = val;
-            refreshCanvas();
-        });
-
-        CheckBox snapCb = new CheckBox("Snap");
-        snapCb.setSelected(true);
-        snapCb.setTooltip(new Tooltip("Snap element positioning to 1mm grid"));
-        snapCb.selectedProperty().addListener((obs, old, val) -> snapToGrid = val);
-
-        CheckBox magnetCb = new CheckBox("🧲 Magnet");
-        magnetCb.setSelected(true);
-        magnetCb.setTooltip(new Tooltip("Snap object borders to align and collapse with other objects and margins"));
-        magnetCb.selectedProperty().addListener((obs, old, val) -> magnetSnapping = val);
-
-        Region sp = new Region();
-        HBox.setHgrow(sp, Priority.ALWAYS);
-
-        Button helpBtn = createToolbarBtn("❓ Help", "Keyboard Shortcuts & Designer Guide", this::showShortcutsHelpDialog);
-        Button pageBtn = createToolbarBtn("Page Settings", "Configure page dimensions, paper size & margins", this::showPageSettingsDialog);
 
         // Tool Mode: Select vs Pan
         selectToolBtn = createToolbarBtn("↖ Select", "Select & Move Tool (V)", () -> setPanMode(false));
@@ -206,16 +204,56 @@ public class TemplateDesigner extends BorderPane {
         Button undoBtn = createToolbarBtn("↶ Undo", "Undo last change (Ctrl Z)", this::undo);
         Button redoBtn = createToolbarBtn("↷ Redo", "Redo undone change (Ctrl Y)", this::redo);
 
+        Separator s3 = new Separator(javafx.geometry.Orientation.VERTICAL);
+
+        // Zoom Controls
+        Button zoomOut = createToolbarBtn("−", "Zoom Out (Ctrl -)", () -> setZoom(zoom - 0.1));
+
+        zoomLabel.getStyleClass().add("zoom-value");
+        zoomLabel.setTooltip(new Tooltip("Current Zoom Level"));
+        zoomLabel.setMinWidth(Region.USE_PREF_SIZE);
+
+        Button zoomIn = createToolbarBtn("+", "Zoom In (Ctrl +)", () -> setZoom(zoom + 0.1));
+        Button zoomFit = createToolbarBtn("Fit", "Fit Page in Canvas Viewport (Ctrl 0)", () -> setZoom(0.85));
+
+        CheckBox gridCb = new CheckBox("Grid");
+        gridCb.setSelected(true);
+        gridCb.setMinWidth(Region.USE_PREF_SIZE);
+        gridCb.setTooltip(new Tooltip("Toggle 1mm background alignment grid"));
+        gridCb.selectedProperty().addListener((obs, old, val) -> {
+            showGrid = val;
+            refreshCanvas();
+        });
+
+        CheckBox snapCb = new CheckBox("Snap");
+        snapCb.setSelected(true);
+        snapCb.setMinWidth(Region.USE_PREF_SIZE);
+        snapCb.setTooltip(new Tooltip("Snap element positioning to 1mm grid"));
+        snapCb.selectedProperty().addListener((obs, old, val) -> snapToGrid = val);
+
+        CheckBox magnetCb = new CheckBox("🧲 Magnet");
+        magnetCb.setSelected(true);
+        magnetCb.setMinWidth(Region.USE_PREF_SIZE);
+        magnetCb.setTooltip(new Tooltip("Snap object borders to align and collapse with other objects and margins"));
+        magnetCb.selectedProperty().addListener((obs, old, val) -> magnetSnapping = val);
+
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+
+        Button helpBtn = createToolbarBtn("❓ Help", "Keyboard Shortcuts & Designer Guide", this::showShortcutsHelpDialog);
+        Button pageBtn = createToolbarBtn("⚙ Page", "Configure page dimensions, paper size & margins", this::showPageSettingsDialog);
+
         Button saveBtn = new Button("Save Template");
         saveBtn.getStyleClass().addAll("gold-btn");
+        saveBtn.setMinWidth(Region.USE_PREF_SIZE);
         saveBtn.setTooltip(new Tooltip("Save template changes to database (Ctrl S)"));
         saveBtn.setOnAction(e -> saveTemplate());
 
         bar.getChildren().addAll(
                 backBtn, nameField, s1,
-                addText, addImage, addTable, addLine, addRect, addQr, addBarcode, s2,
-                selectToolBtn, panToolBtn, undoBtn, redoBtn,
-                zoomOut, zoomLabel, zoomIn, zoom100, zoomFit, gridCb, snapCb, magnetCb, sp,
+                addText, addImage, addTable, shapesMenu, codeMenu, s2,
+                selectToolBtn, panToolBtn, undoBtn, redoBtn, s3,
+                zoomOut, zoomLabel, zoomIn, zoomFit, gridCb, snapCb, magnetCb, sp,
                 helpBtn, pageBtn, saveBtn
         );
         return bar;
@@ -250,6 +288,7 @@ public class TemplateDesigner extends BorderPane {
     private Button createToolbarBtn(String text, String tooltip, Runnable action) {
         Button b = new Button(text);
         b.getStyleClass().addAll("button-sm", "button-secondary");
+        b.setMinWidth(Region.USE_PREF_SIZE);
         if (tooltip != null) b.setTooltip(new Tooltip(tooltip));
         if (action != null) b.setOnAction(e -> action.run());
         return b;
@@ -796,12 +835,14 @@ public class TemplateDesigner extends BorderPane {
         double h = el.getH() * MM_PX;
 
         Pane wrapper = new Pane();
+        wrapper.setUserData(el);
         wrapper.setLayoutX(x);
         wrapper.setLayoutY(y);
         wrapper.setPrefSize(w, h);
         wrapper.setMinSize(w, h);
+        wrapper.setMaxSize(w, h);
         wrapper.setPickOnBounds(true);
-        wrapper.setCursor(Cursor.DEFAULT); // Standard pointer, NOT pan cursor!
+        wrapper.setCursor(Cursor.MOVE);
 
         Node visual = renderVisualElement(el, ctx, w, h);
         if (visual != null) {
@@ -879,6 +920,24 @@ public class TemplateDesigner extends BorderPane {
         }
     }
 
+    private void updateLiveElementVisual(TemplateElement el, double newW, double newH, double newX, double newY) {
+        for (Node n : elementsPane.getChildren()) {
+            if (n.getUserData() == el && n instanceof Pane p) {
+                p.setLayoutX(newX * MM_PX);
+                p.setLayoutY(newY * MM_PX);
+                p.setPrefSize(newW * MM_PX, newH * MM_PX);
+                p.setMinSize(newW * MM_PX, newH * MM_PX);
+                p.setMaxSize(newW * MM_PX, newH * MM_PX);
+                if (!p.getChildren().isEmpty() && p.getChildren().get(0) instanceof Region r) {
+                    r.setPrefSize(newW * MM_PX, newH * MM_PX);
+                    r.setMinSize(newW * MM_PX, newH * MM_PX);
+                    r.setMaxSize(newW * MM_PX, newH * MM_PX);
+                }
+                break;
+            }
+        }
+    }
+
     private void updateSelBoxGeometry(Pane selBox, Rectangle border, Rectangle moveHitArea,
                                      Rectangle hNW, Rectangle hN, Rectangle hNE, Rectangle hE,
                                      Rectangle hSE, Rectangle hS, Rectangle hSW, Rectangle hW,
@@ -934,13 +993,13 @@ public class TemplateDesigner extends BorderPane {
         selBox.setLayoutY(y);
         selBox.setPrefSize(w, h);
         selBox.setMinSize(w, h);
-        selBox.setPickOnBounds(true);
+        selBox.setPickOnBounds(false); // Allows handles at negative coordinate offsets to be clicked
         activeSelectionBox = selBox;
 
         // Move Hit Area (invisible overlay to make dragging anywhere inside seamless)
         Rectangle moveHitArea = new Rectangle(w, h);
         moveHitArea.setFill(Color.web("#000000", 0.001));
-        moveHitArea.setCursor(Cursor.DEFAULT);
+        moveHitArea.setCursor(Cursor.MOVE);
 
         final double[] moveStart = new double[4];
         final boolean[] isMoved = new boolean[1];
@@ -979,10 +1038,12 @@ public class TemplateDesigner extends BorderPane {
             selBox.setLayoutX(newX * MM_PX);
             selBox.setLayoutY(newY * MM_PX);
 
+            // Directly update the element's wrapper in elementsPane via userData
             for (Node n : elementsPane.getChildren()) {
-                if (n instanceof Pane p && Math.abs(p.getPrefWidth() - (el.getW() * MM_PX)) < 0.5) {
-                    p.setLayoutX(newX * MM_PX);
-                    p.setLayoutY(newY * MM_PX);
+                if (n.getUserData() == el) {
+                    n.setLayoutX(newX * MM_PX);
+                    n.setLayoutY(newY * MM_PX);
+                    break;
                 }
             }
             updatePropertiesPanel();
@@ -1043,6 +1104,7 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); }
             el.setW(newW); el.setH(newH);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
+            updateLiveElementVisual(el, newW, newH, el.getX(), el.getY());
             updatePropertiesPanel();
             e.consume();
         });
@@ -1063,6 +1125,7 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) newW = Math.round(newW);
             el.setW(newW);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, el.getH() * MM_PX);
+            updateLiveElementVisual(el, newW, el.getH(), el.getX(), el.getY());
             updatePropertiesPanel();
             e.consume();
         });
@@ -1083,6 +1146,7 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) newH = Math.round(newH);
             el.setH(newH);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, el.getW() * MM_PX, newH * MM_PX);
+            updateLiveElementVisual(el, el.getW(), newH, el.getX(), el.getY());
             updatePropertiesPanel();
             e.consume();
         });
@@ -1106,6 +1170,7 @@ public class TemplateDesigner extends BorderPane {
             el.setW(newW); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, el.getH() * MM_PX);
+            updateLiveElementVisual(el, newW, el.getH(), newX, el.getY());
             updatePropertiesPanel();
             e.consume();
         });
@@ -1129,6 +1194,7 @@ public class TemplateDesigner extends BorderPane {
             el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, el.getW() * MM_PX, newH * MM_PX);
+            updateLiveElementVisual(el, el.getW(), newH, el.getX(), newY);
             updatePropertiesPanel();
             e.consume();
         });
@@ -1155,6 +1221,7 @@ public class TemplateDesigner extends BorderPane {
             el.setW(newW); el.setH(newH); el.setX(newX); el.setY(newY);
             selBox.setLayoutX(newX * MM_PX); selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
+            updateLiveElementVisual(el, newW, newH, newX, newY);
             updatePropertiesPanel();
             e.consume();
         });
@@ -1180,6 +1247,7 @@ public class TemplateDesigner extends BorderPane {
             el.setW(newW); el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
+            updateLiveElementVisual(el, newW, newH, el.getX(), newY);
             updatePropertiesPanel();
             e.consume();
         });
@@ -1205,6 +1273,7 @@ public class TemplateDesigner extends BorderPane {
             el.setW(newW); el.setH(newH); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
+            updateLiveElementVisual(el, newW, newH, newX, el.getY());
             updatePropertiesPanel();
             e.consume();
         });
@@ -1388,16 +1457,18 @@ public class TemplateDesigner extends BorderPane {
 
                 VBox box = new VBox(0);
                 box.setPrefSize(w, h);
+                box.setMinSize(w, h);
+                box.setMaxSize(w, h);
                 if (drawOuter) {
                     // Per-side outer border: hidden sides use transparent color
-                    box.setStyle("-fx-background-color: #ffffff; -fx-border-color: "
+                    box.setStyle("-fx-background-color: " + el.getRowBg() + "; -fx-border-color: "
                             + (el.isBorderTop() ? bc : "transparent") + " "
                             + (el.isBorderRight() ? bc : "transparent") + " "
                             + (el.isBorderBottom() ? bc : "transparent") + " "
                             + (el.isBorderLeft() ? bc : "transparent") + ";"
                             + " -fx-border-width: " + bw + ";");
                 } else {
-                    box.setStyle("-fx-background-color: #ffffff;");
+                    box.setStyle("-fx-background-color: " + el.getRowBg() + ";");
                 }
 
                 List<TableColumn> cols = el.getColumns();
@@ -1415,6 +1486,8 @@ public class TemplateDesigner extends BorderPane {
 
                 HBox hRow = new HBox(0);
                 hRow.setPrefHeight(headerPx);
+                hRow.setMinHeight(headerPx);
+                hRow.setMaxHeight(headerPx);
                 // Header underline (grid / rows styles only)
                 hRow.setStyle("-fx-background-color: " + hBg + ";"
                         + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
@@ -1425,6 +1498,10 @@ public class TemplateDesigner extends BorderPane {
                     boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
                     Label lbl = new Label(c.getLabel());
                     lbl.setPrefWidth(cW);
+                    lbl.setMinWidth(0);
+                    lbl.setMaxWidth(cW);
+                    lbl.setTextOverrun(OverrunStyle.ELLIPSIS);
+                    lbl.setEllipsisString("…");
                     lbl.setPrefHeight(headerPx);
                     lbl.setStyle("-fx-font-weight: bold; -fx-font-size: " + fontPx + "px; -fx-text-fill: " + hCol + "; -fx-padding: 0 4;"
                             + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
@@ -1433,9 +1510,12 @@ public class TemplateDesigner extends BorderPane {
                 }
                 box.getChildren().add(hRow);
 
-                for (int r = 1; r <= 2; r++) {
+                int numRows = Math.max(1, Math.min(25, (int) Math.round((h - headerPx) / rowPx)));
+                for (int r = 1; r <= numRows; r++) {
                     HBox row = new HBox(0);
                     row.setPrefHeight(rowPx);
+                    row.setMinHeight(rowPx);
+                    row.setMaxHeight(rowPx);
                     String rBg = el.isShowZebra() && (r % 2 == 0) ? zebraCol : rowBgCol;
                     row.setStyle("-fx-background-color: " + rBg + ";"
                             + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
@@ -1453,6 +1533,10 @@ public class TemplateDesigner extends BorderPane {
                                      ("amount".equalsIgnoreCase(c.getKey()) ? "590.00" : "—")))))));
                         Label lbl = new Label(val);
                         lbl.setPrefWidth(cW);
+                        lbl.setMinWidth(0);
+                        lbl.setMaxWidth(cW);
+                        lbl.setTextOverrun(OverrunStyle.ELLIPSIS);
+                        lbl.setEllipsisString("…");
                         lbl.setPrefHeight(rowPx);
                         lbl.setStyle("-fx-font-size: " + fontPx + "px; -fx-text-fill: " + rowTextCol + "; -fx-padding: 0 4;"
                                 + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
@@ -3162,6 +3246,54 @@ public class TemplateDesigner extends BorderPane {
                 el.setColumns(PresetTemplates.defaultItemColumns());
                 break;
         }
+
+        template.getElements().add(el);
+        selectedElement = el;
+        saveState();
+        refreshCanvas();
+        updatePropertiesPanel();
+        refreshLayersList();
+    }
+
+    private void addRoundedRect() {
+        TemplateElement el = new TemplateElement();
+        el.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
+        el.setType(ElementType.RECT);
+        el.setName("Rounded Card");
+        el.setX(20);
+        el.setY(20);
+        el.setW(60);
+        el.setH(30);
+        el.setBg("#ffffff");
+        el.setBorderRadius(4.0);
+        el.setBorderWidth(0.3);
+        el.setBorderColor("#c9c4b8");
+
+        template.getElements().add(el);
+        selectedElement = el;
+        saveState();
+        refreshCanvas();
+        updatePropertiesPanel();
+        refreshLayersList();
+    }
+
+    private void addLine(String dir) {
+        TemplateElement el = new TemplateElement();
+        el.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
+        el.setType(ElementType.LINE);
+        el.setName("v".equalsIgnoreCase(dir) ? "Vertical Line" : "Horizontal Line");
+        el.setDirection(dir);
+        el.setX(20);
+        el.setY(20);
+        if ("v".equalsIgnoreCase(dir)) {
+            el.setW(1);
+            el.setH(60);
+        } else {
+            el.setW(80);
+            el.setH(1);
+        }
+        el.setBorderWidth(0.5);
+        el.setBorderColor("#1a1a1a");
 
         template.getElements().add(el);
         selectedElement = el;
