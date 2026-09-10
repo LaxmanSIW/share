@@ -2155,3 +2155,38 @@ Label {
 .accent-red     { -fx-text-fill: -color-error; }
 .accent-sky     { -fx-text-fill: -color-info; }
 .accent-amber   { -fx-text-fill: -color-warning; }
+
+/* --- Custom Color Picker Button & Layer Row Controls --- */
+.custom-color-btn {
+    -fx-font-family: -font-family-mono;
+    -fx-font-size: 11px;
+    -fx-padding: 3 8 3 8;
+    -fx-background-color: -color-surface;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-text-fill: -color-text;
+    -fx-cursor: hand;
+}
+.custom-color-btn:hover {
+    -fx-background-color: -color-surface-hover;
+    -fx-border-color: -color-accent;
+}
+
+.layer-action-btn {
+    -fx-padding: 2 4 2 4;
+    -fx-font-size: 11px;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-cursor: hand;
+}
+.layer-action-btn:hover {
+    -fx-background-color: -color-surface-hover;
+    -fx-background-radius: 3;
+}
+
+.spinner > .text-field {
+    -fx-alignment: center-left;
+    -fx-padding: 2 4 2 6;
+}
+

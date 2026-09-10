@@ -1,4 +1,4 @@
-# InvoiceStudio 2.0.1
+# InvoiceStudio 3.0.0
 
 **Standalone JavaFX Billing & Invoice Management Desktop Application**
 
@@ -18,7 +18,7 @@ wrapped in a custom dark **“Obsidian & Gold”** theme with a VS Code-style si
 | **Build tool** | Apache Maven (compiler target 21) |
 | **Testing** | JUnit 5.10.2 (27 unit tests) + a 47-step UI smoke harness |
 | **Main class** | `com.invoicestudio.Launcher` |
-| **Final artifact** | `target/invoice-studio-desktop-2.0.1.jar` (self-contained “fat” jar, ≈ 33 MB) |
+| **Final artifact** | `target/invoice-studio-desktop-3.0.0.jar` (self-contained “fat” jar, ≈ 33 MB) |
 
 ---
 

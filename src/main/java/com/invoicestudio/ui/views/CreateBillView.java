@@ -767,12 +767,12 @@ public class CreateBillView extends BorderPane {
         String words = BillingService.amountInWords(totals.getGrandTotal());
 
         Bill bill = buildBillObject(totals, words);
-        billDao.saveBill(bill);
+        app.getData().saveBill(bill);
 
         // Auto increment counter in settings if new bill
         if (editingBill == null) {
             currentSettings.setBillNoNext(currentSettings.getBillNoNext() + 1);
-            settingsDao.saveSettings(currentSettings);
+            app.getData().saveSettings(currentSettings);
         }
 
         // Save buyer to directory if enabled
@@ -792,6 +792,7 @@ public class CreateBillView extends BorderPane {
             }
         }
 
+        app.getData().invalidateBills();
         app.reloadAllData();
         Toast.show(app.getRootPane(), "Bill Saved", bill.getBillNo() + " saved successfully.", false);
 
@@ -799,7 +800,7 @@ public class CreateBillView extends BorderPane {
             double prevZoom = previewPane.getZoom();
             previewPane.setZoom(1.0);
             try {
-                PrintingService.printNode(previewPane, app.getPrimaryStage(), 1, bill.getBillNo());
+                PrintingService.printTemplate(previewPane, currentTemplate, app.getPrimaryStage(), 1, bill.getBillNo());
             } finally {
                 previewPane.setZoom(prevZoom);
             }

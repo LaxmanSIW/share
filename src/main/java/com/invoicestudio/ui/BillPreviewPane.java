@@ -57,6 +57,28 @@ public class BillPreviewPane extends StackPane {
         return zoom;
     }
 
+    public Pane getPagePane() {
+        return pagePane;
+    }
+
+    public Template getCurrentTemplate() {
+        return currentTemplate;
+    }
+
+    public Bill getCurrentBill() {
+        return currentBill;
+    }
+
+    public Settings getCurrentSettings() {
+        return currentSettings;
+    }
+
+    public Pane createCleanPrintNode() {
+        BillPreviewPane clone = new BillPreviewPane();
+        clone.render(currentTemplate, currentBill, currentSettings, currentCopyIndex, currentPageCount);
+        return clone.pagePane;
+    }
+
     public void render(Template template, Bill bill, Settings settings) {
         render(template, bill, settings, 0, 1);
     }
@@ -204,21 +226,59 @@ public class BillPreviewPane extends StackPane {
     private Node createVisualElementNode(TemplateElement el, RenderContext ctx, double w, double h) {
         switch (el.getType()) {
             case RECT -> {
-                Rectangle r = new Rectangle(w, h);
-                if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
-                    r.setFill(Color.web(el.getBg()));
+                if (el.isIndividualBorders()) {
+                    Region reg = new Region();
+                    reg.setPrefSize(w, h);
+                    reg.setMinSize(w, h);
+                    reg.setMaxSize(w, h);
+
+                    String bg = (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg()))
+                            ? el.getBg() : "transparent";
+
+                    double topW = el.isSideActive("top") ? el.getEffectiveSideWidth("top") * MM_PX : 0;
+                    double rightW = el.isSideActive("right") ? el.getEffectiveSideWidth("right") * MM_PX : 0;
+                    double bottomW = el.isSideActive("bottom") ? el.getEffectiveSideWidth("bottom") * MM_PX : 0;
+                    double leftW = el.isSideActive("left") ? el.getEffectiveSideWidth("left") * MM_PX : 0;
+
+                    String topC = el.isSideActive("top") ? el.getEffectiveSideColor("top") : "transparent";
+                    String rightC = el.isSideActive("right") ? el.getEffectiveSideColor("right") : "transparent";
+                    String bottomC = el.isSideActive("bottom") ? el.getEffectiveSideColor("bottom") : "transparent";
+                    String leftC = el.isSideActive("left") ? el.getEffectiveSideColor("left") : "transparent";
+
+                    String topS = el.getEffectiveSideStyle("top");
+                    String rightS = el.getEffectiveSideStyle("right");
+                    String bottomS = el.getEffectiveSideStyle("bottom");
+                    String leftS = el.getEffectiveSideStyle("left");
+
+                    double r = el.getBorderRadius() > 0 ? el.getBorderRadius() * MM_PX : 0;
+
+                    reg.setStyle(String.format(java.util.Locale.US,
+                            "-fx-background-color: %s; -fx-background-radius: %.1f; "
+                            + "-fx-border-width: %.2f %.2f %.2f %.2f; "
+                            + "-fx-border-color: %s %s %s %s; "
+                            + "-fx-border-style: %s %s %s %s; "
+                            + "-fx-border-radius: %.1f;",
+                            bg, r, topW, rightW, bottomW, leftW,
+                            topC, rightC, bottomC, leftC,
+                            topS, rightS, bottomS, leftS, r));
+                    return reg;
                 } else {
-                    r.setFill(Color.TRANSPARENT);
+                    Rectangle r = new Rectangle(w, h);
+                    if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
+                        r.setFill(Color.web(el.getBg()));
+                    } else {
+                        r.setFill(Color.TRANSPARENT);
+                    }
+                    if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                        r.setStroke(Color.web(el.getBorderColor()));
+                        r.setStrokeWidth(el.getBorderWidth() * MM_PX);
+                    }
+                    if (el.getBorderRadius() > 0) {
+                        r.setArcWidth(el.getBorderRadius() * MM_PX * 2);
+                        r.setArcHeight(el.getBorderRadius() * MM_PX * 2);
+                    }
+                    return r;
                 }
-                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
-                    r.setStroke(Color.web(el.getBorderColor()));
-                    r.setStrokeWidth(el.getBorderWidth() * MM_PX);
-                }
-                if (el.getBorderRadius() > 0) {
-                    r.setArcWidth(el.getBorderRadius() * MM_PX * 2);
-                    r.setArcHeight(el.getBorderRadius() * MM_PX * 2);
-                }
-                return r;
             }
             case LINE -> {
                 Line l = new Line();

@@ -17,34 +17,116 @@ import javafx.stage.Window;
 public class PrintingService {
 
     public static boolean printNode(Node node, Window owner, int copies, String jobName) {
+        return printTemplate(node, null, owner, copies, jobName);
+    }
+
+    public static boolean printTemplate(Node node, Template template, Window owner, int copies, String jobName) {
         PrinterJob job = PrinterJob.createPrinterJob();
         if (job == null) return false;
 
         job.getJobSettings().setJobName(jobName != null ? jobName : "InvoiceStudio Print");
         job.getJobSettings().setCopies(Math.max(1, copies));
 
-        try {
-            Printer printer = job.getPrinter();
-            if (printer != null) {
-                PageLayout current = job.getJobSettings().getPageLayout();
-                PageLayout minMarginLayout = printer.createPageLayout(
-                        current.getPaper(),
-                        current.getPageOrientation(),
+        Printer printer = job.getPrinter();
+        PageLayout pageLayout = null;
+
+        if (printer != null) {
+            PageOrientation orientation = PageOrientation.PORTRAIT;
+            if (template != null && template.getPage() != null
+                    && "landscape".equalsIgnoreCase(template.getPage().getOrientation())) {
+                orientation = PageOrientation.LANDSCAPE;
+            }
+
+            Paper targetPaper = Paper.A4;
+            if (template != null && template.getPage() != null) {
+                targetPaper = resolvePaper(printer, template.getPage().getSizeName(),
+                        template.getPage().getWidth(), template.getPage().getHeight());
+            }
+
+            try {
+                pageLayout = printer.createPageLayout(
+                        targetPaper,
+                        orientation,
                         Printer.MarginType.HARDWARE_MINIMUM
                 );
-                job.getJobSettings().setPageLayout(minMarginLayout);
+                job.getJobSettings().setPageLayout(pageLayout);
+            } catch (Exception ignored) {
+                pageLayout = job.getJobSettings().getPageLayout();
             }
-        } catch (Exception ignored) {}
+        } else {
+            pageLayout = job.getJobSettings().getPageLayout();
+        }
 
         boolean proceed = job.showPrintDialog(owner);
         if (proceed) {
-            boolean success = job.printPage(node);
+            // Re-fetch layout in case user changed printer or paper in print dialog
+            PageLayout actualLayout = job.getJobSettings().getPageLayout();
+
+            Node printTarget;
+            double sourceW;
+            double sourceH;
+
+            if (node instanceof com.invoicestudio.ui.BillPreviewPane preview) {
+                printTarget = preview.createCleanPrintNode();
+                sourceW = ((Pane) printTarget).getPrefWidth();
+                sourceH = ((Pane) printTarget).getPrefHeight();
+            } else {
+                printTarget = node;
+                javafx.geometry.Bounds b = node.getBoundsInLocal();
+                sourceW = b.getWidth() > 0 ? b.getWidth() : actualLayout.getPrintableWidth();
+                sourceH = b.getHeight() > 0 ? b.getHeight() : actualLayout.getPrintableHeight();
+            }
+
+            double printableW = actualLayout.getPrintableWidth();
+            double printableH = actualLayout.getPrintableHeight();
+
+            // Screen pixels are 96 DPI (3.78 px/mm); JavaFX printer coordinates are 72 pt/inch.
+            // Ratio 72 / 96 = 0.75 scales screen pixels to 100% physical size.
+            // In addition, ensure it fits inside the printer's printable boundaries without clipping.
+            double baseScale = 0.75;
+            double maxFitScaleX = printableW / sourceW;
+            double maxFitScaleY = printableH / sourceH;
+            double scale = Math.min(baseScale, Math.min(maxFitScaleX, maxFitScaleY));
+
+            javafx.scene.Group printGroup = new javafx.scene.Group(printTarget);
+            printGroup.getTransforms().setAll(new javafx.scene.transform.Scale(scale, scale, 0, 0));
+
+            boolean success = job.printPage(actualLayout, printGroup);
             if (success) {
                 job.endJob();
                 return true;
             }
         }
         return false;
+    }
+
+    private static Paper resolvePaper(Printer printer, com.invoicestudio.model.PageSizeName sizeName, double widthMm, double heightMm) {
+        if (sizeName == null) sizeName = com.invoicestudio.model.PageSizeName.A4;
+
+        return switch (sizeName) {
+            case A4 -> Paper.A4;
+            case A5 -> Paper.A5;
+            case LETTER -> Paper.NA_LETTER;
+            case LEGAL -> Paper.LEGAL;
+            case THERMAL_80, THERMAL_58, CUSTOM -> {
+                if (printer != null) {
+                    for (Paper p : printer.getPrinterAttributes().getSupportedPapers()) {
+                        double pW = p.getWidth() * 25.4 / 72.0; // mm
+                        double pH = p.getHeight() * 25.4 / 72.0;
+                        if (Math.abs(pW - widthMm) < 5.0 && Math.abs(pH - heightMm) < 15.0) {
+                            yield p;
+                        }
+                    }
+                    for (Paper p : printer.getPrinterAttributes().getSupportedPapers()) {
+                        String name = p.getName().toLowerCase();
+                        if (sizeName == com.invoicestudio.model.PageSizeName.THERMAL_80 && (name.contains("80") || name.contains("roll") || name.contains("receipt"))) {
+                            yield p;
+                        }
+                    }
+                }
+                yield Paper.A4;
+            }
+        };
     }
 
     public static Pane createCalibrationSheetNode(Settings settings) {

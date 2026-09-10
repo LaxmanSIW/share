@@ -442,7 +442,7 @@ public class HistoryView extends BorderPane {
         printBtn.setTooltip(new Tooltip("Send the selected copies to the printer"));
         printBtn.setOnAction(e -> {
             int copies = copyCombo.getSelectionModel().getSelectedIndex() + 1;
-            boolean success = PrintingService.printNode(preview, app.getPrimaryStage(), copies, bill.getBillNo());
+            boolean success = PrintingService.printTemplate(preview, finalTemplate, app.getPrimaryStage(), copies, bill.getBillNo());
             if (success) {
                 app.getData().bills().incrementPrintCount(bill.getId());
                 refresh();
@@ -510,7 +510,7 @@ public class HistoryView extends BorderPane {
             BillPreviewPane preview = new BillPreviewPane();
             preview.render(template, bill, settings, 0, 1);
 
-            boolean success = PrintingService.printNode(preview, app.getPrimaryStage(), copies, bill.getBillNo());
+            boolean success = PrintingService.printTemplate(preview, template, app.getPrimaryStage(), copies, bill.getBillNo());
             if (success) {
                 app.getData().bills().incrementPrintCount(bill.getId());
                 refresh();

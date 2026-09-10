@@ -16,7 +16,7 @@
 set -u
 
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-JAR="$BASE/target/invoice-studio-desktop-2.0.1.jar"
+JAR="$BASE/target/invoice-studio-desktop-3.0.0.jar"
 TESTCLASSES="$BASE/target/test-classes"
 RUN_DIR="${SMOKE_RUN_DIR:-$BASE/nav-smoke}"
 SHOTS="${SMOKE_SHOTS:-$RUN_DIR/screenshots}"

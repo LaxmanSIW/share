@@ -7,6 +7,7 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TemplateElement {
     private String id;
+    private String name;
     private ElementType type = ElementType.TEXT;
     private double x; // mm
     private double y; // mm
@@ -18,6 +19,21 @@ public class TemplateElement {
     private boolean repeatOnPages;
     private double rotation; // -180..180 deg
     private boolean hideWhenBlank;
+
+    /* ---- individual borders for shapes/rects ---- */
+    private boolean individualBorders;
+    private Double borderTopWidth;
+    private Double borderBottomWidth;
+    private Double borderLeftWidth;
+    private Double borderRightWidth;
+    private String borderTopColor;
+    private String borderBottomColor;
+    private String borderLeftColor;
+    private String borderRightColor;
+    private String borderTopStyle = "solid"; // solid, dashed, dotted, none
+    private String borderBottomStyle = "solid";
+    private String borderLeftStyle = "solid";
+    private String borderRightStyle = "solid";
 
     /* ---- text ---- */
     private String text = "";
@@ -225,15 +241,19 @@ public class TemplateElement {
     /** Outer border sides — null-safe, default true for legacy templates. */
     public boolean isBorderTop() { return borderTop == null || borderTop; }
     public void setBorderTop(Boolean borderTop) { this.borderTop = borderTop; }
+    public void setBorderTopActive(Boolean active) { this.borderTop = active; }
 
     public boolean isBorderBottom() { return borderBottom == null || borderBottom; }
     public void setBorderBottom(Boolean borderBottom) { this.borderBottom = borderBottom; }
+    public void setBorderBottomActive(Boolean active) { this.borderBottom = active; }
 
     public boolean isBorderLeft() { return borderLeft == null || borderLeft; }
     public void setBorderLeft(Boolean borderLeft) { this.borderLeft = borderLeft; }
+    public void setBorderLeftActive(Boolean active) { this.borderLeft = active; }
 
     public boolean isBorderRight() { return borderRight == null || borderRight; }
     public void setBorderRight(Boolean borderRight) { this.borderRight = borderRight; }
+    public void setBorderRightActive(Boolean active) { this.borderRight = active; }
 
     public String getRowBg() { return rowBg != null && !rowBg.isBlank() ? rowBg : "#ffffff"; }
     public void setRowBg(String rowBg) { this.rowBg = rowBg; }
@@ -243,6 +263,116 @@ public class TemplateElement {
 
     public String getZebraColor() { return zebraColor != null && !zebraColor.isBlank() ? zebraColor : "#f8f8f8"; }
     public void setZebraColor(String zebraColor) { this.zebraColor = zebraColor; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public String getDisplayName() {
+        if (name != null && !name.isBlank()) return name.trim();
+        switch (getType()) {
+            case TEXT -> {
+                if (text != null && !text.isBlank()) {
+                    String clean = text.replace("\n", " ").trim();
+                    return clean.length() > 22 ? clean.substring(0, 22) + "…" : clean;
+                }
+                return "Text";
+            }
+            case TABLE -> { return "Table"; }
+            case IMAGE -> { return useBusinessLogo ? "Business Logo" : "Image"; }
+            case RECT -> { return "Rectangle Shape"; }
+            case LINE -> { return "Line (" + ("v".equalsIgnoreCase(direction) ? "Vertical" : "Horizontal") + ")"; }
+            case QRCODE -> { return "QR Code"; }
+            case BARCODE -> { return "Barcode"; }
+            case PAGENO -> { return "Page Number"; }
+            default -> { return getType().name(); }
+        }
+    }
+
+    public boolean isIndividualBorders() { return individualBorders; }
+    public void setIndividualBorders(boolean individualBorders) { this.individualBorders = individualBorders; }
+
+    public Double getBorderTopWidth() { return borderTopWidth; }
+    public void setBorderTopWidth(Double borderTopWidth) { this.borderTopWidth = borderTopWidth; }
+
+    public Double getBorderBottomWidth() { return borderBottomWidth; }
+    public void setBorderBottomWidth(Double borderBottomWidth) { this.borderBottomWidth = borderBottomWidth; }
+
+    public Double getBorderLeftWidth() { return borderLeftWidth; }
+    public void setBorderLeftWidth(Double borderLeftWidth) { this.borderLeftWidth = borderLeftWidth; }
+
+    public Double getBorderRightWidth() { return borderRightWidth; }
+    public void setBorderRightWidth(Double borderRightWidth) { this.borderRightWidth = borderRightWidth; }
+
+    public String getBorderTopColor() { return borderTopColor; }
+    public void setBorderTopColor(String borderTopColor) { this.borderTopColor = borderTopColor; }
+
+    public String getBorderBottomColor() { return borderBottomColor; }
+    public void setBorderBottomColor(String borderBottomColor) { this.borderBottomColor = borderBottomColor; }
+
+    public String getBorderLeftColor() { return borderLeftColor; }
+    public void setBorderLeftColor(String borderLeftColor) { this.borderLeftColor = borderLeftColor; }
+
+    public String getBorderRightColor() { return borderRightColor; }
+    public void setBorderRightColor(String borderRightColor) { this.borderRightColor = borderRightColor; }
+
+    public String getBorderTopStyle() { return borderTopStyle != null ? borderTopStyle : "solid"; }
+    public void setBorderTopStyle(String borderTopStyle) { this.borderTopStyle = borderTopStyle; }
+
+    public String getBorderBottomStyle() { return borderBottomStyle != null ? borderBottomStyle : "solid"; }
+    public void setBorderBottomStyle(String borderBottomStyle) { this.borderBottomStyle = borderBottomStyle; }
+
+    public String getBorderLeftStyle() { return borderLeftStyle != null ? borderLeftStyle : "solid"; }
+    public void setBorderLeftStyle(String borderLeftStyle) { this.borderLeftStyle = borderLeftStyle; }
+
+    public String getBorderRightStyle() { return borderRightStyle != null ? borderRightStyle : "solid"; }
+    public void setBorderRightStyle(String borderRightStyle) { this.borderRightStyle = borderRightStyle; }
+
+    public double getEffectiveSideWidth(String side) {
+        if (!individualBorders) return borderWidth;
+        Double w = switch (side.toLowerCase()) {
+            case "top" -> borderTopWidth;
+            case "bottom" -> borderBottomWidth;
+            case "left" -> borderLeftWidth;
+            case "right" -> borderRightWidth;
+            default -> null;
+        };
+        if (w != null) return w;
+        return borderWidth > 0 ? borderWidth : 1.0;
+    }
+
+    public String getEffectiveSideColor(String side) {
+        if (!individualBorders) return borderColor != null ? borderColor : "#1a1a1a";
+        String c = switch (side.toLowerCase()) {
+            case "top" -> borderTopColor;
+            case "bottom" -> borderBottomColor;
+            case "left" -> borderLeftColor;
+            case "right" -> borderRightColor;
+            default -> null;
+        };
+        return (c != null && !c.isBlank()) ? c : (borderColor != null ? borderColor : "#1a1a1a");
+    }
+
+    public String getEffectiveSideStyle(String side) {
+        if (!individualBorders) return "solid";
+        return switch (side.toLowerCase()) {
+            case "top" -> getBorderTopStyle();
+            case "bottom" -> getBorderBottomStyle();
+            case "left" -> getBorderLeftStyle();
+            case "right" -> getBorderRightStyle();
+            default -> "solid";
+        };
+    }
+
+    public boolean isSideActive(String side) {
+        if (!individualBorders) return borderWidth > 0;
+        return switch (side.toLowerCase()) {
+            case "top" -> isBorderTop() && getEffectiveSideWidth("top") > 0 && !"none".equalsIgnoreCase(getEffectiveSideStyle("top"));
+            case "bottom" -> isBorderBottom() && getEffectiveSideWidth("bottom") > 0 && !"none".equalsIgnoreCase(getEffectiveSideStyle("bottom"));
+            case "left" -> isBorderLeft() && getEffectiveSideWidth("left") > 0 && !"none".equalsIgnoreCase(getEffectiveSideStyle("left"));
+            case "right" -> isBorderRight() && getEffectiveSideWidth("right") > 0 && !"none".equalsIgnoreCase(getEffectiveSideStyle("right"));
+            default -> true;
+        };
+    }
 
     /**
      * Scale factor for table fonts relative to the legacy default (7.5pt), so

@@ -230,7 +230,29 @@ public class PdfExportService {
                         g2.fill(new Rectangle2D.Double(x, y, w, h));
                     }
                 }
-                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                if (el.isIndividualBorders()) {
+                    String[] sides = {"top", "bottom", "left", "right"};
+                    for (String side : sides) {
+                        if (el.isSideActive(side)) {
+                            float bw = (float) Math.max(0.5, el.getEffectiveSideWidth(side) * PX_PER_MM);
+                            String style = el.getEffectiveSideStyle(side);
+                            BasicStroke stroke;
+                            if ("dashed".equalsIgnoreCase(style)) {
+                                stroke = new BasicStroke(bw, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, new float[]{bw * 3f, bw * 2f}, 0.0f);
+                            } else if ("dotted".equalsIgnoreCase(style)) {
+                                stroke = new BasicStroke(bw, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10.0f, new float[]{bw, bw * 2f}, 0.0f);
+                            } else {
+                                stroke = new BasicStroke(bw);
+                            }
+                            g2.setStroke(stroke);
+                            g2.setColor(parseColor(el.getEffectiveSideColor(side), Color.BLACK));
+                            if ("top".equals(side)) g2.draw(new Line2D.Double(x, y, x + w, y));
+                            else if ("bottom".equals(side)) g2.draw(new Line2D.Double(x, y + h, x + w, y + h));
+                            else if ("left".equals(side)) g2.draw(new Line2D.Double(x, y, x, y + h));
+                            else if ("right".equals(side)) g2.draw(new Line2D.Double(x + w, y, x + w, y + h));
+                        }
+                    }
+                } else if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
                     g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
                     float bw = (float) Math.max(1, el.getBorderWidth() * PX_PER_MM);
                     g2.setStroke(new BasicStroke(bw));
