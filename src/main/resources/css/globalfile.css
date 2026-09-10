@@ -1357,6 +1357,8 @@ Label {
     -fx-background-color: transparent;
     -fx-padding: 4 10 4 10;
     -fx-cursor: hand;
+    -fx-faint-focus-color: transparent;
+    -fx-focus-color: transparent;
 }
 
 .tab .tab-label {
@@ -1378,6 +1380,7 @@ Label {
     -fx-text-fill: #F2CA6B;
     -fx-font-weight: bold;
 }
+
 
 /* ==========================================================================
    SPLIT PANE (CreateBill / Designer)
