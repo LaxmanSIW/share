@@ -161,9 +161,10 @@ public class TemplateDesigner extends BorderPane {
 
         // Shapes Dropdown MenuButton
         MenuButton shapesMenu = new MenuButton("⬜ Shapes");
-        shapesMenu.getStyleClass().addAll("button-sm", "menu-button");
+        shapesMenu.getStyleClass().addAll("button-sm", "menu-button", "designer-menubtn");
         shapesMenu.setTooltip(new Tooltip("Add shapes (Rectangle, Rounded Card, Lines)"));
         shapesMenu.setMinWidth(Region.USE_PREF_SIZE);
+        shapesMenu.setStyle("-fx-text-fill: #FFFFFF; -fx-font-weight: bold;");
 
         MenuItem rectItem = new MenuItem("⬜  Rectangle / Box");
         rectItem.setOnAction(e -> addElement(ElementType.RECT));
@@ -181,9 +182,10 @@ public class TemplateDesigner extends BorderPane {
 
         // Codes Dropdown MenuButton
         MenuButton codeMenu = new MenuButton("▦ Code");
-        codeMenu.getStyleClass().addAll("button-sm", "menu-button");
+        codeMenu.getStyleClass().addAll("button-sm", "menu-button", "designer-menubtn");
         codeMenu.setTooltip(new Tooltip("Add dynamic QR or Barcode"));
         codeMenu.setMinWidth(Region.USE_PREF_SIZE);
+        codeMenu.setStyle("-fx-text-fill: #FFFFFF; -fx-font-weight: bold;");
 
         MenuItem qrItem = new MenuItem("⛶  UPI QR Code");
         qrItem.setOnAction(e -> addElement(ElementType.QRCODE));
@@ -698,16 +700,16 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private Rectangle createHandleShape(Cursor cursor) {
-        Rectangle h = new Rectangle(9, 9);
-        h.setFill(Color.WHITE);
-        h.setStroke(Color.web("#D9A13B"));
+        Rectangle h = new Rectangle(10, 10);
+        h.setFill(Color.web("#D9A13B"));
+        h.setStroke(Color.web("#0F172A"));
         h.setStrokeWidth(1.5);
         h.setArcWidth(2);
         h.setArcHeight(2);
         h.setCursor(cursor);
-        h.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 4, 0, 0, 1);");
-        h.setOnMouseEntered(e -> h.setFill(Color.web("#D9A13B")));
-        h.setOnMouseExited(e -> h.setFill(Color.WHITE));
+        h.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 4, 0, 0, 1);");
+        h.setOnMouseEntered(e -> h.setFill(Color.WHITE));
+        h.setOnMouseExited(e -> h.setFill(Color.web("#D9A13B")));
         return h;
     }
 
@@ -843,6 +845,14 @@ public class TemplateDesigner extends BorderPane {
         wrapper.setMaxSize(w, h);
         wrapper.setPickOnBounds(true);
         wrapper.setCursor(Cursor.MOVE);
+        wrapper.setStyle("-fx-background-color: rgba(255, 255, 255, 0.005);");
+
+        // Explicit geometric hitArea so tables and transparent shapes capture clicks reliably
+        Rectangle hitArea = new Rectangle(w, h);
+        hitArea.setFill(Color.web("#FFFFFF", 0.005));
+        hitArea.setPickOnBounds(true);
+        hitArea.setCursor(Cursor.MOVE);
+        wrapper.getChildren().add(hitArea);
 
         Node visual = renderVisualElement(el, ctx, w, h);
         if (visual != null) {
@@ -893,7 +903,6 @@ public class TemplateDesigner extends BorderPane {
             wrapper.setLayoutX(newX * MM_PX);
             wrapper.setLayoutY(newY * MM_PX);
             updateSelectionOverlayPos(newX * MM_PX, newY * MM_PX);
-            updatePropertiesPanel();
             e.consume();
         });
 
@@ -921,17 +930,45 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void updateLiveElementVisual(TemplateElement el, double newW, double newH, double newX, double newY) {
+        double wPx = newW * MM_PX;
+        double hPx = newH * MM_PX;
         for (Node n : elementsPane.getChildren()) {
             if (n.getUserData() == el && n instanceof Pane p) {
                 p.setLayoutX(newX * MM_PX);
                 p.setLayoutY(newY * MM_PX);
-                p.setPrefSize(newW * MM_PX, newH * MM_PX);
-                p.setMinSize(newW * MM_PX, newH * MM_PX);
-                p.setMaxSize(newW * MM_PX, newH * MM_PX);
-                if (!p.getChildren().isEmpty() && p.getChildren().get(0) instanceof Region r) {
-                    r.setPrefSize(newW * MM_PX, newH * MM_PX);
-                    r.setMinSize(newW * MM_PX, newH * MM_PX);
-                    r.setMaxSize(newW * MM_PX, newH * MM_PX);
+                p.setPrefSize(wPx, hPx);
+                p.setMinSize(wPx, hPx);
+                p.setMaxSize(wPx, hPx);
+                for (Node child : p.getChildren()) {
+                    if (child instanceof Rectangle rect) {
+                        rect.setWidth(wPx);
+                        rect.setHeight(hPx);
+                    } else if (child instanceof Region r) {
+                        r.setPrefSize(wPx, hPx);
+                        r.setMinSize(wPx, hPx);
+                        r.setMaxSize(wPx, hPx);
+                        if (el.getType() == ElementType.TABLE && child instanceof VBox box) {
+                            List<TableColumn> cols = el.getColumns();
+                            if (cols == null || cols.isEmpty()) cols = PresetTemplates.defaultItemColumns();
+                            for (Node rowNode : box.getChildren()) {
+                                if (rowNode instanceof HBox row) {
+                                    row.setPrefWidth(wPx);
+                                    row.setMinWidth(wPx);
+                                    row.setMaxWidth(wPx);
+                                    List<Node> colLabels = row.getChildren();
+                                    for (int ci = 0; ci < cols.size() && ci < colLabels.size(); ci++) {
+                                        TableColumn col = cols.get(ci);
+                                        double cW = (col.getWidth() / 100.0) * wPx;
+                                        Node lblNode = colLabels.get(ci);
+                                        if (lblNode instanceof Region colLbl) {
+                                            colLbl.setPrefWidth(cW);
+                                            colLbl.setMaxWidth(cW);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 break;
             }
@@ -949,29 +986,46 @@ public class TemplateDesigner extends BorderPane {
         moveHitArea.setWidth(nwPx);
         moveHitArea.setHeight(nhPx);
 
-        hNW.setLayoutX(-4.5);
-        hNW.setLayoutY(-4.5);
+        double hSize = 10.0;
+        double hHalf = hSize / 2.0;
 
-        hN.setLayoutX((nwPx / 2.0) - 4.5);
-        hN.setLayoutY(-4.5);
+        // Clamp handle coordinates so handles never land outside canvas bounds (negative or past page edge)
+        double elX = selectedElement != null ? selectedElement.getX() : 0;
+        double elY = selectedElement != null ? selectedElement.getY() : 0;
+        double pageWPx = template.getPage().getWidth() * MM_PX;
+        double pageHPx = template.getPage().getHeight() * MM_PX;
 
-        hNE.setLayoutX(nwPx - 4.5);
-        hNE.setLayoutY(-4.5);
+        double leftX = Math.max(-elX * MM_PX, -hHalf);
+        double rightX = Math.min((pageWPx - elX * MM_PX) - hSize, nwPx - hHalf);
+        double midX = (nwPx / 2.0) - hHalf;
 
-        hE.setLayoutX(nwPx - 4.5);
-        hE.setLayoutY((nhPx / 2.0) - 4.5);
+        double topY = Math.max(-elY * MM_PX, -hHalf);
+        double bottomY = Math.min((pageHPx - elY * MM_PX) - hSize, nhPx - hHalf);
+        double midY = (nhPx / 2.0) - hHalf;
 
-        hSE.setLayoutX(nwPx - 4.5);
-        hSE.setLayoutY(nhPx - 4.5);
+        hNW.setLayoutX(leftX);
+        hNW.setLayoutY(topY);
 
-        hS.setLayoutX((nwPx / 2.0) - 4.5);
-        hS.setLayoutY(nhPx - 4.5);
+        hN.setLayoutX(midX);
+        hN.setLayoutY(topY);
 
-        hSW.setLayoutX(-4.5);
-        hSW.setLayoutY(nhPx - 4.5);
+        hNE.setLayoutX(rightX);
+        hNE.setLayoutY(topY);
 
-        hW.setLayoutX(-4.5);
-        hW.setLayoutY((nhPx / 2.0) - 4.5);
+        hE.setLayoutX(rightX);
+        hE.setLayoutY(midY);
+
+        hSE.setLayoutX(rightX);
+        hSE.setLayoutY(bottomY);
+
+        hS.setLayoutX(midX);
+        hS.setLayoutY(bottomY);
+
+        hSW.setLayoutX(leftX);
+        hSW.setLayoutY(bottomY);
+
+        hW.setLayoutX(leftX);
+        hW.setLayoutY(midY);
     }
 
     private void updateSelectionOverlay() {
@@ -998,7 +1052,8 @@ public class TemplateDesigner extends BorderPane {
 
         // Move Hit Area (invisible overlay to make dragging anywhere inside seamless)
         Rectangle moveHitArea = new Rectangle(w, h);
-        moveHitArea.setFill(Color.web("#000000", 0.001));
+        moveHitArea.setFill(Color.web("#FFFFFF", 0.005));
+        moveHitArea.setPickOnBounds(true);
         moveHitArea.setCursor(Cursor.MOVE);
 
         final double[] moveStart = new double[4];
@@ -1046,7 +1101,6 @@ public class TemplateDesigner extends BorderPane {
                     break;
                 }
             }
-            updatePropertiesPanel();
             e.consume();
         });
 
@@ -1105,7 +1159,6 @@ public class TemplateDesigner extends BorderPane {
             el.setW(newW); el.setH(newH);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, newW, newH, el.getX(), el.getY());
-            updatePropertiesPanel();
             e.consume();
         });
         handleSE.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
@@ -1126,7 +1179,6 @@ public class TemplateDesigner extends BorderPane {
             el.setW(newW);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, el.getH() * MM_PX);
             updateLiveElementVisual(el, newW, el.getH(), el.getX(), el.getY());
-            updatePropertiesPanel();
             e.consume();
         });
         handleE.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
@@ -1147,7 +1199,6 @@ public class TemplateDesigner extends BorderPane {
             el.setH(newH);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, el.getW() * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, el.getW(), newH, el.getX(), el.getY());
-            updatePropertiesPanel();
             e.consume();
         });
         handleS.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
@@ -1171,7 +1222,6 @@ public class TemplateDesigner extends BorderPane {
             selBox.setLayoutX(newX * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, el.getH() * MM_PX);
             updateLiveElementVisual(el, newW, el.getH(), newX, el.getY());
-            updatePropertiesPanel();
             e.consume();
         });
         handleW.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
@@ -1195,7 +1245,6 @@ public class TemplateDesigner extends BorderPane {
             selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, el.getW() * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, el.getW(), newH, el.getX(), newY);
-            updatePropertiesPanel();
             e.consume();
         });
         handleN.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
@@ -1222,7 +1271,6 @@ public class TemplateDesigner extends BorderPane {
             selBox.setLayoutX(newX * MM_PX); selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, newW, newH, newX, newY);
-            updatePropertiesPanel();
             e.consume();
         });
         handleNW.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
@@ -1248,7 +1296,6 @@ public class TemplateDesigner extends BorderPane {
             selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, newW, newH, el.getX(), newY);
-            updatePropertiesPanel();
             e.consume();
         });
         handleNE.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
@@ -1274,7 +1321,6 @@ public class TemplateDesigner extends BorderPane {
             selBox.setLayoutX(newX * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, newW, newH, newX, el.getY());
-            updatePropertiesPanel();
             e.consume();
         });
         handleSW.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });

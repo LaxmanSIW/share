@@ -2190,3 +2190,52 @@ Label {
     -fx-padding: 2 4 2 6;
 }
 
+/* Designer Toolbar Shapes & Code Dropdowns - Crisp White Text and Dropdowns */
+.designer-menubtn,
+.designer-toolbar .menu-button {
+    -fx-text-fill: #FFFFFF !important;
+}
+
+.designer-menubtn .label,
+.designer-toolbar .menu-button .label {
+    -fx-text-fill: #FFFFFF !important;
+    -fx-font-weight: bold;
+}
+
+.designer-menubtn > .arrow-button > .arrow,
+.designer-toolbar .menu-button > .arrow-button > .arrow {
+    -fx-background-color: #FFFFFF !important;
+}
+
+.designer-menubtn:hover > .arrow-button > .arrow,
+.designer-toolbar .menu-button:hover > .arrow-button > .arrow {
+    -fx-background-color: -color-accent !important;
+}
+
+.context-menu {
+    -fx-background-color: #1A222D;
+    -fx-border-color: #2E3A4E;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 4 0 4 0;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 12, 0, 0, 4);
+}
+
+.menu-item {
+    -fx-background-color: transparent;
+    -fx-padding: 6 12 6 12;
+}
+
+.menu-item .label {
+    -fx-text-fill: #FFFFFF !important;
+    -fx-font-size: 12px;
+}
+
+.menu-item:hover, .menu-item:focused {
+    -fx-background-color: #243044;
+}
+
+.menu-item:hover .label, .menu-item:focused .label {
+    -fx-text-fill: -color-accent !important;
+}
+
