@@ -10,10 +10,9 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
-import java.awt.geom.AffineTransform;
-import java.awt.geom.Line2D;
-import java.awt.geom.Rectangle2D;
-import java.awt.geom.RoundRectangle2D;
+import java.awt.geom.*;
+import java.awt.LinearGradientPaint;
+import java.awt.MultipleGradientPaint.CycleMethod;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -215,14 +214,29 @@ public class PdfExportService {
     private static void renderSingleElement(Graphics2D g2, TemplateElement el, RenderContext ctx,
                                              Bill bill, Settings settings, double x, double y, double w, double h) {
         AffineTransform origTx = g2.getTransform();
+        Composite origComp = g2.getComposite();
+
         if (el.getRotation() != 0) {
             g2.rotate(Math.toRadians(el.getRotation()), x + w / 2.0, y + h / 2.0);
         }
 
+        if (el.isFlipHorizontal() || el.isFlipVertical() || el.getScaleX() != 1.0 || el.getScaleY() != 1.0) {
+            double sx = el.isFlipHorizontal() ? -el.getScaleX() : el.getScaleX();
+            double sy = el.isFlipVertical() ? -el.getScaleY() : el.getScaleY();
+            g2.translate(x + w / 2.0, y + h / 2.0);
+            g2.scale(sx, sy);
+            g2.translate(-(x + w / 2.0), -(y + h / 2.0));
+        }
+
+        if (el.getOpacity() < 1.0 && el.getOpacity() >= 0.0) {
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) el.getOpacity()));
+        }
+
         switch (el.getType()) {
             case RECT -> {
-                if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
-                    g2.setColor(parseColor(el.getBg(), Color.WHITE));
+                Paint p = buildPaint2D(el, x, y, w, h);
+                if (p != null) {
+                    g2.setPaint(p);
                     if (el.getBorderRadius() > 0) {
                         double r = el.getBorderRadius() * PX_PER_MM;
                         g2.fill(new RoundRectangle2D.Double(x, y, w, h, r * 2, r * 2));
@@ -252,10 +266,9 @@ public class PdfExportService {
                             else if ("right".equals(side)) g2.draw(new Line2D.Double(x + w, y, x + w, y + h));
                         }
                     }
-                } else if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                } else if (el.isStrokeEnabled() || (el.getBorderWidth() > 0 && el.getBorderColor() != null)) {
                     g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
-                    float bw = (float) Math.max(1, el.getBorderWidth() * PX_PER_MM);
-                    g2.setStroke(new BasicStroke(bw));
+                    g2.setStroke(buildStroke2D(el));
                     if (el.getBorderRadius() > 0) {
                         double r = el.getBorderRadius() * PX_PER_MM;
                         g2.draw(new RoundRectangle2D.Double(x, y, w, h, r * 2, r * 2));
@@ -264,15 +277,174 @@ public class PdfExportService {
                     }
                 }
             }
+            case CIRCLE -> {
+                double rad = Math.min(w, h);
+                double cx = x + (w - rad) / 2.0;
+                double cy = y + (h - rad) / 2.0;
+                Ellipse2D.Double circle = new Ellipse2D.Double(cx, cy, rad, rad);
+                Paint p = buildPaint2D(el, cx, cy, rad, rad);
+                if (p != null) {
+                    g2.setPaint(p);
+                    g2.fill(circle);
+                }
+                if (el.isStrokeEnabled() || el.getBorderWidth() > 0) {
+                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                    g2.setStroke(buildStroke2D(el));
+                    g2.draw(circle);
+                }
+            }
+            case ELLIPSE -> {
+                Ellipse2D.Double ellipse = new Ellipse2D.Double(x, y, w, h);
+                Paint p = buildPaint2D(el, x, y, w, h);
+                if (p != null) {
+                    g2.setPaint(p);
+                    g2.fill(ellipse);
+                }
+                if (el.isStrokeEnabled() || el.getBorderWidth() > 0) {
+                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                    g2.setStroke(buildStroke2D(el));
+                    g2.draw(ellipse);
+                }
+            }
             case LINE -> {
                 g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
-                float bw = (float) Math.max(1, (el.getBorderWidth() > 0 ? el.getBorderWidth() : 0.4) * PX_PER_MM);
-                g2.setStroke(new BasicStroke(bw));
+                g2.setStroke(buildStroke2D(el));
                 if ("v".equalsIgnoreCase(el.getDirection())) {
                     g2.draw(new Line2D.Double(x + w / 2.0, y, x + w / 2.0, y + h));
                 } else {
                     g2.draw(new Line2D.Double(x, y + h / 2.0, x + w, y + h / 2.0));
                 }
+            }
+            case POLYLINE -> {
+                Path2D.Double pl = parsePoints2D(el.getPoints(), x, y, w, h);
+                g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                g2.setStroke(buildStroke2D(el));
+                g2.draw(pl);
+            }
+            case POLYGON -> {
+                Path2D.Double pg = parsePoints2D(el.getPoints(), x, y, w, h);
+                pg.closePath();
+                Paint p = buildPaint2D(el, x, y, w, h);
+                if (p != null) {
+                    g2.setPaint(p);
+                    g2.fill(pg);
+                }
+                if (el.isStrokeEnabled() || el.getBorderWidth() > 0) {
+                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                    g2.setStroke(buildStroke2D(el));
+                    g2.draw(pg);
+                }
+            }
+            case ARC -> {
+                int type = switch (el.getArcType().toLowerCase()) {
+                    case "chord" -> Arc2D.CHORD;
+                    case "round" -> Arc2D.PIE;
+                    default -> Arc2D.OPEN;
+                };
+                Arc2D.Double arc = new Arc2D.Double(x, y, w, h, el.getStartAngle(), el.getArcLength(), type);
+                if (type != Arc2D.OPEN) {
+                    Paint p = buildPaint2D(el, x, y, w, h);
+                    if (p != null) {
+                        g2.setPaint(p);
+                        g2.fill(arc);
+                    }
+                }
+                if (el.isStrokeEnabled() || el.getBorderWidth() > 0) {
+                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                    g2.setStroke(buildStroke2D(el));
+                    g2.draw(arc);
+                }
+            }
+            case PATH, SVG -> {
+                String d = !el.getPathData().isBlank() ? el.getPathData() : el.getSvgSource();
+                Path2D.Double path = parseSvgPathToAwt(d, x, y, PX_PER_MM);
+                Paint p = buildPaint2D(el, x, y, w, h);
+                if (p != null) {
+                    g2.setPaint(p);
+                    g2.fill(path);
+                }
+                if (el.isStrokeEnabled() || el.getBorderWidth() > 0) {
+                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                    g2.setStroke(buildStroke2D(el));
+                    g2.draw(path);
+                }
+            }
+            case STAR -> {
+                double ratio = el.getInnerRadius() > 0 ? (el.getInnerRadius() / Math.max(1, el.getOuterRadius())) : 0.45;
+                Path2D.Double star = createStar2D(x, y, w, h, el.getStarPoints(), ratio);
+                Paint p = buildPaint2D(el, x, y, w, h);
+                if (p != null) {
+                    g2.setPaint(p);
+                    g2.fill(star);
+                }
+                if (el.isStrokeEnabled() || el.getBorderWidth() > 0) {
+                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                    g2.setStroke(buildStroke2D(el));
+                    g2.draw(star);
+                }
+            }
+            case ARROW -> {
+                double shaftW = Math.max(1, el.getArrowShaftWidth() * PX_PER_MM);
+                double headL = Math.max(4, el.getArrowHeadLength() * PX_PER_MM);
+                double headW = Math.max(4, el.getArrowHeadWidth() * PX_PER_MM);
+                Path2D.Double arrow = createArrow2D(x, y, w, h, shaftW, headL, headW);
+                Paint p = buildPaint2D(el, x, y, w, h);
+                if (p != null) {
+                    g2.setPaint(p);
+                    g2.fill(arrow);
+                }
+                if (el.isStrokeEnabled() || el.getBorderWidth() > 0) {
+                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                    g2.setStroke(buildStroke2D(el));
+                    g2.draw(arrow);
+                }
+            }
+            case DIVIDER -> {
+                boolean isVert = "v".equalsIgnoreCase(el.getDividerOrientation());
+                g2.setColor(parseColor(el.getBorderColor(), new Color(203, 213, 225)));
+                g2.setStroke(buildStroke2D(el));
+                if (isVert) {
+                    g2.draw(new Line2D.Double(x + w / 2.0, y, x + w / 2.0, y + h));
+                } else {
+                    g2.draw(new Line2D.Double(x, y + h / 2.0, x + w, y + h / 2.0));
+                }
+            }
+            case FREEHAND -> {
+                Path2D.Double fh = parsePoints2D(el.getPoints(), x, y, w, h);
+                g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                g2.setStroke(buildStroke2D(el));
+                g2.draw(fh);
+            }
+            case WATERMARK -> {
+                String wm = el.getWatermarkText();
+                if (ctx != null) wm = ctx.resolveText(wm);
+                AffineTransform wmTx = g2.getTransform();
+                g2.rotate(Math.toRadians(el.getWatermarkAngle()), x + w / 2.0, y + h / 2.0);
+                g2.setColor(parseColor(el.getColor(), new Color(148, 163, 184)));
+                int fontSizePx = (int) Math.max(16, Math.round(h * 0.5));
+                g2.setFont(new Font("SansSerif", Font.BOLD, fontSizePx));
+                Composite wmComp = g2.getComposite();
+                float wmAlpha = (float) (el.getWatermarkOpacity() > 0 ? el.getWatermarkOpacity() : 0.15f);
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, wmAlpha));
+                drawCellText(g2, wm, x, y, w, h, "center");
+                g2.setComposite(wmComp);
+                g2.setTransform(wmTx);
+            }
+            case ICON -> {
+                String glyph = switch (el.getIconName().toLowerCase()) {
+                    case "check" -> "✓";
+                    case "cross" -> "✕";
+                    case "phone" -> "☎";
+                    case "email" -> "✉";
+                    case "location" -> "📍";
+                    case "heart" -> "♥";
+                    case "arrow" -> "➔";
+                    default -> "★";
+                };
+                g2.setColor(parseColor(el.getColor(), new Color(245, 158, 11)));
+                int iconSize = (int) Math.max(12, Math.min(w, h) * 0.7);
+                g2.setFont(new Font("SansSerif", Font.BOLD, iconSize));
+                drawCellText(g2, glyph, x, y, w, h, "center");
             }
             case TEXT, PAGENO -> {
                 // Background & Border
@@ -365,7 +537,237 @@ public class PdfExportService {
             }
         }
 
+        g2.setComposite(origComp);
         g2.setTransform(origTx);
+    }
+
+    private static Paint buildPaint2D(TemplateElement el, double x, double y, double w, double h) {
+        String type = el.getFillType().toLowerCase();
+        if ("none".equals(type) || "transparent".equals(type)) {
+            return null;
+        }
+        if ("linear".equals(type)) {
+            Color start = parseColor(el.getGradientStartColor(), new Color(79, 70, 229));
+            Color end = parseColor(el.getGradientEndColor(), new Color(6, 182, 212));
+            double rad = Math.toRadians(el.getGradientAngle());
+            float x1 = (float) (x + w * (0.5 - 0.5 * Math.cos(rad)));
+            float y1 = (float) (y + h * (0.5 - 0.5 * Math.sin(rad)));
+            float x2 = (float) (x + w * (0.5 + 0.5 * Math.cos(rad)));
+            float y2 = (float) (y + h * (0.5 + 0.5 * Math.sin(rad)));
+            if (Point2D.distance(x1, y1, x2, y2) < 0.1) {
+                x2 = x1 + 1.0f;
+            }
+            return new LinearGradientPaint(x1, y1, x2, y2, new float[]{0.0f, 1.0f}, new Color[]{start, end});
+        }
+        if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
+            return parseColor(el.getBg(), Color.WHITE);
+        }
+        return null;
+    }
+
+    private static BasicStroke buildStroke2D(TemplateElement el) {
+        float bw = (float) Math.max(0.5, (el.getBorderWidth() > 0 ? el.getBorderWidth() : 0.5) * PX_PER_MM);
+        int cap = switch (el.getLineCap().toLowerCase()) {
+            case "round" -> BasicStroke.CAP_ROUND;
+            case "square" -> BasicStroke.CAP_SQUARE;
+            default -> BasicStroke.CAP_BUTT;
+        };
+        int join = switch (el.getLineJoin().toLowerCase()) {
+            case "round" -> BasicStroke.JOIN_ROUND;
+            case "bevel" -> BasicStroke.JOIN_BEVEL;
+            default -> BasicStroke.JOIN_MITER;
+        };
+
+        String dash = el.getDashPattern();
+        if (dash != null && !dash.isBlank() && !"none".equalsIgnoreCase(dash)) {
+            String[] parts = dash.split("[,\\s]+");
+            List<Float> list = new ArrayList<>();
+            for (String p : parts) {
+                try {
+                    list.add((float) (Double.parseDouble(p.trim()) * PX_PER_MM));
+                } catch (Exception ignored) {}
+            }
+            if (!list.isEmpty()) {
+                float[] dashes = new float[list.size()];
+                for (int i = 0; i < list.size(); i++) dashes[i] = list.get(i);
+                return new BasicStroke(bw, cap, join, 10.0f, dashes, 0.0f);
+            }
+        }
+        return new BasicStroke(bw, cap, join);
+    }
+
+    private static Path2D.Double parsePoints2D(String str, double x, double y, double w, double h) {
+        Path2D.Double path = new Path2D.Double();
+        if (str == null || str.isBlank()) {
+            path.moveTo(x, y);
+            path.lineTo(x + w, y);
+            path.lineTo(x + w / 2.0, y + h);
+            path.closePath();
+            return path;
+        }
+        String[] tokens = str.trim().split("[,\\s]+");
+        List<Double> coords = new ArrayList<>();
+        for (String t : tokens) {
+            try { coords.add(Double.parseDouble(t) * PX_PER_MM); } catch (Exception ignored) {}
+        }
+        if (coords.size() >= 4) {
+            path.moveTo(x + coords.get(0), y + coords.get(1));
+            for (int i = 2; i + 1 < coords.size(); i += 2) {
+                path.lineTo(x + coords.get(i), y + coords.get(i + 1));
+            }
+        } else {
+            path.moveTo(x, y);
+            path.lineTo(x + w, y);
+            path.lineTo(x + w / 2.0, y + h);
+            path.closePath();
+        }
+        return path;
+    }
+
+    private static Path2D.Double createStar2D(double x, double y, double w, double h, int points, double innerRatio) {
+        Path2D.Double p = new Path2D.Double();
+        int n = Math.max(3, points);
+        double cx = x + w / 2.0;
+        double cy = y + h / 2.0;
+        double rOuter = Math.min(w, h) / 2.0;
+        double rInner = rOuter * innerRatio;
+        double step = Math.PI / n;
+        double rot = -Math.PI / 2.0;
+
+        for (int i = 0; i < 2 * n; i++) {
+            double r = (i % 2 == 0) ? rOuter : rInner;
+            double angle = rot + i * step;
+            double px = cx + r * Math.cos(angle);
+            double py = cy + r * Math.sin(angle);
+            if (i == 0) p.moveTo(px, py);
+            else p.lineTo(px, py);
+        }
+        p.closePath();
+        return p;
+    }
+
+    private static Path2D.Double createArrow2D(double x, double y, double w, double h, double shaftWidth, double headLength, double headWidth) {
+        Path2D.Double p = new Path2D.Double();
+        double cy = y + h / 2.0;
+        double startX = x;
+        double endX = x + w;
+
+        double shaftTop = cy - shaftWidth / 2.0;
+        double shaftBottom = cy + shaftWidth / 2.0;
+        double headBaseX = Math.max(x, endX - headLength);
+        double headTop = cy - headWidth / 2.0;
+        double headBottom = cy + headWidth / 2.0;
+
+        p.moveTo(startX, shaftTop);
+        p.lineTo(headBaseX, shaftTop);
+        p.lineTo(headBaseX, headTop);
+        p.lineTo(endX, cy);
+        p.lineTo(headBaseX, headBottom);
+        p.lineTo(headBaseX, shaftBottom);
+        p.lineTo(startX, shaftBottom);
+        p.closePath();
+        return p;
+    }
+
+    private static Path2D.Double parseSvgPathToAwt(String d, double offsetX, double offsetY, double scale) {
+        Path2D.Double p = new Path2D.Double();
+        if (d == null || d.isBlank()) return p;
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("([a-zA-Z])|([-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)").matcher(d);
+            List<String> tokens = new ArrayList<>();
+            while (m.find()) {
+                tokens.add(m.group());
+            }
+            char cmd = 'M';
+            int i = 0;
+            double curX = 0, curY = 0;
+            while (i < tokens.size()) {
+                String tok = tokens.get(i);
+                if (Character.isLetter(tok.charAt(0))) {
+                    cmd = tok.charAt(0);
+                    i++;
+                }
+                switch (cmd) {
+                    case 'M' -> {
+                        if (i + 1 < tokens.size()) {
+                            curX = Double.parseDouble(tokens.get(i++)) * scale;
+                            curY = Double.parseDouble(tokens.get(i++)) * scale;
+                            p.moveTo(offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'm' -> {
+                        if (i + 1 < tokens.size()) {
+                            curX += Double.parseDouble(tokens.get(i++)) * scale;
+                            curY += Double.parseDouble(tokens.get(i++)) * scale;
+                            p.moveTo(offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'L' -> {
+                        if (i + 1 < tokens.size()) {
+                            curX = Double.parseDouble(tokens.get(i++)) * scale;
+                            curY = Double.parseDouble(tokens.get(i++)) * scale;
+                            p.lineTo(offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'l' -> {
+                        if (i + 1 < tokens.size()) {
+                            curX += Double.parseDouble(tokens.get(i++)) * scale;
+                            curY += Double.parseDouble(tokens.get(i++)) * scale;
+                            p.lineTo(offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'H' -> {
+                        if (i < tokens.size()) {
+                            curX = Double.parseDouble(tokens.get(i++)) * scale;
+                            p.lineTo(offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'h' -> {
+                        if (i < tokens.size()) {
+                            curX += Double.parseDouble(tokens.get(i++)) * scale;
+                            p.lineTo(offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'V' -> {
+                        if (i < tokens.size()) {
+                            curY = Double.parseDouble(tokens.get(i++)) * scale;
+                            p.lineTo(offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'v' -> {
+                        if (i < tokens.size()) {
+                            curY += Double.parseDouble(tokens.get(i++)) * scale;
+                            p.lineTo(offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'C' -> {
+                        if (i + 5 < tokens.size()) {
+                            double x1 = Double.parseDouble(tokens.get(i++)) * scale;
+                            double y1 = Double.parseDouble(tokens.get(i++)) * scale;
+                            double x2 = Double.parseDouble(tokens.get(i++)) * scale;
+                            double y2 = Double.parseDouble(tokens.get(i++)) * scale;
+                            curX = Double.parseDouble(tokens.get(i++)) * scale;
+                            curY = Double.parseDouble(tokens.get(i++)) * scale;
+                            p.curveTo(offsetX + x1, offsetY + y1, offsetX + x2, offsetY + y2, offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'Q' -> {
+                        if (i + 3 < tokens.size()) {
+                            double x1 = Double.parseDouble(tokens.get(i++)) * scale;
+                            double y1 = Double.parseDouble(tokens.get(i++)) * scale;
+                            curX = Double.parseDouble(tokens.get(i++)) * scale;
+                            curY = Double.parseDouble(tokens.get(i++)) * scale;
+                            p.quadTo(offsetX + x1, offsetY + y1, offsetX + curX, offsetY + curY);
+                        }
+                    }
+                    case 'Z', 'z' -> {
+                        p.closePath();
+                    }
+                    default -> i++;
+                }
+            }
+        } catch (Exception ignored) {}
+        return p;
     }
 
     private static void renderTableToGraphics(Graphics2D g2, TemplateElement el, Bill bill, Settings settings,

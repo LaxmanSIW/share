@@ -162,7 +162,7 @@ public class TemplateDesigner extends BorderPane {
         // Shapes Dropdown MenuButton
         MenuButton shapesMenu = new MenuButton("⬜ Shapes");
         shapesMenu.getStyleClass().addAll("button-sm", "menu-button", "designer-menubtn");
-        shapesMenu.setTooltip(new Tooltip("Add shapes (Rectangle, Rounded Card, Lines)"));
+        shapesMenu.setTooltip(new Tooltip("Add shapes (Rectangles, Circles, Arrows, Paths, Stars)"));
         shapesMenu.setMinWidth(Region.USE_PREF_SIZE);
         shapesMenu.setStyle("-fx-text-fill: #FFFFFF; -fx-font-weight: bold;");
 
@@ -172,13 +172,75 @@ public class TemplateDesigner extends BorderPane {
         MenuItem roundRectItem = new MenuItem("▢  Rounded Card");
         roundRectItem.setOnAction(e -> addRoundedRect());
 
+        MenuItem circleItem = new MenuItem("○  Circle");
+        circleItem.setOnAction(e -> addElement(ElementType.CIRCLE));
+
+        MenuItem ellipseItem = new MenuItem("⬭  Ellipse");
+        ellipseItem.setOnAction(e -> addElement(ElementType.ELLIPSE));
+
         MenuItem lineHItem = new MenuItem("─  Horizontal Line");
         lineHItem.setOnAction(e -> addLine("h"));
 
         MenuItem lineVItem = new MenuItem("│  Vertical Line");
         lineVItem.setOnAction(e -> addLine("v"));
 
-        shapesMenu.getItems().addAll(rectItem, roundRectItem, lineHItem, lineVItem);
+        MenuItem arrowItem = new MenuItem("➔  Arrow");
+        arrowItem.setOnAction(e -> addElement(ElementType.ARROW));
+
+        MenuItem starItem = new MenuItem("★  Star Shape");
+        starItem.setOnAction(e -> addElement(ElementType.STAR));
+
+        MenuItem polyItem = new MenuItem("▲  Polygon (Triangle)");
+        polyItem.setOnAction(e -> addElement(ElementType.POLYGON));
+
+        MenuItem arcItem = new MenuItem("⌒  Arc Shape");
+        arcItem.setOnAction(e -> addElement(ElementType.ARC));
+
+        MenuItem pathItem = new MenuItem("✎  Custom SVG Path");
+        pathItem.setOnAction(e -> addElement(ElementType.PATH));
+
+        MenuItem divItem = new MenuItem("╍  Divider");
+        divItem.setOnAction(e -> addElement(ElementType.DIVIDER));
+
+        MenuItem signItem = new MenuItem("✍  Freehand Signature");
+        signItem.setOnAction(e -> addElement(ElementType.FREEHAND));
+
+        MenuItem wmItem = new MenuItem("🗎  Watermark");
+        wmItem.setOnAction(e -> addElement(ElementType.WATERMARK));
+
+        shapesMenu.getItems().addAll(rectItem, roundRectItem, circleItem, ellipseItem, lineHItem, lineVItem,
+                arrowItem, starItem, polyItem, arcItem, pathItem, divItem, signItem, wmItem);
+
+        // Media Dropdown MenuButton
+        MenuButton mediaMenu = new MenuButton("🖼 Media");
+        mediaMenu.getStyleClass().addAll("button-sm", "menu-button", "designer-menubtn");
+        mediaMenu.setTooltip(new Tooltip("Add image, SVG, or icons"));
+        mediaMenu.setMinWidth(Region.USE_PREF_SIZE);
+        mediaMenu.setStyle("-fx-text-fill: #FFFFFF; -fx-font-weight: bold;");
+
+        MenuItem imgItem = new MenuItem("🖼  Business Logo / Image");
+        imgItem.setOnAction(e -> addElement(ElementType.IMAGE));
+
+        MenuItem svgItem = new MenuItem("⮑  SVG Vector");
+        svgItem.setOnAction(e -> addElement(ElementType.SVG));
+
+        MenuItem iconItem = new MenuItem("★  Icon Glyph");
+        iconItem.setOnAction(e -> addElement(ElementType.ICON));
+
+        mediaMenu.getItems().addAll(imgItem, svgItem, iconItem);
+
+        // Components Dropdown MenuButton
+        MenuButton compMenu = new MenuButton("📦 Components");
+        compMenu.getStyleClass().addAll("button-sm", "menu-button", "designer-menubtn");
+        compMenu.setTooltip(new Tooltip("Add pre-built template layout blocks"));
+        compMenu.setMinWidth(Region.USE_PREF_SIZE);
+        compMenu.setStyle("-fx-text-fill: #FFFFFF; -fx-font-weight: bold;");
+
+        for (ComponentPreset.PresetType pt : ComponentPreset.PresetType.values()) {
+            MenuItem mi = new MenuItem(pt.getTitle());
+            mi.setOnAction(e -> addComponent(pt));
+            compMenu.getItems().add(mi);
+        }
 
         // Codes Dropdown MenuButton
         MenuButton codeMenu = new MenuButton("▦ Code");
@@ -253,7 +315,7 @@ public class TemplateDesigner extends BorderPane {
 
         bar.getChildren().addAll(
                 backBtn, nameField, s1,
-                addText, addImage, addTable, shapesMenu, codeMenu, s2,
+                addText, addTable, shapesMenu, mediaMenu, compMenu, codeMenu, s2,
                 selectToolBtn, panToolBtn, undoBtn, redoBtn, s3,
                 zoomOut, zoomLabel, zoomIn, zoomFit, gridCb, snapCb, magnetCb, sp,
                 helpBtn, pageBtn, saveBtn
@@ -1330,271 +1392,111 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private Node renderVisualElement(TemplateElement el, RenderContext ctx, double w, double h) {
-        switch (el.getType()) {
-            case RECT: {
-                if (el.isIndividualBorders()) {
-                    Region reg = new Region();
-                    reg.setPrefSize(w, h);
-                    reg.setMinSize(w, h);
-                    reg.setMaxSize(w, h);
-
-                    String bg = (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg()))
-                            ? el.getBg() : "transparent";
-
-                    double topW = el.isSideActive("top") ? el.getEffectiveSideWidth("top") * MM_PX : 0;
-                    double rightW = el.isSideActive("right") ? el.getEffectiveSideWidth("right") * MM_PX : 0;
-                    double bottomW = el.isSideActive("bottom") ? el.getEffectiveSideWidth("bottom") * MM_PX : 0;
-                    double leftW = el.isSideActive("left") ? el.getEffectiveSideWidth("left") * MM_PX : 0;
-
-                    String topC = el.isSideActive("top") ? el.getEffectiveSideColor("top") : "transparent";
-                    String rightC = el.isSideActive("right") ? el.getEffectiveSideColor("right") : "transparent";
-                    String bottomC = el.isSideActive("bottom") ? el.getEffectiveSideColor("bottom") : "transparent";
-                    String leftC = el.isSideActive("left") ? el.getEffectiveSideColor("left") : "transparent";
-
-                    String topS = el.getEffectiveSideStyle("top");
-                    String rightS = el.getEffectiveSideStyle("right");
-                    String bottomS = el.getEffectiveSideStyle("bottom");
-                    String leftS = el.getEffectiveSideStyle("left");
-
-                    double r = el.getBorderRadius() > 0 ? el.getBorderRadius() * MM_PX : 0;
-
-                    reg.setStyle(String.format(java.util.Locale.US,
-                            "-fx-background-color: %s; -fx-background-radius: %.1f; "
-                            + "-fx-border-width: %.2f %.2f %.2f %.2f; "
-                            + "-fx-border-color: %s %s %s %s; "
-                            + "-fx-border-style: %s %s %s %s; "
-                            + "-fx-border-radius: %.1f;",
-                            bg, r,
-                            topW, rightW, bottomW, leftW,
-                            topC, rightC, bottomC, leftC,
-                            topS, rightS, bottomS, leftS,
-                            r));
-                    return reg;
-                } else {
-                    Rectangle r = new Rectangle(w, h);
-                    if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
-                        r.setFill(Color.web(el.getBg()));
-                    } else r.setFill(Color.TRANSPARENT);
-                    if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
-                        r.setStroke(Color.web(el.getBorderColor()));
-                        r.setStrokeWidth(el.getBorderWidth() * MM_PX);
-                    }
-                    if (el.getBorderRadius() > 0) {
-                        r.setArcWidth(el.getBorderRadius() * MM_PX * 2);
-                        r.setArcHeight(el.getBorderRadius() * MM_PX * 2);
-                    }
-                    return r;
-                }
-            }
-            case LINE: {
-                Line l = new Line();
-                if ("v".equalsIgnoreCase(el.getDirection())) {
-                    l.setStartX(w / 2); l.setStartY(0);
-                    l.setEndX(w / 2); l.setEndY(h);
-                } else {
-                    l.setStartX(0); l.setStartY(h / 2);
-                    l.setEndX(w); l.setEndY(h / 2);
-                }
-                l.setStroke(Color.web(el.getBorderColor() != null ? el.getBorderColor() : "#1a1a1a"));
-                l.setStrokeWidth(Math.max(1, el.getBorderWidth() * MM_PX));
-                return l;
-            }
-            case TEXT:
-            case PAGENO: {
-                Label lbl = new Label(ctx.resolveText(el.getText()));
-                lbl.setPrefSize(w, h);
-                lbl.setWrapText(true);
-
-                String colorHex = el.getColor() != null && !el.getColor().isBlank() ? el.getColor() : "#1a1a1a";
-                String bgStyle = "";
-                if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
-                    bgStyle = "-fx-background-color: " + el.getBg() + ";";
-                }
-                String borderStyle = "";
-                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
-                    borderStyle = "-fx-border-color: " + el.getBorderColor() + "; -fx-border-width: " + (el.getBorderWidth() * MM_PX) + ";";
-                }
-                if (el.getBorderRadius() > 0) {
-                    borderStyle += "-fx-background-radius: " + (el.getBorderRadius() * MM_PX) + "; -fx-border-radius: " + (el.getBorderRadius() * MM_PX) + ";";
-                }
-
-                String fw = el.getFontWeight() >= 700 ? "bold" : "normal";
-                String fs = el.isItalic() ? "italic" : "normal";
-                String family = el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI";
-
-                lbl.setStyle("-fx-text-fill: " + colorHex + "; -fx-fill: " + colorHex + "; -fx-font-size: " + (el.getFontSize() * 1.3) + "px; -fx-font-family: '" + family + "'; -fx-font-weight: " + fw + "; -fx-font-style: " + fs + "; " + bgStyle + " " + borderStyle);
-                
-                Pos alignment = Pos.TOP_LEFT;
-                if ("center".equalsIgnoreCase(el.getAlign())) alignment = Pos.TOP_CENTER;
-                else if ("right".equalsIgnoreCase(el.getAlign())) alignment = Pos.TOP_RIGHT;
-                if ("middle".equalsIgnoreCase(el.getVAlign())) {
-                    if ("center".equalsIgnoreCase(el.getAlign())) alignment = Pos.CENTER;
-                    else if ("right".equalsIgnoreCase(el.getAlign())) alignment = Pos.CENTER_RIGHT;
-                    else alignment = Pos.CENTER_LEFT;
-                }
-                lbl.setAlignment(alignment);
-                return lbl;
-            }
-            case IMAGE: {
-                ImageView iv = new ImageView();
-                iv.setFitWidth(w);
-                iv.setFitHeight(h);
-                iv.setPreserveRatio(!"fill".equalsIgnoreCase(el.getObjectFit()));
-                iv.setSmooth(true);
-
-                Image img = null;
-                if (el.isUseBusinessLogo()) {
-                    Settings settings = settingsDao.getSettings();
-                    String logo = settings != null && settings.getBusiness() != null ? settings.getBusiness().getLogo() : null;
-                    if (logo != null && !logo.isBlank()) {
-                        img = decodeFxImage(logo);
-                    }
-                    if (img == null) {
-                        try {
-                            img = new Image(getClass().getResourceAsStream("/icons/Invoicewhitebackground.png"));
-                        } catch (Exception ignored) {}
-                    }
-                } else if (el.getSrc() != null && !el.getSrc().isBlank()) {
-                    img = decodeFxImage(el.getSrc());
-                }
-
-                if (img != null) {
-                    iv.setImage(img);
-                    StackPane sp = new StackPane(iv);
-                    sp.setPrefSize(w, h);
-                    sp.setAlignment(Pos.CENTER);
-                    return sp;
-                } else {
-                    StackPane sp = new StackPane();
-                    sp.setPrefSize(w, h);
-                    sp.setStyle("-fx-background-color: #f4f4f5; -fx-border-color: #cbd5e1; -fx-border-style: dashed; -fx-border-width: 1;");
-                    Label lbl = new Label(el.isUseBusinessLogo() ? "📷 [Business Logo]" : "🖼 [No Image Selected]");
-                    lbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #64748B; -fx-font-weight: bold;");
-                    sp.getChildren().add(lbl);
-                    return sp;
-                }
-            }
-            case QRCODE: {
-                StackPane sp = new StackPane();
-                sp.setPrefSize(w, h);
-                sp.setStyle("-fx-background-color: #f8f8f8; -fx-border-color: #1a1a1a;");
-                Label lbl = new Label("QR CODE\n" + el.getQrSource());
-                lbl.setStyle("-fx-font-size: 9px; -fx-text-fill: #1a1a1a; -fx-text-alignment: center;");
-                sp.getChildren().add(lbl);
-                return sp;
-            }
-            case BARCODE: {
-                StackPane sp = new StackPane();
-                sp.setPrefSize(w, h);
-                sp.setStyle("-fx-background-color: #ffffff; -fx-border-color: #333333;");
-                Label lbl = new Label("||| || |||| ||||\n" + ctx.resolveText(el.getBarcodeData()));
-                lbl.setStyle("-fx-font-size: 9px; -fx-text-fill: #1a1a1a; -fx-text-alignment: center;");
-                sp.getChildren().add(lbl);
-                return sp;
-            }
-            case TABLE: {
-                // Shared table skin values (kept identical to BillPreviewPane + PdfExportService)
-                String bc = el.getTableBorderColor();
-                double bwPx = Math.max(0.5, el.getTableBorderWidth() > 0 ? el.getTableBorderWidth() * MM_PX : 1.0);
-                String bw = String.format(java.util.Locale.US, "%.2f", bwPx);
-                String bStyle = el.getBorderStyle(); // grid, rows, outline, none
-                boolean drawOuter = !"none".equals(bStyle);
-                boolean innerLines = "grid".equals(bStyle) || "rows".equals(bStyle);
-
-                VBox box = new VBox(0);
-                box.setPrefSize(w, h);
-                box.setMinSize(w, h);
-                box.setMaxSize(w, h);
-                if (drawOuter) {
-                    // Per-side outer border: hidden sides use transparent color
-                    box.setStyle("-fx-background-color: " + el.getRowBg() + "; -fx-border-color: "
-                            + (el.isBorderTop() ? bc : "transparent") + " "
-                            + (el.isBorderRight() ? bc : "transparent") + " "
-                            + (el.isBorderBottom() ? bc : "transparent") + " "
-                            + (el.isBorderLeft() ? bc : "transparent") + ";"
-                            + " -fx-border-width: " + bw + ";");
-                } else {
-                    box.setStyle("-fx-background-color: " + el.getRowBg() + ";");
-                }
-
-                List<TableColumn> cols = el.getColumns();
-                if (cols == null || cols.isEmpty()) cols = PresetTemplates.defaultItemColumns();
-
-                double rowPx = (el.getRowHeight() > 0 ? el.getRowHeight() : 7.0) * MM_PX;
-                double headerPx = Math.max(22, rowPx);
-                String fontPx = String.format(java.util.Locale.US, "%.1f", 10.0 * el.tableFontScale());
-
-                String hBg = el.getHeaderBg() != null && !el.getHeaderBg().isBlank() ? el.getHeaderBg() : "#efe9db";
-                String hCol = el.getHeaderColor() != null && !el.getHeaderColor().isBlank() ? el.getHeaderColor() : "#1a1a1a";
-                String rowBgCol = el.getRowBg();
-                String rowTextCol = el.getRowColor();
-                String zebraCol = el.getZebraColor();
-
-                HBox hRow = new HBox(0);
-                hRow.setPrefHeight(headerPx);
-                hRow.setMinHeight(headerPx);
-                hRow.setMaxHeight(headerPx);
-                // Header underline (grid / rows styles only)
-                hRow.setStyle("-fx-background-color: " + hBg + ";"
-                        + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
-
-                for (int ci = 0; ci < cols.size(); ci++) {
-                    TableColumn c = cols.get(ci);
-                    double cW = (c.getWidth() / 100.0) * w;
-                    boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
-                    Label lbl = new Label(c.getLabel());
-                    lbl.setPrefWidth(cW);
-                    lbl.setMinWidth(0);
-                    lbl.setMaxWidth(cW);
-                    lbl.setTextOverrun(OverrunStyle.ELLIPSIS);
-                    lbl.setEllipsisString("…");
-                    lbl.setPrefHeight(headerPx);
-                    lbl.setStyle("-fx-font-weight: bold; -fx-font-size: " + fontPx + "px; -fx-text-fill: " + hCol + "; -fx-padding: 0 4;"
-                            + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
-                    lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
-                    hRow.getChildren().add(lbl);
-                }
-                box.getChildren().add(hRow);
-
-                int numRows = Math.max(1, Math.min(25, (int) Math.round((h - headerPx) / rowPx)));
-                for (int r = 1; r <= numRows; r++) {
-                    HBox row = new HBox(0);
-                    row.setPrefHeight(rowPx);
-                    row.setMinHeight(rowPx);
-                    row.setMaxHeight(rowPx);
-                    String rBg = el.isShowZebra() && (r % 2 == 0) ? zebraCol : rowBgCol;
-                    row.setStyle("-fx-background-color: " + rBg + ";"
-                            + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
-                    for (int ci = 0; ci < cols.size(); ci++) {
-                        TableColumn c = cols.get(ci);
-                        double cW = (c.getWidth() / 100.0) * w;
-                        boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
-                        String val = "sr".equalsIgnoreCase(c.getKey()) ? String.valueOf(r) :
-                                     ("desc".equalsIgnoreCase(c.getKey()) ? "Sample Item " + r :
-                                     ("hsn".equalsIgnoreCase(c.getKey()) ? "8471" :
-                                     ("qty".equalsIgnoreCase(c.getKey()) ? "1.00" :
-                                     ("unit".equalsIgnoreCase(c.getKey()) ? "PCS" :
-                                     ("rate".equalsIgnoreCase(c.getKey()) ? "500.00" :
-                                     ("gst".equalsIgnoreCase(c.getKey()) ? "18%" :
-                                     ("amount".equalsIgnoreCase(c.getKey()) ? "590.00" : "—")))))));
-                        Label lbl = new Label(val);
-                        lbl.setPrefWidth(cW);
-                        lbl.setMinWidth(0);
-                        lbl.setMaxWidth(cW);
-                        lbl.setTextOverrun(OverrunStyle.ELLIPSIS);
-                        lbl.setEllipsisString("…");
-                        lbl.setPrefHeight(rowPx);
-                        lbl.setStyle("-fx-font-size: " + fontPx + "px; -fx-text-fill: " + rowTextCol + "; -fx-padding: 0 4;"
-                                + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
-                        lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
-                        row.getChildren().add(lbl);
-                    }
-                    box.getChildren().add(row);
-                }
-                return box;
-            }
+        if (el.getType() == ElementType.TABLE) {
+            return renderTableVisual(el, w, h);
         }
-        return null;
+        return com.invoicestudio.service.DesignObjectRenderer.render(el, ctx, w, h);
+    }
+
+    private Node renderTableVisual(TemplateElement el, double w, double h) {
+        String bc = el.getTableBorderColor();
+        double bwPx = Math.max(0.5, el.getTableBorderWidth() > 0 ? el.getTableBorderWidth() * MM_PX : 1.0);
+        String bw = String.format(java.util.Locale.US, "%.2f", bwPx);
+        String bStyle = el.getBorderStyle(); // grid, rows, outline, none
+        boolean drawOuter = !"none".equals(bStyle);
+        boolean innerLines = "grid".equals(bStyle) || "rows".equals(bStyle);
+
+        VBox box = new VBox(0);
+        box.setPrefSize(w, h);
+        box.setMinSize(w, h);
+        box.setMaxSize(w, h);
+        if (drawOuter) {
+            // Per-side outer border: hidden sides use transparent color
+            box.setStyle("-fx-background-color: " + el.getRowBg() + "; -fx-border-color: "
+                    + (el.isBorderTop() ? bc : "transparent") + " "
+                    + (el.isBorderRight() ? bc : "transparent") + " "
+                    + (el.isBorderBottom() ? bc : "transparent") + " "
+                    + (el.isBorderLeft() ? bc : "transparent") + ";"
+                    + " -fx-border-width: " + bw + ";");
+        } else {
+            box.setStyle("-fx-background-color: " + el.getRowBg() + ";");
+        }
+
+        List<TableColumn> cols = el.getColumns();
+        if (cols == null || cols.isEmpty()) cols = PresetTemplates.defaultItemColumns();
+
+        double rowPx = (el.getRowHeight() > 0 ? el.getRowHeight() : 7.0) * MM_PX;
+        double headerPx = Math.max(22, rowPx);
+        String fontPx = String.format(java.util.Locale.US, "%.1f", 10.0 * el.tableFontScale());
+
+        String hBg = el.getHeaderBg() != null && !el.getHeaderBg().isBlank() ? el.getHeaderBg() : "#efe9db";
+        String hCol = el.getHeaderColor() != null && !el.getHeaderColor().isBlank() ? el.getHeaderColor() : "#1a1a1a";
+        String rowBgCol = el.getRowBg();
+        String rowTextCol = el.getRowColor();
+        String zebraCol = el.getZebraColor();
+
+        HBox hRow = new HBox(0);
+        hRow.setPrefHeight(headerPx);
+        hRow.setMinHeight(headerPx);
+        hRow.setMaxHeight(headerPx);
+        // Header underline (grid / rows styles only)
+        hRow.setStyle("-fx-background-color: " + hBg + ";"
+                + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
+
+        for (int ci = 0; ci < cols.size(); ci++) {
+            TableColumn c = cols.get(ci);
+            double cW = (c.getWidth() / 100.0) * w;
+            boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
+            Label lbl = new Label(c.getLabel());
+            lbl.setPrefWidth(cW);
+            lbl.setMinWidth(0);
+            lbl.setMaxWidth(cW);
+            lbl.setTextOverrun(OverrunStyle.ELLIPSIS);
+            lbl.setEllipsisString("…");
+            lbl.setPrefHeight(headerPx);
+            lbl.setStyle("-fx-font-weight: bold; -fx-font-size: " + fontPx + "px; -fx-text-fill: " + hCol + "; -fx-padding: 0 4;"
+                    + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
+            lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
+            hRow.getChildren().add(lbl);
+        }
+        box.getChildren().add(hRow);
+
+        int numRows = Math.max(1, Math.min(25, (int) Math.round((h - headerPx) / rowPx)));
+        for (int r = 1; r <= numRows; r++) {
+            HBox row = new HBox(0);
+            row.setPrefHeight(rowPx);
+            row.setMinHeight(rowPx);
+            row.setMaxHeight(rowPx);
+            String rBg = el.isShowZebra() && (r % 2 == 0) ? zebraCol : rowBgCol;
+            row.setStyle("-fx-background-color: " + rBg + ";"
+                    + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
+            for (int ci = 0; ci < cols.size(); ci++) {
+                TableColumn c = cols.get(ci);
+                double cW = (c.getWidth() / 100.0) * w;
+                boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
+                String val = "sr".equalsIgnoreCase(c.getKey()) ? String.valueOf(r) :
+                             ("desc".equalsIgnoreCase(c.getKey()) ? "Sample Item " + r :
+                             ("hsn".equalsIgnoreCase(c.getKey()) ? "8471" :
+                             ("qty".equalsIgnoreCase(c.getKey()) ? "1.00" :
+                             ("unit".equalsIgnoreCase(c.getKey()) ? "PCS" :
+                             ("rate".equalsIgnoreCase(c.getKey()) ? "500.00" :
+                             ("gst".equalsIgnoreCase(c.getKey()) ? "18%" :
+                             ("amount".equalsIgnoreCase(c.getKey()) ? "590.00" : "—")))))));
+                Label lbl = new Label(val);
+                lbl.setPrefWidth(cW);
+                lbl.setMinWidth(0);
+                lbl.setMaxWidth(cW);
+                lbl.setTextOverrun(OverrunStyle.ELLIPSIS);
+                lbl.setEllipsisString("…");
+                lbl.setPrefHeight(rowPx);
+                lbl.setStyle("-fx-font-size: " + fontPx + "px; -fx-text-fill: " + rowTextCol + "; -fx-padding: 0 4;"
+                        + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
+                lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
+                row.getChildren().add(lbl);
+            }
+            box.getChildren().add(row);
+        }
+        return box;
     }
 
     private void configureNumberSpinner(Spinner<Double> spinner) {
@@ -1698,40 +1600,101 @@ public class TemplateDesigner extends BorderPane {
 
         // Position & Size Grid
         TitledPane geoPane = new TitledPane();
-        geoPane.setText("Position & Size (mm)");
+        geoPane.setText("Position & Size");
         geoPane.setExpanded(true);
 
         GridPane posGrid = new GridPane();
         posGrid.setHgap(8); posGrid.setVgap(8);
         posGrid.setPadding(new Insets(8));
 
-        posGrid.add(new Label("X:"), 0, 0);
-        Spinner<Double> xSpin = new Spinner<>(0.0, 500.0, el.getX(), 1.0);
+        Label unitLbl = new Label("Unit:");
+        unitLbl.getStyleClass().add("cell-bold-secondary");
+        ComboBox<UnitConverter.Unit> unitBox = new ComboBox<>(FXCollections.observableArrayList(UnitConverter.Unit.values()));
+        unitBox.setValue(UnitConverter.Unit.MM);
+        unitBox.getStyleClass().add("designer-combo");
+        HBox unitRow = new HBox(6, unitLbl, unitBox);
+        unitRow.setAlignment(Pos.CENTER_LEFT);
+        posGrid.add(unitRow, 0, 0, 4, 1);
+
+        Label xLbl = new Label("X:");
+        Label yLbl = new Label("Y:");
+        Label wLbl = new Label("W:");
+        Label hLbl = new Label("H:");
+
+        Spinner<Double> xSpin = new Spinner<>(0.0, 5000.0, el.getX(), 1.0);
         xSpin.setPrefWidth(85);
         configureNumberSpinner(xSpin);
-        xSpin.valueProperty().addListener((obs, o, v) -> { el.setX(v); refreshCanvas(); });
-        posGrid.add(xSpin, 1, 0);
 
-        posGrid.add(new Label("Y:"), 2, 0);
-        Spinner<Double> ySpin = new Spinner<>(0.0, 500.0, el.getY(), 1.0);
+        Spinner<Double> ySpin = new Spinner<>(0.0, 5000.0, el.getY(), 1.0);
         ySpin.setPrefWidth(85);
         configureNumberSpinner(ySpin);
-        ySpin.valueProperty().addListener((obs, o, v) -> { el.setY(v); refreshCanvas(); });
-        posGrid.add(ySpin, 3, 0);
 
-        posGrid.add(new Label("W:"), 0, 1);
-        Spinner<Double> wSpin = new Spinner<>(1.0, 500.0, el.getW(), 1.0);
+        Spinner<Double> wSpin = new Spinner<>(0.1, 5000.0, el.getW(), 1.0);
         wSpin.setPrefWidth(85);
         configureNumberSpinner(wSpin);
-        wSpin.valueProperty().addListener((obs, o, v) -> { el.setW(v); refreshCanvas(); });
-        posGrid.add(wSpin, 1, 1);
 
-        posGrid.add(new Label("H:"), 2, 1);
-        Spinner<Double> hSpin = new Spinner<>(1.0, 500.0, el.getH(), 1.0);
+        Spinner<Double> hSpin = new Spinner<>(0.1, 5000.0, el.getH(), 1.0);
         hSpin.setPrefWidth(85);
         configureNumberSpinner(hSpin);
-        hSpin.valueProperty().addListener((obs, o, v) -> { el.setH(v); refreshCanvas(); });
-        posGrid.add(hSpin, 3, 1);
+
+        final boolean[] updatingGeo = {false};
+        Consumer<UnitConverter.Unit> syncGeoSpinners = (u) -> {
+            updatingGeo[0] = true;
+            double xVal = UnitConverter.fromMm(el.getX(), u);
+            double yVal = UnitConverter.fromMm(el.getY(), u);
+            double wVal = UnitConverter.fromMm(el.getW(), u);
+            double hVal = UnitConverter.fromMm(el.getH(), u);
+            double step = (u == UnitConverter.Unit.IN || u == UnitConverter.Unit.INCH) ? 0.1 : (u == UnitConverter.Unit.CM ? 0.5 : 1.0);
+            xSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 5000.0, Math.round(xVal * 100.0) / 100.0, step));
+            ySpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 5000.0, Math.round(yVal * 100.0) / 100.0, step));
+            wSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.1, 5000.0, Math.round(wVal * 100.0) / 100.0, step));
+            hSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.1, 5000.0, Math.round(hVal * 100.0) / 100.0, step));
+            configureNumberSpinner(xSpin);
+            configureNumberSpinner(ySpin);
+            configureNumberSpinner(wSpin);
+            configureNumberSpinner(hSpin);
+            updatingGeo[0] = false;
+        };
+
+        xSpin.valueProperty().addListener((obs, o, v) -> {
+            if (!updatingGeo[0] && v != null) {
+                el.setX(UnitConverter.toMm(v, unitBox.getValue()));
+                refreshCanvas();
+            }
+        });
+        ySpin.valueProperty().addListener((obs, o, v) -> {
+            if (!updatingGeo[0] && v != null) {
+                el.setY(UnitConverter.toMm(v, unitBox.getValue()));
+                refreshCanvas();
+            }
+        });
+        wSpin.valueProperty().addListener((obs, o, v) -> {
+            if (!updatingGeo[0] && v != null) {
+                el.setW(UnitConverter.toMm(v, unitBox.getValue()));
+                refreshCanvas();
+            }
+        });
+        hSpin.valueProperty().addListener((obs, o, v) -> {
+            if (!updatingGeo[0] && v != null) {
+                el.setH(UnitConverter.toMm(v, unitBox.getValue()));
+                refreshCanvas();
+            }
+        });
+
+        unitBox.valueProperty().addListener((obs, o, v) -> {
+            if (v != null) {
+                syncGeoSpinners.accept(v);
+            }
+        });
+
+        posGrid.add(xLbl, 0, 1);
+        posGrid.add(xSpin, 1, 1);
+        posGrid.add(yLbl, 2, 1);
+        posGrid.add(ySpin, 3, 1);
+        posGrid.add(wLbl, 0, 2);
+        posGrid.add(wSpin, 1, 2);
+        posGrid.add(hLbl, 2, 2);
+        posGrid.add(hSpin, 3, 2);
 
         geoPane.setContent(posGrid);
         propBox.getChildren().add(geoPane);
@@ -1751,7 +1714,19 @@ public class TemplateDesigner extends BorderPane {
             buildBarcodeProperties(el);
         } else if (el.getType() == ElementType.TABLE) {
             buildTableProperties(el);
+        } else if (isShapeType(el.getType())) {
+            buildShapeProperties(el);
+        } else if (el.getType() == ElementType.SVG) {
+            buildSvgProperties(el);
+        } else if (el.getType() == ElementType.ICON) {
+            buildIconProperties(el);
+        } else if (el.getType() == ElementType.WATERMARK) {
+            buildWatermarkProperties(el);
         }
+
+        // Universal Effects, Transforms, and Data Binding
+        buildEffectsAndTransformsProperties(el);
+        buildDataBindingProperties(el);
 
         // Behavior Toggles Box
         VBox toggles = new VBox(8);
@@ -2579,6 +2554,522 @@ public class TemplateDesigner extends BorderPane {
         propBox.getChildren().add(sec);
     }
 
+    private boolean isShapeType(ElementType type) {
+        if (type == null) return false;
+        return switch (type) {
+            case CIRCLE, ELLIPSE, POLYLINE, POLYGON, ARC, PATH, STAR, ARROW, DIVIDER, FREEHAND -> true;
+            default -> false;
+        };
+    }
+
+    private void buildShapeProperties(TemplateElement el) {
+        VBox sec = new VBox(10);
+        Label title = new Label(el.getDisplayName() + " Properties:");
+        title.getStyleClass().add("prop-title");
+
+        // Fill & Gradients Section
+        TitledPane fillPane = new TitledPane();
+        fillPane.setText("Fill & Gradients");
+        fillPane.setExpanded(true);
+
+        VBox fillBox = new VBox(8);
+        fillBox.setPadding(new Insets(6));
+
+        ComboBox<String> fillTypeCombo = new ComboBox<>(FXCollections.observableArrayList(
+                "Solid Color", "Linear Gradient", "Radial Gradient", "Transparent / None"));
+        String curFill = el.getFillType() != null ? el.getFillType() : ("transparent".equalsIgnoreCase(el.getBg()) ? "none" : "solid");
+        if ("linear".equalsIgnoreCase(curFill)) fillTypeCombo.setValue("Linear Gradient");
+        else if ("radial".equalsIgnoreCase(curFill)) fillTypeCombo.setValue("Radial Gradient");
+        else if ("none".equalsIgnoreCase(curFill) || "transparent".equalsIgnoreCase(el.getBg())) fillTypeCombo.setValue("Transparent / None");
+        else fillTypeCombo.setValue("Solid Color");
+
+        fillBox.getChildren().add(new HBox(8, new Label("Fill Type:"), fillTypeCombo));
+
+        VBox fillOptionsBox = new VBox(6);
+        Runnable updateFillUi = () -> {
+            fillOptionsBox.getChildren().clear();
+            String sel = fillTypeCombo.getValue();
+            if ("Solid Color".equals(sel)) {
+                el.setFillType("solid");
+                Node colNode = createColorPickerButton(el.getEffectiveFillColor(), hex -> {
+                    el.setBg(hex);
+                    refreshCanvas();
+                });
+                fillOptionsBox.getChildren().add(new HBox(8, new Label("Color:"), colNode));
+            } else if ("Linear Gradient".equals(sel)) {
+                el.setFillType("linear");
+                Node startCol = createColorPickerButton(el.getGradientStartColor() != null ? el.getGradientStartColor() : "#3b82f6", hex -> {
+                    el.setGradientStartColor(hex);
+                    refreshCanvas();
+                });
+                Node endCol = createColorPickerButton(el.getGradientEndColor() != null ? el.getGradientEndColor() : "#9333ea", hex -> {
+                    el.setGradientEndColor(hex);
+                    refreshCanvas();
+                });
+                Spinner<Double> angleSpin = new Spinner<>(0.0, 360.0, el.getGradientAngle(), 15.0);
+                configureNumberSpinner(angleSpin);
+                angleSpin.valueProperty().addListener((obs, o, v) -> { el.setGradientAngle(v); refreshCanvas(); });
+
+                fillOptionsBox.getChildren().addAll(
+                        new HBox(8, new Label("Start:"), startCol, new Label("End:"), endCol),
+                        new HBox(8, new Label("Angle (°):"), angleSpin)
+                );
+            } else if ("Radial Gradient".equals(sel)) {
+                el.setFillType("radial");
+                Node startCol = createColorPickerButton(el.getGradientStartColor() != null ? el.getGradientStartColor() : "#38bdf8", hex -> {
+                    el.setGradientStartColor(hex);
+                    refreshCanvas();
+                });
+                Node endCol = createColorPickerButton(el.getGradientEndColor() != null ? el.getGradientEndColor() : "#1e40af", hex -> {
+                    el.setGradientEndColor(hex);
+                    refreshCanvas();
+                });
+                fillOptionsBox.getChildren().add(new HBox(8, new Label("Center:"), startCol, new Label("Outer:"), endCol));
+            } else {
+                el.setFillType("none");
+                el.setBg("transparent");
+            }
+            refreshCanvas();
+        };
+
+        fillTypeCombo.valueProperty().addListener((obs, o, v) -> updateFillUi.run());
+        updateFillUi.run();
+        fillBox.getChildren().add(fillOptionsBox);
+        fillPane.setContent(fillBox);
+
+        // Stroke & Outline Section
+        TitledPane strokePane = new TitledPane();
+        strokePane.setText("Stroke & Outline");
+        strokePane.setExpanded(true);
+
+        VBox strokeBox = new VBox(8);
+        strokeBox.setPadding(new Insets(6));
+
+        CheckBox strokeCb = new CheckBox("Enable Stroke / Border");
+        strokeCb.setSelected(el.isStrokeEnabled() || el.getBorderWidth() > 0);
+        strokeCb.selectedProperty().addListener((obs, o, v) -> {
+            el.setStrokeEnabled(v);
+            refreshCanvas();
+        });
+
+        Node strokeColNode = createColorPickerButton(el.getEffectiveStrokeColor(), hex -> {
+            el.setBorderColor(hex);
+            refreshCanvas();
+        });
+
+        Spinner<Double> strokeWSpin = new Spinner<>(0.1, 20.0, el.getEffectiveStrokeWidth(), 0.5);
+        configureNumberSpinner(strokeWSpin);
+        strokeWSpin.valueProperty().addListener((obs, o, v) -> {
+            el.setBorderWidth(v);
+            refreshCanvas();
+        });
+
+        ComboBox<String> dashBox = new ComboBox<>(FXCollections.observableArrayList("Solid", "Dashed", "Dotted", "Dash-Dot"));
+        String curDash = el.getDashPattern();
+        if ("5,5".equals(curDash) || "dashed".equalsIgnoreCase(el.getStrokeType())) dashBox.setValue("Dashed");
+        else if ("2,2".equals(curDash) || "dotted".equalsIgnoreCase(el.getStrokeType())) dashBox.setValue("Dotted");
+        else if ("6,3,2,3".equals(curDash)) dashBox.setValue("Dash-Dot");
+        else dashBox.setValue("Solid");
+
+        dashBox.valueProperty().addListener((obs, o, v) -> {
+            if ("Dashed".equals(v)) { el.setDashPattern("5,5"); el.setStrokeType("dashed"); }
+            else if ("Dotted".equals(v)) { el.setDashPattern("2,2"); el.setStrokeType("dotted"); }
+            else if ("Dash-Dot".equals(v)) { el.setDashPattern("6,3,2,3"); el.setStrokeType("dash-dot"); }
+            else { el.setDashPattern(null); el.setStrokeType("solid"); }
+            refreshCanvas();
+        });
+
+        ComboBox<String> capBox = new ComboBox<>(FXCollections.observableArrayList("BUTT", "ROUND", "SQUARE"));
+        capBox.setValue(el.getLineCap() != null ? el.getLineCap().toUpperCase() : "BUTT");
+        capBox.valueProperty().addListener((obs, o, v) -> { el.setLineCap(v); refreshCanvas(); });
+
+        ComboBox<String> joinBox = new ComboBox<>(FXCollections.observableArrayList("MITER", "ROUND", "BEVEL"));
+        joinBox.setValue(el.getLineJoin() != null ? el.getLineJoin().toUpperCase() : "MITER");
+        joinBox.valueProperty().addListener((obs, o, v) -> { el.setLineJoin(v); refreshCanvas(); });
+
+        GridPane strokeGrid = new GridPane();
+        strokeGrid.setHgap(8); strokeGrid.setVgap(6);
+        strokeGrid.add(strokeCb, 0, 0, 2, 1);
+        strokeGrid.add(new Label("Color:"), 0, 1); strokeGrid.add(strokeColNode, 1, 1);
+        strokeGrid.add(new Label("Width (mm):"), 0, 2); strokeGrid.add(strokeWSpin, 1, 2);
+        strokeGrid.add(new Label("Dash Pattern:"), 0, 3); strokeGrid.add(dashBox, 1, 3);
+        strokeGrid.add(new Label("Cap:"), 0, 4); strokeGrid.add(capBox, 1, 4);
+        strokeGrid.add(new Label("Join:"), 0, 5); strokeGrid.add(joinBox, 1, 5);
+
+        strokeBox.getChildren().add(strokeGrid);
+        strokePane.setContent(strokeBox);
+
+        sec.getChildren().addAll(title, fillPane, strokePane);
+        buildShapeGeometryProperties(el, sec);
+        propBox.getChildren().add(sec);
+    }
+
+    private void buildShapeGeometryProperties(TemplateElement el, VBox sec) {
+        TitledPane geoPane = new TitledPane();
+        geoPane.setText("Geometry Parameters");
+        geoPane.setExpanded(true);
+
+        GridPane g = new GridPane();
+        g.setHgap(8); g.setVgap(6);
+        g.setPadding(new Insets(6));
+
+        if (el.getType() == ElementType.CIRCLE) {
+            Spinner<Double> rSpin = new Spinner<>(1.0, 500.0, el.getRadius() > 0 ? el.getRadius() : el.getW() / 2.0, 1.0);
+            configureNumberSpinner(rSpin);
+            rSpin.valueProperty().addListener((obs, o, v) -> {
+                el.setRadius(v);
+                el.setW(v * 2);
+                el.setH(v * 2);
+                refreshCanvas();
+            });
+            g.add(new Label("Radius (mm):"), 0, 0);
+            g.add(rSpin, 1, 0);
+        } else if (el.getType() == ElementType.ELLIPSE) {
+            Spinner<Double> rxSpin = new Spinner<>(1.0, 500.0, el.getRadiusX() > 0 ? el.getRadiusX() : el.getW() / 2.0, 1.0);
+            configureNumberSpinner(rxSpin);
+            rxSpin.valueProperty().addListener((obs, o, v) -> {
+                el.setRadiusX(v);
+                el.setW(v * 2);
+                refreshCanvas();
+            });
+            Spinner<Double> rySpin = new Spinner<>(1.0, 500.0, el.getRadiusY() > 0 ? el.getRadiusY() : el.getH() / 2.0, 1.0);
+            configureNumberSpinner(rySpin);
+            rySpin.valueProperty().addListener((obs, o, v) -> {
+                el.setRadiusY(v);
+                el.setH(v * 2);
+                refreshCanvas();
+            });
+            g.add(new Label("Radius X:"), 0, 0); g.add(rxSpin, 1, 0);
+            g.add(new Label("Radius Y:"), 0, 1); g.add(rySpin, 1, 1);
+        } else if (el.getType() == ElementType.STAR) {
+            Spinner<Integer> ptsSpin = new Spinner<>(3, 20, el.getStarPoints() > 0 ? el.getStarPoints() : 5, 1);
+            ptsSpin.valueProperty().addListener((obs, o, v) -> { el.setStarPoints(v); refreshCanvas(); });
+
+            Spinner<Double> innerSpin = new Spinner<>(0.5, 200.0, el.getInnerRadius() > 0 ? el.getInnerRadius() : 6.0, 1.0);
+            configureNumberSpinner(innerSpin);
+            innerSpin.valueProperty().addListener((obs, o, v) -> { el.setInnerRadius(v); refreshCanvas(); });
+
+            Spinner<Double> outerSpin = new Spinner<>(1.0, 300.0, el.getOuterRadius() > 0 ? el.getOuterRadius() : 15.0, 1.0);
+            configureNumberSpinner(outerSpin);
+            outerSpin.valueProperty().addListener((obs, o, v) -> { el.setOuterRadius(v); refreshCanvas(); });
+
+            g.add(new Label("Points:"), 0, 0); g.add(ptsSpin, 1, 0);
+            g.add(new Label("Inner Radius:"), 0, 1); g.add(innerSpin, 1, 1);
+            g.add(new Label("Outer Radius:"), 0, 2); g.add(outerSpin, 1, 2);
+        } else if (el.getType() == ElementType.ARROW) {
+            Spinner<Double> headLen = new Spinner<>(1.0, 100.0, el.getArrowHeadLength() > 0 ? el.getArrowHeadLength() : 6.0, 1.0);
+            configureNumberSpinner(headLen);
+            headLen.valueProperty().addListener((obs, o, v) -> { el.setArrowHeadLength(v); refreshCanvas(); });
+
+            Spinner<Double> headWid = new Spinner<>(1.0, 100.0, el.getArrowHeadWidth() > 0 ? el.getArrowHeadWidth() : 6.0, 1.0);
+            configureNumberSpinner(headWid);
+            headWid.valueProperty().addListener((obs, o, v) -> { el.setArrowHeadWidth(v); refreshCanvas(); });
+
+            ComboBox<String> styleBox = new ComboBox<>(FXCollections.observableArrayList("TRIANGLE", "OPEN", "STEALTH"));
+            styleBox.setValue(el.getArrowHeadStyle() != null ? el.getArrowHeadStyle().toUpperCase() : "TRIANGLE");
+            styleBox.valueProperty().addListener((obs, o, v) -> { el.setArrowHeadStyle(v); refreshCanvas(); });
+
+            g.add(new Label("Head Length:"), 0, 0); g.add(headLen, 1, 0);
+            g.add(new Label("Head Width:"), 0, 1); g.add(headWid, 1, 1);
+            g.add(new Label("Head Style:"), 0, 2); g.add(styleBox, 1, 2);
+        } else if (el.getType() == ElementType.ARC) {
+            Spinner<Double> startSpin = new Spinner<>(-360.0, 360.0, el.getStartAngle(), 15.0);
+            configureNumberSpinner(startSpin);
+            startSpin.valueProperty().addListener((obs, o, v) -> { el.setStartAngle(v); refreshCanvas(); });
+
+            Spinner<Double> lenSpin = new Spinner<>(0.0, 360.0, el.getArcLength() > 0 ? el.getArcLength() : 270.0, 15.0);
+            configureNumberSpinner(lenSpin);
+            lenSpin.valueProperty().addListener((obs, o, v) -> { el.setArcLength(v); refreshCanvas(); });
+
+            ComboBox<String> typeBox = new ComboBox<>(FXCollections.observableArrayList("ROUND", "OPEN", "CHORD"));
+            typeBox.setValue(el.getArcType() != null ? el.getArcType().toUpperCase() : "ROUND");
+            typeBox.valueProperty().addListener((obs, o, v) -> { el.setArcType(v); refreshCanvas(); });
+
+            g.add(new Label("Start Angle (°):"), 0, 0); g.add(startSpin, 1, 0);
+            g.add(new Label("Arc Length (°):"), 0, 1); g.add(lenSpin, 1, 1);
+            g.add(new Label("Arc Type:"), 0, 2); g.add(typeBox, 1, 2);
+        } else if (el.getType() == ElementType.DIVIDER) {
+            ComboBox<String> orientBox = new ComboBox<>(FXCollections.observableArrayList("HORIZONTAL", "VERTICAL"));
+            orientBox.setValue(el.getDividerOrientation() != null ? el.getDividerOrientation().toUpperCase() : "HORIZONTAL");
+            orientBox.valueProperty().addListener((obs, o, v) -> { el.setDividerOrientation(v); refreshCanvas(); });
+
+            ComboBox<String> styleBox = new ComboBox<>(FXCollections.observableArrayList("SOLID", "DASHED", "DOTTED", "DOUBLE"));
+            styleBox.setValue(el.getDividerStyle() != null ? el.getDividerStyle().toUpperCase() : "DASHED");
+            styleBox.valueProperty().addListener((obs, o, v) -> { el.setDividerStyle(v); refreshCanvas(); });
+
+            g.add(new Label("Orientation:"), 0, 0); g.add(orientBox, 1, 0);
+            g.add(new Label("Style:"), 0, 1); g.add(styleBox, 1, 1);
+        } else if (el.getType() == ElementType.PATH) {
+            TextArea pathArea = new TextArea(el.getPathData() != null ? el.getPathData() : "");
+            pathArea.setPrefRowCount(3);
+            pathArea.setWrapText(true);
+            pathArea.textProperty().addListener((obs, o, v) -> { el.setPathData(v); refreshCanvas(); });
+            g.add(new Label("SVG Path (d):"), 0, 0);
+            g.add(pathArea, 0, 1, 2, 1);
+        } else if (el.getType() == ElementType.POLYGON || el.getType() == ElementType.POLYLINE || el.getType() == ElementType.FREEHAND) {
+            TextField ptsField = new TextField(el.getPoints() != null ? el.getPoints() : "");
+            ptsField.setPromptText("x1,y1 x2,y2 x3,y3 ...");
+            ptsField.textProperty().addListener((obs, o, v) -> { el.setPoints(v); refreshCanvas(); });
+            g.add(new Label("Points (X,Y):"), 0, 0);
+            g.add(ptsField, 1, 0);
+        }
+
+        geoPane.setContent(g);
+        sec.getChildren().add(geoPane);
+    }
+
+    private void buildSvgProperties(TemplateElement el) {
+        VBox sec = new VBox(8);
+        Label title = new Label("SVG Vector Properties:");
+        title.getStyleClass().add("prop-title");
+
+        Button loadSvgBtn = createToolbarBtn("📁 Load SVG File...", "Import .svg file content", () -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Select SVG File");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("SVG Files (*.svg)", "*.svg"));
+            File f = fc.showOpenDialog(app.getPrimaryStage());
+            if (f != null) {
+                try {
+                    String content = Files.readString(f.toPath());
+                    el.setSvgSource(content);
+                    saveState();
+                    refreshCanvas();
+                    updatePropertiesPanel();
+                    Toast.show(app.getRootPane(), "SVG Loaded", "Loaded " + f.getName(), false);
+                } catch (Exception ex) {
+                    Toast.show(app.getRootPane(), "SVG Error", ex.getMessage(), true);
+                }
+            }
+        });
+        loadSvgBtn.setMaxWidth(Double.MAX_VALUE);
+
+        TextArea svgArea = new TextArea(el.getSvgSource() != null ? el.getSvgSource() : "");
+        svgArea.setPrefRowCount(4);
+        svgArea.setWrapText(true);
+        svgArea.textProperty().addListener((obs, o, v) -> { el.setSvgSource(v); refreshCanvas(); });
+
+        sec.getChildren().addAll(title, loadSvgBtn, new Label("SVG Source XML:"), svgArea);
+        propBox.getChildren().add(sec);
+    }
+
+    private void buildIconProperties(TemplateElement el) {
+        VBox sec = new VBox(8);
+        Label title = new Label("Icon Properties:");
+        title.getStyleClass().add("prop-title");
+
+        GridPane g = new GridPane();
+        g.setHgap(8); g.setVgap(6);
+
+        ComboBox<String> iconCombo = new ComboBox<>(FXCollections.observableArrayList(
+                "check", "star", "phone", "mail", "map-pin", "user", "globe", "file-text",
+                "hash", "dollar-sign", "percent", "calendar", "clock", "shield", "alert-circle",
+                "info", "heart", "shopping-cart", "truck", "zap", "tag", "award"
+        ));
+        iconCombo.setValue(el.getIconName() != null ? el.getIconName() : "check");
+        iconCombo.valueProperty().addListener((obs, o, v) -> { el.setIconName(v); refreshCanvas(); });
+
+        Node colNode = createColorPickerButton(el.getColor() != null ? el.getColor() : "#2563eb", hex -> {
+            el.setColor(hex);
+            refreshCanvas();
+        });
+
+        g.add(new Label("Icon:"), 0, 0); g.add(iconCombo, 1, 0);
+        g.add(new Label("Color:"), 0, 1); g.add(colNode, 1, 1);
+
+        sec.getChildren().addAll(title, g);
+        propBox.getChildren().add(sec);
+    }
+
+    private void buildWatermarkProperties(TemplateElement el) {
+        VBox sec = new VBox(8);
+        Label title = new Label("Watermark Properties:");
+        title.getStyleClass().add("prop-title");
+
+        GridPane g = new GridPane();
+        g.setHgap(8); g.setVgap(6);
+
+        TextField wmText = new TextField(el.getWatermarkText() != null ? el.getWatermarkText() : (el.getText() != null ? el.getText() : "ORIGINAL"));
+        wmText.textProperty().addListener((obs, o, v) -> {
+            el.setWatermarkText(v);
+            el.setText(v);
+            refreshCanvas();
+        });
+
+        Slider opacSlider = new Slider(0.01, 1.0, el.getWatermarkOpacity() > 0 ? el.getWatermarkOpacity() : 0.12);
+        opacSlider.setShowTickMarks(true);
+        opacSlider.valueProperty().addListener((obs, o, v) -> {
+            el.setWatermarkOpacity(v.doubleValue());
+            refreshCanvas();
+        });
+
+        Slider rotSlider = new Slider(-90.0, 90.0, el.getWatermarkAngle() != 0 ? el.getWatermarkAngle() : -30.0);
+        rotSlider.setShowTickMarks(true);
+        rotSlider.valueProperty().addListener((obs, o, v) -> {
+            el.setWatermarkAngle(v.doubleValue());
+            refreshCanvas();
+        });
+
+        Node colNode = createColorPickerButton(el.getColor() != null ? el.getColor() : "#94a3b8", hex -> {
+            el.setColor(hex);
+            refreshCanvas();
+        });
+
+        g.add(new Label("Text:"), 0, 0); g.add(wmText, 1, 0);
+        g.add(new Label("Opacity:"), 0, 1); g.add(opacSlider, 1, 1);
+        g.add(new Label("Angle (°):"), 0, 2); g.add(rotSlider, 1, 2);
+        g.add(new Label("Color:"), 0, 3); g.add(colNode, 1, 3);
+
+        sec.getChildren().addAll(title, g);
+        propBox.getChildren().add(sec);
+    }
+
+    private void buildEffectsAndTransformsProperties(TemplateElement el) {
+        TitledPane fxPane = new TitledPane();
+        fxPane.setText("Effects & Transforms");
+        fxPane.setExpanded(false);
+
+        VBox fxBox = new VBox(8);
+        fxBox.setPadding(new Insets(8));
+
+        // Opacity
+        Label opacLbl = new Label(String.format("Opacity (%.0f%%):", el.getOpacity() * 100));
+        Slider opacSlider = new Slider(0.0, 1.0, el.getOpacity());
+        opacSlider.valueProperty().addListener((obs, o, v) -> {
+            el.setOpacity(v.doubleValue());
+            opacLbl.setText(String.format("Opacity (%.0f%%):", v.doubleValue() * 100));
+            refreshCanvas();
+        });
+        fxBox.getChildren().addAll(opacLbl, opacSlider);
+
+        // Rotation & Scale
+        GridPane transGrid = new GridPane();
+        transGrid.setHgap(8); transGrid.setVgap(6);
+
+        Spinner<Double> rotSpin = new Spinner<>(-360.0, 360.0, el.getRotation(), 5.0);
+        configureNumberSpinner(rotSpin);
+        rotSpin.valueProperty().addListener((obs, o, v) -> { el.setRotation(v); refreshCanvas(); });
+
+        Spinner<Double> sxSpin = new Spinner<>(0.1, 5.0, el.getScaleX() > 0 ? el.getScaleX() : 1.0, 0.1);
+        configureNumberSpinner(sxSpin);
+        sxSpin.valueProperty().addListener((obs, o, v) -> { el.setScaleX(v); refreshCanvas(); });
+
+        Spinner<Double> sySpin = new Spinner<>(0.1, 5.0, el.getScaleY() > 0 ? el.getScaleY() : 1.0, 0.1);
+        configureNumberSpinner(sySpin);
+        sySpin.valueProperty().addListener((obs, o, v) -> { el.setScaleY(v); refreshCanvas(); });
+
+        CheckBox flipH = new CheckBox("Flip Horizontal");
+        flipH.setSelected(el.isFlipHorizontal());
+        flipH.selectedProperty().addListener((obs, o, v) -> { el.setFlipHorizontal(v); refreshCanvas(); });
+
+        CheckBox flipV = new CheckBox("Flip Vertical");
+        flipV.setSelected(el.isFlipVertical());
+        flipV.selectedProperty().addListener((obs, o, v) -> { el.setFlipVertical(v); refreshCanvas(); });
+
+        transGrid.add(new Label("Rotation (°):"), 0, 0); transGrid.add(rotSpin, 1, 0);
+        transGrid.add(new Label("Scale X:"), 0, 1); transGrid.add(sxSpin, 1, 1);
+        transGrid.add(new Label("Scale Y:"), 0, 2); transGrid.add(sySpin, 1, 2);
+        transGrid.add(flipH, 0, 3); transGrid.add(flipV, 1, 3);
+
+        fxBox.getChildren().add(transGrid);
+
+        // Drop Shadow
+        CheckBox shadowCb = new CheckBox("Enable Drop Shadow");
+        shadowCb.setSelected(el.isShadowEnabled());
+        shadowCb.selectedProperty().addListener((obs, o, v) -> { el.setShadowEnabled(v); refreshCanvas(); });
+
+        Node shadowCol = createColorPickerButton(el.getShadowColor() != null ? el.getShadowColor() : "#000000", hex -> {
+            el.setShadowColor(hex);
+            refreshCanvas();
+        });
+
+        Spinner<Double> blurSpin = new Spinner<>(0.0, 50.0, el.getShadowBlur() > 0 ? el.getShadowBlur() : 4.0, 1.0);
+        configureNumberSpinner(blurSpin);
+        blurSpin.valueProperty().addListener((obs, o, v) -> { el.setShadowBlur(v); refreshCanvas(); });
+
+        Spinner<Double> offXSpin = new Spinner<>(-50.0, 50.0, el.getShadowOffsetX(), 1.0);
+        configureNumberSpinner(offXSpin);
+        offXSpin.valueProperty().addListener((obs, o, v) -> { el.setShadowOffsetX(v); refreshCanvas(); });
+
+        Spinner<Double> offYSpin = new Spinner<>(-50.0, 50.0, el.getShadowOffsetY(), 1.0);
+        configureNumberSpinner(offYSpin);
+        offYSpin.valueProperty().addListener((obs, o, v) -> { el.setShadowOffsetY(v); refreshCanvas(); });
+
+        GridPane shadowGrid = new GridPane();
+        shadowGrid.setHgap(8); shadowGrid.setVgap(6);
+        shadowGrid.add(shadowCb, 0, 0, 2, 1);
+        shadowGrid.add(new Label("Color:"), 0, 1); shadowGrid.add(shadowCol, 1, 1);
+        shadowGrid.add(new Label("Blur Radius:"), 0, 2); shadowGrid.add(blurSpin, 1, 2);
+        shadowGrid.add(new Label("Offset X:"), 0, 3); shadowGrid.add(offXSpin, 1, 3);
+        shadowGrid.add(new Label("Offset Y:"), 0, 4); shadowGrid.add(offYSpin, 1, 4);
+
+        fxBox.getChildren().add(shadowGrid);
+
+        // Clipping
+        CheckBox clipCb = new CheckBox("Clip to Container");
+        clipCb.setSelected(el.isClipEnabled());
+        clipCb.selectedProperty().addListener((obs, o, v) -> { el.setClipEnabled(v); refreshCanvas(); });
+
+        ComboBox<String> clipShape = new ComboBox<>(FXCollections.observableArrayList("RECTANGLE", "CIRCLE", "ROUNDED_RECT"));
+        clipShape.setValue(el.getClipShape() != null ? el.getClipShape() : "RECTANGLE");
+        clipShape.valueProperty().addListener((obs, o, v) -> { el.setClipShape(v); refreshCanvas(); });
+
+        HBox clipRow = new HBox(8, clipCb, clipShape);
+        clipRow.setAlignment(Pos.CENTER_LEFT);
+        fxBox.getChildren().add(clipRow);
+
+        fxPane.setContent(fxBox);
+        propBox.getChildren().add(fxPane);
+    }
+
+    private void buildDataBindingProperties(TemplateElement el) {
+        TitledPane bindPane = new TitledPane();
+        bindPane.setText("Data Binding & Conditions");
+        bindPane.setExpanded(false);
+
+        GridPane g = new GridPane();
+        g.setHgap(8); g.setVgap(6);
+        g.setPadding(new Insets(8));
+
+        TextField bindField = new TextField(el.getBinding() != null ? el.getBinding() : "");
+        bindField.setPromptText("e.g. buyer.name or invoice.number");
+        bindField.textProperty().addListener((obs, o, v) -> el.setBinding(v));
+
+        TextField condField = new TextField(el.getVisibleCondition() != null ? el.getVisibleCondition() : "");
+        condField.setPromptText("e.g. invoice.balance > 0");
+        condField.textProperty().addListener((obs, o, v) -> el.setVisibleCondition(v));
+
+        g.add(new Label("Binding Path:"), 0, 0); g.add(bindField, 1, 0);
+        g.add(new Label("Visible Condition:"), 0, 1); g.add(condField, 1, 1);
+
+        bindPane.setContent(g);
+        propBox.getChildren().add(bindPane);
+    }
+
+    private void addComponent(ComponentPreset.PresetType type) {
+        double startY = 30.0;
+        if (template.getElements() != null && !template.getElements().isEmpty()) {
+            double maxY = 0;
+            for (TemplateElement e : template.getElements()) {
+                if (e != null) maxY = Math.max(maxY, e.getY() + e.getH());
+            }
+            if (maxY < 220 && maxY > 10) {
+                startY = maxY + 5.0;
+            }
+        }
+        List<TemplateElement> compElements = ComponentPreset.createComponent(type, 15.0, startY);
+        for (TemplateElement e : compElements) {
+            template.getElements().add(e);
+        }
+        if (!compElements.isEmpty()) {
+            selectedElement = compElements.get(0);
+        }
+        saveState();
+        refreshCanvas();
+        updatePropertiesPanel();
+        refreshLayersList();
+        Toast.show(app.getRootPane(), "Component Added", "Added " + type.getTitle() + " (" + compElements.size() + " elements)", false);
+    }
+
     /**
      * Moves a table column from position {@code from} to {@code to} by swapping
      * the two entries in the column list, then snapshots undo state and rebuilds
@@ -3282,8 +3773,21 @@ public class TemplateDesigner extends BorderPane {
 
         switch (type) {
             case TEXT: el.setText("New text"); break;
-            case RECT: el.setW(60); el.setH(30); el.setBg("#f4f1ea"); break;
-            case LINE: el.setW(80); el.setH(1); el.setBorderWidth(0.5); break;
+            case RECT: el.setW(60); el.setH(30); el.setBg("#f4f1ea"); el.setBorderColor("#1a1a1a"); el.setBorderWidth(0.5); break;
+            case CIRCLE: el.setW(30); el.setH(30); el.setRadius(15); el.setBg("#e0e7ff"); el.setBorderColor("#4f46e5"); el.setBorderWidth(0.5); break;
+            case ELLIPSE: el.setW(50); el.setH(30); el.setRadiusX(25); el.setRadiusY(15); el.setBg("#fef3c7"); el.setBorderColor("#d97706"); el.setBorderWidth(0.5); break;
+            case LINE: el.setW(80); el.setH(1); el.setBorderWidth(0.5); el.setBorderColor("#1a1a1a"); break;
+            case ARROW: el.setW(60); el.setH(15); el.setBorderColor("#2563eb"); el.setBorderWidth(1.0); el.setBg("#2563eb"); el.setArrowHeadLength(5.0); el.setArrowHeadWidth(5.0); break;
+            case STAR: el.setW(35); el.setH(35); el.setStarPoints(5); el.setInnerRadius(6.0); el.setOuterRadius(15.0); el.setBg("#f59e0b"); el.setBorderColor("#b45309"); el.setBorderWidth(0.5); break;
+            case POLYGON: el.setW(40); el.setH(35); el.setPoints("20,0 40,35 0,35"); el.setBg("#dcfce7"); el.setBorderColor("#16a34a"); el.setBorderWidth(0.5); break;
+            case POLYLINE: el.setW(50); el.setH(25); el.setPoints("0,20 15,5 35,20 50,0"); el.setBorderColor("#0284c7"); el.setBorderWidth(1.0); el.setStrokeEnabled(true); break;
+            case ARC: el.setW(40); el.setH(40); el.setStartAngle(0); el.setArcLength(270); el.setArcType("ROUND"); el.setBg("#fce7f3"); el.setBorderColor("#db2777"); el.setBorderWidth(0.5); break;
+            case PATH: el.setW(40); el.setH(40); el.setPathData("M 10,30 A 20,20 0 0,1 50,30 A 20,20 0 0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 Z"); el.setBg("#f43f5e"); el.setBorderColor("#e11d48"); el.setBorderWidth(0.5); break;
+            case DIVIDER: el.setW(170); el.setH(4); el.setDividerOrientation("HORIZONTAL"); el.setDividerStyle("DASHED"); el.setBorderColor("#cbd5e1"); el.setBorderWidth(0.8); break;
+            case FREEHAND: el.setW(50); el.setH(25); el.setPoints("5,20 15,10 25,18 40,5 45,15"); el.setBorderColor("#1e293b"); el.setBorderWidth(1.2); break;
+            case WATERMARK: el.setW(160); el.setH(60); el.setWatermarkText("ORIGINAL FOR RECIPIENT"); el.setWatermarkOpacity(0.12); el.setWatermarkAngle(-30.0); el.setText("ORIGINAL FOR RECIPIENT"); break;
+            case SVG: el.setW(30); el.setH(30); el.setSvgSource("<svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\" fill=\"#3b82f6\"/><path d=\"M9 12l2 2 4-4\" stroke=\"white\" stroke-width=\"2\" fill=\"none\"/></svg>"); break;
+            case ICON: el.setW(12); el.setH(12); el.setIconName("check"); el.setColor("#2563eb"); break;
             case IMAGE: el.setW(30); el.setH(25); el.setUseBusinessLogo(true); break;
             case QRCODE: el.setW(24); el.setH(24); break;
             case BARCODE: el.setW(45); el.setH(14); break;
@@ -3291,6 +3795,7 @@ public class TemplateDesigner extends BorderPane {
                 el.setW(190); el.setH(30);
                 el.setColumns(PresetTemplates.defaultItemColumns());
                 break;
+            default: break;
         }
 
         template.getElements().add(el);

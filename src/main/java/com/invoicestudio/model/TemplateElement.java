@@ -92,6 +92,75 @@ public class TemplateElement {
     private String rowColor = "#1a1a1a";
     private String zebraColor = "#f8f8f8";
 
+    /* ---- fill & gradient ---- */
+    private String fillType = "solid"; // solid, linear, radial, none
+    private String gradientStartColor = "#4f46e5";
+    private String gradientEndColor = "#06b6d4";
+    private double gradientAngle = 45.0; // deg
+    private double gradientCenterX = 0.5;
+    private double gradientCenterY = 0.5;
+    private double gradientRadius = 0.5;
+
+    /* ---- stroke & dash ---- */
+    private boolean strokeEnabled = false;
+    private String strokeType = "centered"; // inside, centered, outside
+    private String lineCap = "butt"; // butt, round, square
+    private String lineJoin = "miter"; // miter, round, bevel
+    private String dashPattern = ""; // e.g. "5,3" or "4,4"
+    private double dashOffset = 0.0;
+
+    /* ---- individual corner radii ---- */
+    private Double topLeftRadius;
+    private Double topRightRadius;
+    private Double bottomRightRadius;
+    private Double bottomLeftRadius;
+
+    /* ---- universal geometry ---- */
+    private double radius = 15.0; // mm for circle
+    private double radiusX = 20.0; // mm for ellipse
+    private double radiusY = 12.0; // mm for ellipse
+    private String points = "0,0 20,40 40,0"; // for polygon/polyline
+    private double startAngle = 0.0; // deg for arc
+    private double arcLength = 90.0; // deg for arc
+    private String arcType = "open"; // open, chord, round
+    private String pathData = "M 0 0 L 30 0 L 15 30 Z"; // SVG path commands
+    private int starPoints = 5;
+    private double innerRadius = 6.0; // mm for star
+    private double outerRadius = 15.0; // mm for star
+    private double arrowShaftWidth = 2.0; // mm
+    private double arrowHeadLength = 6.0; // mm
+    private double arrowHeadWidth = 6.0; // mm
+    private String arrowHeadStyle = "triangle"; // triangle, open, v, round
+    private String dividerOrientation = "h"; // h, v
+    private String dividerStyle = "solid"; // solid, dashed, dotted, double
+    private String watermarkText = "CONFIDENTIAL";
+    private double watermarkOpacity = 0.15;
+    private double watermarkAngle = -35.0;
+    private String svgSource = "";
+    private String iconName = "star";
+
+    /* ---- effects & transforms ---- */
+    private boolean shadowEnabled = false;
+    private String shadowColor = "#000000";
+    private double shadowBlur = 8.0;
+    private double shadowOffsetX = 2.0;
+    private double shadowOffsetY = 2.0;
+    private double shadowOpacity = 0.35;
+    private boolean blurEnabled = false;
+    private double blurRadius = 4.0;
+    private double scaleX = 1.0;
+    private double scaleY = 1.0;
+    private boolean flipHorizontal = false;
+    private boolean flipVertical = false;
+
+    /* ---- binding & conditions ---- */
+    private String binding = "";
+    private String visibleCondition = "";
+    private boolean clipEnabled = false;
+    private String clipShape = "none"; // none, circle, rounded_rect
+    private String groupId = "";
+    private String componentType = "";
+
     public TemplateElement() {}
 
     public String getId() { return id; }
@@ -284,6 +353,21 @@ public class TemplateElement {
             case QRCODE -> { return "QR Code"; }
             case BARCODE -> { return "Barcode"; }
             case PAGENO -> { return "Page Number"; }
+            case CIRCLE -> { return "Circle"; }
+            case ELLIPSE -> { return "Ellipse"; }
+            case POLYLINE -> { return "Polyline"; }
+            case POLYGON -> { return "Polygon"; }
+            case ARC -> { return "Arc Shape"; }
+            case PATH -> { return "Custom Path"; }
+            case STAR -> { return "Star Shape"; }
+            case ARROW -> { return "Arrow"; }
+            case DIVIDER -> { return "Divider"; }
+            case FREEHAND -> { return "Freehand / Signature"; }
+            case WATERMARK -> { return "Watermark"; }
+            case SVG -> { return "SVG Vector"; }
+            case ICON -> { return "Icon"; }
+            case GROUP -> { return "Group"; }
+            case COMPONENT -> { return "Component"; }
             default -> { return getType().name(); }
         }
     }
@@ -374,6 +458,20 @@ public class TemplateElement {
         };
     }
 
+    public String getEffectiveFillColor() {
+        if (bg != null && !bg.isBlank()) return bg;
+        return "#ffffff";
+    }
+
+    public String getEffectiveStrokeColor() {
+        if (borderColor != null && !borderColor.isBlank()) return borderColor;
+        return "#1a1a1a";
+    }
+
+    public double getEffectiveStrokeWidth() {
+        return borderWidth > 0 ? borderWidth : 0.5;
+    }
+
     /**
      * Scale factor for table fonts relative to the legacy default (7.5pt), so
      * existing templates render exactly as before while the Font Size spinner
@@ -383,4 +481,177 @@ public class TemplateElement {
         double s = fontSize > 0 ? fontSize / 7.5 : 1.0;
         return Math.max(0.5, Math.min(3.0, s));
     }
+
+    /* ---- New universal getters & setters ---- */
+
+    public String getFillType() { return fillType != null ? fillType : "solid"; }
+    public void setFillType(String fillType) { this.fillType = fillType; }
+
+    public String getGradientStartColor() { return gradientStartColor != null ? gradientStartColor : "#4f46e5"; }
+    public void setGradientStartColor(String gradientStartColor) { this.gradientStartColor = gradientStartColor; }
+
+    public String getGradientEndColor() { return gradientEndColor != null ? gradientEndColor : "#06b6d4"; }
+    public void setGradientEndColor(String gradientEndColor) { this.gradientEndColor = gradientEndColor; }
+
+    public double getGradientAngle() { return gradientAngle; }
+    public void setGradientAngle(double gradientAngle) { this.gradientAngle = gradientAngle; }
+
+    public double getGradientCenterX() { return gradientCenterX; }
+    public void setGradientCenterX(double gradientCenterX) { this.gradientCenterX = gradientCenterX; }
+
+    public double getGradientCenterY() { return gradientCenterY; }
+    public void setGradientCenterY(double gradientCenterY) { this.gradientCenterY = gradientCenterY; }
+
+    public double getGradientRadius() { return gradientRadius; }
+    public void setGradientRadius(double gradientRadius) { this.gradientRadius = gradientRadius; }
+
+    public boolean isStrokeEnabled() { return strokeEnabled || borderWidth > 0; }
+    public void setStrokeEnabled(boolean strokeEnabled) { this.strokeEnabled = strokeEnabled; }
+
+    public String getStrokeType() { return strokeType != null ? strokeType : "centered"; }
+    public void setStrokeType(String strokeType) { this.strokeType = strokeType; }
+
+    public String getLineCap() { return lineCap != null ? lineCap : "butt"; }
+    public void setLineCap(String lineCap) { this.lineCap = lineCap; }
+
+    public String getLineJoin() { return lineJoin != null ? lineJoin : "miter"; }
+    public void setLineJoin(String lineJoin) { this.lineJoin = lineJoin; }
+
+    public String getDashPattern() { return dashPattern != null ? dashPattern : ""; }
+    public void setDashPattern(String dashPattern) { this.dashPattern = dashPattern; }
+
+    public double getDashOffset() { return dashOffset; }
+    public void setDashOffset(double dashOffset) { this.dashOffset = dashOffset; }
+
+    public Double getTopLeftRadius() { return topLeftRadius != null ? topLeftRadius : borderRadius; }
+    public void setTopLeftRadius(Double topLeftRadius) { this.topLeftRadius = topLeftRadius; }
+
+    public Double getTopRightRadius() { return topRightRadius != null ? topRightRadius : borderRadius; }
+    public void setTopRightRadius(Double topRightRadius) { this.topRightRadius = topRightRadius; }
+
+    public Double getBottomRightRadius() { return bottomRightRadius != null ? bottomRightRadius : borderRadius; }
+    public void setBottomRightRadius(Double bottomRightRadius) { this.bottomRightRadius = bottomRightRadius; }
+
+    public Double getBottomLeftRadius() { return bottomLeftRadius != null ? bottomLeftRadius : borderRadius; }
+    public void setBottomLeftRadius(Double bottomLeftRadius) { this.bottomLeftRadius = bottomLeftRadius; }
+
+    public double getRadius() { return radius; }
+    public void setRadius(double radius) { this.radius = radius; }
+
+    public double getRadiusX() { return radiusX; }
+    public void setRadiusX(double radiusX) { this.radiusX = radiusX; }
+
+    public double getRadiusY() { return radiusY; }
+    public void setRadiusY(double radiusY) { this.radiusY = radiusY; }
+
+    public String getPoints() { return points != null ? points : ""; }
+    public void setPoints(String points) { this.points = points; }
+
+    public double getStartAngle() { return startAngle; }
+    public void setStartAngle(double startAngle) { this.startAngle = startAngle; }
+
+    public double getArcLength() { return arcLength; }
+    public void setArcLength(double arcLength) { this.arcLength = arcLength; }
+
+    public String getArcType() { return arcType != null ? arcType : "open"; }
+    public void setArcType(String arcType) { this.arcType = arcType; }
+
+    public String getPathData() { return pathData != null ? pathData : ""; }
+    public void setPathData(String pathData) { this.pathData = pathData; }
+
+    public int getStarPoints() { return Math.max(3, starPoints); }
+    public void setStarPoints(int starPoints) { this.starPoints = starPoints; }
+
+    public double getInnerRadius() { return innerRadius; }
+    public void setInnerRadius(double innerRadius) { this.innerRadius = innerRadius; }
+
+    public double getOuterRadius() { return outerRadius; }
+    public void setOuterRadius(double outerRadius) { this.outerRadius = outerRadius; }
+
+    public double getArrowShaftWidth() { return arrowShaftWidth; }
+    public void setArrowShaftWidth(double arrowShaftWidth) { this.arrowShaftWidth = arrowShaftWidth; }
+
+    public double getArrowHeadLength() { return arrowHeadLength; }
+    public void setArrowHeadLength(double arrowHeadLength) { this.arrowHeadLength = arrowHeadLength; }
+
+    public double getArrowHeadWidth() { return arrowHeadWidth; }
+    public void setArrowHeadWidth(double arrowHeadWidth) { this.arrowHeadWidth = arrowHeadWidth; }
+
+    public String getArrowHeadStyle() { return arrowHeadStyle != null ? arrowHeadStyle : "triangle"; }
+    public void setArrowHeadStyle(String arrowHeadStyle) { this.arrowHeadStyle = arrowHeadStyle; }
+
+    public String getDividerOrientation() { return dividerOrientation != null ? dividerOrientation : "h"; }
+    public void setDividerOrientation(String dividerOrientation) { this.dividerOrientation = dividerOrientation; }
+
+    public String getDividerStyle() { return dividerStyle != null ? dividerStyle : "solid"; }
+    public void setDividerStyle(String dividerStyle) { this.dividerStyle = dividerStyle; }
+
+    public String getWatermarkText() { return watermarkText != null ? watermarkText : "CONFIDENTIAL"; }
+    public void setWatermarkText(String watermarkText) { this.watermarkText = watermarkText; }
+
+    public double getWatermarkOpacity() { return watermarkOpacity; }
+    public void setWatermarkOpacity(double watermarkOpacity) { this.watermarkOpacity = watermarkOpacity; }
+
+    public double getWatermarkAngle() { return watermarkAngle; }
+    public void setWatermarkAngle(double watermarkAngle) { this.watermarkAngle = watermarkAngle; }
+
+    public String getSvgSource() { return svgSource != null ? svgSource : ""; }
+    public void setSvgSource(String svgSource) { this.svgSource = svgSource; }
+
+    public String getIconName() { return iconName != null ? iconName : "star"; }
+    public void setIconName(String iconName) { this.iconName = iconName; }
+
+    public boolean isShadowEnabled() { return shadowEnabled; }
+    public void setShadowEnabled(boolean shadowEnabled) { this.shadowEnabled = shadowEnabled; }
+
+    public String getShadowColor() { return shadowColor != null ? shadowColor : "#000000"; }
+    public void setShadowColor(String shadowColor) { this.shadowColor = shadowColor; }
+
+    public double getShadowBlur() { return shadowBlur; }
+    public void setShadowBlur(double shadowBlur) { this.shadowBlur = shadowBlur; }
+
+    public double getShadowOffsetX() { return shadowOffsetX; }
+    public void setShadowOffsetX(double shadowOffsetX) { this.shadowOffsetX = shadowOffsetX; }
+
+    public double getShadowOffsetY() { return shadowOffsetY; }
+    public void setShadowOffsetY(double shadowOffsetY) { this.shadowOffsetY = shadowOffsetY; }
+
+    public double getShadowOpacity() { return shadowOpacity; }
+    public void setShadowOpacity(double shadowOpacity) { this.shadowOpacity = shadowOpacity; }
+
+    public boolean isBlurEnabled() { return blurEnabled; }
+    public void setBlurEnabled(boolean blurEnabled) { this.blurEnabled = blurEnabled; }
+
+    public double getBlurRadius() { return blurRadius; }
+    public void setBlurRadius(double blurRadius) { this.blurRadius = blurRadius; }
+
+    public double getScaleX() { return scaleX; }
+    public void setScaleX(double scaleX) { this.scaleX = scaleX; }
+
+    public double getScaleY() { return scaleY; }
+    public void setScaleY(double scaleY) { this.scaleY = scaleY; }
+
+    public boolean isFlipHorizontal() { return flipHorizontal; }
+    public void setFlipHorizontal(boolean flipHorizontal) { this.flipHorizontal = flipHorizontal; }
+
+    public boolean isFlipVertical() { return flipVertical; }
+    public void setFlipVertical(boolean flipVertical) { this.flipVertical = flipVertical; }
+
+    public String getBinding() { return binding != null ? binding : ""; }
+    public void setBinding(String binding) { this.binding = binding; }
+
+    public String getVisibleCondition() { return visibleCondition != null ? visibleCondition : ""; }
+    public void setVisibleCondition(String visibleCondition) { this.visibleCondition = visibleCondition; }
+
+    public boolean isClipEnabled() { return clipEnabled; }
+    public void setClipEnabled(boolean clipEnabled) { this.clipEnabled = clipEnabled; }
+
+    public String getClipShape() { return clipShape != null ? clipShape : "none"; }
+    public void setClipShape(String clipShape) { this.clipShape = clipShape; }
+
+    public String getGroupId() { return groupId != null ? groupId : ""; }
+    public void setGroupId(String groupId) { this.groupId = groupId; }
+
+    public String getComponentType() { return componentType != null ? componentType : ""; }
+    public void setComponentType(String componentType) { this.componentType = componentType; }
 }

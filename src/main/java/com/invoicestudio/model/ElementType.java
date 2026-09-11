@@ -11,7 +11,22 @@ public enum ElementType {
     RECT("rect"),
     PAGENO("pageno"),
     QRCODE("qrcode"),
-    BARCODE("barcode");
+    BARCODE("barcode"),
+    CIRCLE("circle"),
+    ELLIPSE("ellipse"),
+    POLYLINE("polyline"),
+    POLYGON("polygon"),
+    ARC("arc"),
+    PATH("path"),
+    STAR("star"),
+    ARROW("arrow"),
+    DIVIDER("divider"),
+    FREEHAND("freehand"),
+    WATERMARK("watermark"),
+    SVG("svg"),
+    ICON("icon"),
+    GROUP("group"),
+    COMPONENT("component");
 
     private final String code;
 
