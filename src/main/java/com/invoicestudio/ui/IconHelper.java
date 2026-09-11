@@ -32,6 +32,30 @@ public class IconHelper {
     public static final String ICON_TRANSPORT = "transport";
     public static final String ICON_CATEGORIES = "categories";
     public static final String ICON_DASHBOARD2 = "dashboard2";
+    public static final String ICON_SHAPES = "shapes";
+    public static final String ICON_RECT = "shape-rect";
+    public static final String ICON_ROUND_RECT = "shape-round-rect";
+    public static final String ICON_CIRCLE = "shape-circle";
+    public static final String ICON_ELLIPSE = "shape-ellipse";
+    public static final String ICON_LINE_H = "shape-line-h";
+    public static final String ICON_LINE_V = "shape-line-v";
+    public static final String ICON_ARROW = "shape-arrow";
+    public static final String ICON_STAR = "shape-star";
+    public static final String ICON_POLYGON = "shape-polygon";
+    public static final String ICON_ARC = "shape-arc";
+    public static final String ICON_PATH = "shape-path";
+    public static final String ICON_PEN = "shape-pen";
+    public static final String ICON_CURVE = "shape-curve";
+    public static final String ICON_ANCHOR = "shape-anchor";
+    public static final String ICON_DIVIDER = "shape-divider";
+    public static final String ICON_SIGNATURE = "shape-signature";
+    public static final String ICON_WATERMARK = "shape-watermark";
+    public static final String ICON_MEDIA = "media";
+    public static final String ICON_MEDIA_IMAGE = "media-image";
+    public static final String ICON_MEDIA_SVG = "media-svg";
+    public static final String ICON_CODE = "code";
+    public static final String ICON_CODE_QR = "code-qr";
+    public static final String ICON_CODE_BARCODE = "code-barcode";
 
     public static Node getIcon(String name, double size, String colorHex) {
         String path = getSvgPath(name);
@@ -46,6 +70,32 @@ public class IconHelper {
         Label lbl = new Label(getFallbackGlyph(name));
         lbl.setStyle("-fx-font-size: " + (int) size + "px; -fx-text-fill: " + (colorHex != null ? colorHex : "#CBD5E1") + ";");
         return lbl;
+    }
+
+    public static Node getMenuIcon(String name, String colorHex) {
+        String path = getSvgPath(name);
+        if (path != null) {
+            SVGPath svg = new SVGPath();
+            svg.setContent(path);
+            svg.setFill(Color.web(colorHex != null ? colorHex : "#94A3B8"));
+            svg.setScaleX(14.0 / 24.0);
+            svg.setScaleY(14.0 / 24.0);
+            javafx.scene.Group grp = new javafx.scene.Group(svg);
+            javafx.scene.layout.StackPane box = new javafx.scene.layout.StackPane(grp);
+            box.setPrefSize(18, 18);
+            box.setMinSize(18, 18);
+            box.setMaxSize(18, 18);
+            box.setAlignment(javafx.geometry.Pos.CENTER);
+            return box;
+        }
+        Label lbl = new Label(getFallbackGlyph(name));
+        lbl.setStyle("-fx-font-size: 13px; -fx-text-fill: " + (colorHex != null ? colorHex : "#94A3B8") + "; -fx-alignment: center;");
+        javafx.scene.layout.StackPane box = new javafx.scene.layout.StackPane(lbl);
+        box.setPrefSize(18, 18);
+        box.setMinSize(18, 18);
+        box.setMaxSize(18, 18);
+        box.setAlignment(javafx.geometry.Pos.CENTER);
+        return box;
     }
 
     public static Label createIconLabel(String name, double size, String colorHex) {
@@ -144,6 +194,55 @@ public class IconHelper {
                 return "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z";
             case "crosshair":
                 return "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7.93-7.93H7v-2H5.07c.93-4.08 3.98-7.44 7.93-7.93V7h2V5.07c3.95.49 7 3.85 7.93 7.93H17v2h1.93c-.93 4.08-3.98-7.44-7.93 7.93V17h-2v2.93z";
+            case "shapes":
+            case "tool-shapes":
+                return "M4 3h7v7H4V3zm9 0h7v7h-7V3zM4 12h7v7H4v-7zm12.5 0a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z";
+            case "shape-rect":
+                return "M3 5h18v14H3V5zm2 2v10h14V7H5z";
+            case "shape-round-rect":
+                return "M6 5h12a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H6z";
+            case "shape-circle":
+                return "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm-6 8a6 6 0 1 1 12 0 6 6 0 0 1-12 0z";
+            case "shape-ellipse":
+                return "M12 6c5.52 0 10 2.69 10 6s-4.48 6-10 6S2 15.31 2 12s4.48-6 10-6zm0 2c-4.41 0-8 1.79-8 4s3.59 4 8 4 8-1.79 8-4-3.59-4-8-4z";
+            case "shape-line-h":
+                return "M3 11h18v2H3v-2z";
+            case "shape-line-v":
+                return "M11 3h2v18h-2V3z";
+            case "shape-arrow":
+                return "M4 11h11.17l-4.58-4.59L12 5l7 7-7 7-1.41-1.41L15.17 13H4v-2z";
+            case "shape-star":
+                return "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z";
+            case "shape-polygon":
+                return "M12 3l9.5 16.5h-19L12 3zm0 4.3L5.3 17.5h13.4L12 7.3z";
+            case "shape-arc":
+                return "M4 18A8 8 0 0 1 20 18h-2a6 6 0 0 0-12 0H4z";
+            case "shape-path":
+                return "M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3zm2.58 2.58a1 1 0 0 0-1.41 0L17 6.76l1.41 1.41 1.17-1.18a1 1 0 0 0 0-1.41z";
+            case "shape-pen":
+                return "M12 2L4 10v4l4 4h4l10-10L12 2zm0 3.83l6.17 6.17-8 8H7v-3.17l8-8z";
+            case "shape-curve":
+                return "M3 17c3-7 7-10 11-10s5 4 7 10h-2c-1.7-5.3-3.6-8-5-8s-6.5 2.7-9.2 8H3z";
+            case "shape-anchor":
+                return "M12 2a4 4 0 0 0-4 4c0 1.9 1.3 3.5 3 3.9V15H7v2h4v5h2v-5h4v-2h-4V9.9c1.7-.4 3-2 3-3.9a4 4 0 0 0-4-4zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z";
+            case "shape-divider":
+                return "M3 11h4v2H3v-2zm7 0h4v2h-4v-2zm7 0h4v2h-4v-2z";
+            case "shape-signature":
+                return "M2.5 19.5c3-1 6-4 8-7s4-7 7-6 3 4 1 7-7 4-10 4-5-1-6 2zm13-10c-1 0-2 .5-2 1.5s1 2 2 2 2-1 2-2-1-1.5-2-1.5z";
+            case "shape-watermark":
+                return "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM8 8h8v2H8V8zm0 4h5v2H8v-2z";
+            case "media":
+            case "tool-media":
+            case "media-image":
+                return "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z";
+            case "media-svg":
+                return "M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3zm2.58 2.58a1 1 0 0 0-1.41 0L17 6.76l1.41 1.41 1.17-1.18a1 1 0 0 0 0-1.41z";
+            case "code":
+            case "tool-code":
+            case "code-barcode":
+                return "M2 4h3v16H2V4zm5 0h1v16H7V4zm3 0h3v16h-3V4zm5 0h2v16h-2V4zm4 0h1v16h-1V4zm3 0h2v16h-2V4z";
+            case "code-qr":
+                return "M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm13-2h3v2h-3v-2zm-5 0h3v2h-3v-2zm2 2h2v3h-2v-3zm3 0h3v3h-3v-3zm-5 3h2v3h-2v-3zm3 2h5v2h-5v-2z";
             default:
                 return null;
         }

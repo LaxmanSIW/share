@@ -17,6 +17,7 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
+import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.Group;
@@ -27,8 +28,11 @@ import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
+import javafx.scene.shape.Polyline;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.shape.SVGPath;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
 import javafx.scene.text.FontWeight;
@@ -76,6 +80,7 @@ public class TemplateDesigner extends BorderPane {
     private final Pane gridPane = new Pane();
     private final Pane elementsPane = new Pane();
     private final Pane guideLayer = new Pane();
+    private final Pane penLayer = new Pane();
     private final Pane selectionPane = new Pane();
     private final Pane rulerTop = new Pane();
     private final Pane rulerLeft = new Pane();
@@ -87,15 +92,28 @@ public class TemplateDesigner extends BorderPane {
     private boolean magnetSnapping = true;
     private boolean showGrid = true;
     private boolean isPanMode = false;
+    private boolean isPenToolMode = false;
+    private boolean penCurveMode = false;
     private boolean isSpaceDown = false;
     private boolean isUpdatingLayersSelection = false;
     private boolean shiftWithMargins = true;
+    private boolean updatingProperties = false;
+
+    private final List<Point2D> penPoints = new ArrayList<>();
 
     private ScrollPane canvasScrollPane;
     private StackPane centerWrapper;
 
     private Button selectToolBtn;
     private Button panToolBtn;
+    private Button penToolBtn;
+
+    private Spinner<Double> geoXSpin;
+    private Spinner<Double> geoYSpin;
+    private Spinner<Double> geoWSpin;
+    private Spinner<Double> geoHSpin;
+    private Spinner<Double> geoRotSpin;
+    private ComboBox<UnitConverter.Unit> geoUnitBox;
 
     private final TextField nameField = new TextField();
     private final Label zoomLabel = new Label("90%");
@@ -120,7 +138,8 @@ public class TemplateDesigner extends BorderPane {
         getStyleClass().add("bg-app");
         canvas.getStyleClass().add("bill-sheet-canvas");
         guideLayer.setMouseTransparent(true);
-        canvas.getChildren().addAll(gridPane, elementsPane, guideLayer, selectionPane);
+        penLayer.setMouseTransparent(true);
+        canvas.getChildren().addAll(gridPane, elementsPane, guideLayer, penLayer, selectionPane);
         gridPane.setMouseTransparent(true);
         selectionPane.setPickOnBounds(false);
 
@@ -145,93 +164,93 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private Node createToolbar() {
-        HBox bar = new HBox(6);
-        bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setPadding(new Insets(6, 10, 6, 10));
-        bar.getStyleClass().add("designer-toolbar");
+        VBox rootToolbar = new VBox(0);
+        rootToolbar.getStyleClass().add("designer-toolbar");
+
+        // 1. Top Title & Tab Navigation Bar
+        HBox topBar = new HBox(8);
+        topBar.setAlignment(Pos.CENTER_LEFT);
+        topBar.setPadding(new Insets(5, 10, 4, 10));
+        topBar.setStyle("-fx-background-color: #0B1120; -fx-border-color: #1E293B; -fx-border-width: 0 0 1 0;");
 
         Button backBtn = createToolbarBtn("← Back", "Return to Templates Directory", () -> app.showTemplates());
 
         nameField.setText(template.getName());
-        nameField.setPrefWidth(150);
+        nameField.setPrefWidth(160);
         nameField.setMinWidth(100);
         nameField.setTooltip(new Tooltip("Template Name"));
         nameField.textProperty().addListener((obs, old, val) -> template.setName(val));
 
-        Separator s1 = new Separator(javafx.geometry.Orientation.VERTICAL);
+        Separator topSep = new Separator(javafx.geometry.Orientation.VERTICAL);
 
-        // Core Element Add Buttons
+        // Home Tab Pill
+        Button homeTabBtn = new Button("Home");
+        homeTabBtn.getStyleClass().addAll("button-sm", "tool-active");
+        homeTabBtn.setStyle("-fx-font-weight: bold; -fx-padding: 4 16; -fx-cursor: hand;");
+        homeTabBtn.setTooltip(new Tooltip("Home Tab: Core element creation, drawing tools, and page layout"));
+
+        Region topSpacer = new Region();
+        HBox.setHgrow(topSpacer, Priority.ALWAYS);
+
+        Button saveBtn = new Button("Save Template");
+        saveBtn.getStyleClass().addAll("gold-btn");
+        saveBtn.setMinWidth(Region.USE_PREF_SIZE);
+        saveBtn.setTooltip(new Tooltip("Save template changes to database (Ctrl S)"));
+        saveBtn.setOnAction(e -> saveTemplate());
+
+        topBar.getChildren().addAll(backBtn, nameField, topSep, homeTabBtn, topSpacer, saveBtn);
+
+        // 2. Home Tab Grouped Ribbon
+        HBox ribbon = new HBox(6);
+        ribbon.setAlignment(Pos.CENTER_LEFT);
+        ribbon.setPadding(new Insets(6, 10, 6, 10));
+        ribbon.setStyle("-fx-background-color: #0F172A;");
+
+        // --- GROUP 1: Insert & Content (Text, Table, Shapes, Media, Code, Components) ---
+        HBox insertGroup = new HBox(4);
+        insertGroup.setAlignment(Pos.CENTER_LEFT);
+
         Button addText = createToolbarBtn("+ Text", "Add dynamic or static text label", () -> addElement(ElementType.TEXT));
-        Button addImage = createToolbarBtn("+ Image", "Add business logo or graphic image", () -> addElement(ElementType.IMAGE));
         Button addTable = createToolbarBtn("+ Table", "Add line-item billing table with GST", () -> addElement(ElementType.TABLE));
 
         // Shapes Dropdown MenuButton
-        MenuButton shapesMenu = new MenuButton("⬜ Shapes");
+        MenuButton shapesMenu = new MenuButton("Shapes");
+        shapesMenu.setGraphic(IconHelper.getMenuIcon("shapes", "#CBD5E1"));
         shapesMenu.getStyleClass().addAll("button-sm", "menu-button", "designer-menubtn");
-        shapesMenu.setTooltip(new Tooltip("Add shapes (Rectangles, Circles, Arrows, Paths, Stars)"));
+        shapesMenu.setTooltip(new Tooltip("Add shapes (Rectangles, Circles, Arrows, Paths, Stars, Polygons)"));
         shapesMenu.setMinWidth(Region.USE_PREF_SIZE);
         shapesMenu.setStyle("-fx-text-fill: #FFFFFF; -fx-font-weight: bold;");
 
-        MenuItem rectItem = new MenuItem("⬜  Rectangle / Box");
-        rectItem.setOnAction(e -> addElement(ElementType.RECT));
-
-        MenuItem roundRectItem = new MenuItem("▢  Rounded Card");
-        roundRectItem.setOnAction(e -> addRoundedRect());
-
-        MenuItem circleItem = new MenuItem("○  Circle");
-        circleItem.setOnAction(e -> addElement(ElementType.CIRCLE));
-
-        MenuItem ellipseItem = new MenuItem("⬭  Ellipse");
-        ellipseItem.setOnAction(e -> addElement(ElementType.ELLIPSE));
-
-        MenuItem lineHItem = new MenuItem("─  Horizontal Line");
-        lineHItem.setOnAction(e -> addLine("h"));
-
-        MenuItem lineVItem = new MenuItem("│  Vertical Line");
-        lineVItem.setOnAction(e -> addLine("v"));
-
-        MenuItem arrowItem = new MenuItem("➔  Arrow");
-        arrowItem.setOnAction(e -> addElement(ElementType.ARROW));
-
-        MenuItem starItem = new MenuItem("★  Star Shape");
-        starItem.setOnAction(e -> addElement(ElementType.STAR));
-
-        MenuItem polyItem = new MenuItem("▲  Polygon (Triangle)");
-        polyItem.setOnAction(e -> addElement(ElementType.POLYGON));
-
-        MenuItem arcItem = new MenuItem("⌒  Arc Shape");
-        arcItem.setOnAction(e -> addElement(ElementType.ARC));
-
-        MenuItem pathItem = new MenuItem("✎  Custom SVG Path");
-        pathItem.setOnAction(e -> addElement(ElementType.PATH));
-
-        MenuItem divItem = new MenuItem("╍  Divider");
-        divItem.setOnAction(e -> addElement(ElementType.DIVIDER));
-
-        MenuItem signItem = new MenuItem("✍  Freehand Signature");
-        signItem.setOnAction(e -> addElement(ElementType.FREEHAND));
-
-        MenuItem wmItem = new MenuItem("🗎  Watermark");
-        wmItem.setOnAction(e -> addElement(ElementType.WATERMARK));
+        MenuItem rectItem = createStyledMenuItem("Rectangle / Box", "shape-rect", () -> addElement(ElementType.RECT));
+        MenuItem roundRectItem = createStyledMenuItem("Rounded Card", "shape-round-rect", this::addRoundedRect);
+        MenuItem circleItem = createStyledMenuItem("Circle", "shape-circle", () -> addElement(ElementType.CIRCLE));
+        MenuItem ellipseItem = createStyledMenuItem("Ellipse", "shape-ellipse", () -> addElement(ElementType.ELLIPSE));
+        MenuItem lineHItem = createStyledMenuItem("Horizontal Line", "shape-line-h", () -> addLine("h"));
+        MenuItem lineVItem = createStyledMenuItem("Vertical Line", "shape-line-v", () -> addLine("v"));
+        MenuItem arrowItem = createStyledMenuItem("Arrow", "shape-arrow", () -> addElement(ElementType.ARROW));
+        MenuItem starItem = createStyledMenuItem("Star Shape", "shape-star", () -> addElement(ElementType.STAR));
+        MenuItem polyItem = createStyledMenuItem("Polygon Shape", "shape-polygon", () -> addElement(ElementType.POLYGON));
+        MenuItem arcItem = createStyledMenuItem("Arc Shape", "shape-arc", () -> addElement(ElementType.ARC));
+        MenuItem pathItem = createStyledMenuItem("Custom SVG Path", "shape-path", () -> addElement(ElementType.PATH));
+        MenuItem penItem = createStyledMenuItem("Vector Pen Tool (P)", "shape-pen", this::activatePenTool);
+        MenuItem divItem = createStyledMenuItem("Divider", "shape-divider", () -> addElement(ElementType.DIVIDER));
+        MenuItem signItem = createStyledMenuItem("Freehand Signature", "shape-signature", () -> addElement(ElementType.FREEHAND));
+        MenuItem wmItem = createStyledMenuItem("Watermark", "shape-watermark", () -> addElement(ElementType.WATERMARK));
 
         shapesMenu.getItems().addAll(rectItem, roundRectItem, circleItem, ellipseItem, lineHItem, lineVItem,
-                arrowItem, starItem, polyItem, arcItem, pathItem, divItem, signItem, wmItem);
+                arrowItem, starItem, polyItem, arcItem, pathItem, penItem, divItem, signItem, wmItem);
 
         // Media Dropdown MenuButton
-        MenuButton mediaMenu = new MenuButton("🖼 Media");
+        MenuButton mediaMenu = new MenuButton("Media");
+        mediaMenu.setGraphic(IconHelper.getMenuIcon("media", "#CBD5E1"));
         mediaMenu.getStyleClass().addAll("button-sm", "menu-button", "designer-menubtn");
         mediaMenu.setTooltip(new Tooltip("Add image, SVG, or icons"));
         mediaMenu.setMinWidth(Region.USE_PREF_SIZE);
         mediaMenu.setStyle("-fx-text-fill: #FFFFFF; -fx-font-weight: bold;");
 
-        MenuItem imgItem = new MenuItem("🖼  Business Logo / Image");
-        imgItem.setOnAction(e -> addElement(ElementType.IMAGE));
-
-        MenuItem svgItem = new MenuItem("⮑  SVG Vector");
-        svgItem.setOnAction(e -> addElement(ElementType.SVG));
-
-        MenuItem iconItem = new MenuItem("★  Icon Glyph");
-        iconItem.setOnAction(e -> addElement(ElementType.ICON));
+        MenuItem imgItem = createStyledMenuItem("Business Logo / Image", "media-image", () -> addElement(ElementType.IMAGE));
+        MenuItem svgItem = createStyledMenuItem("SVG Vector", "media-svg", () -> addElement(ElementType.SVG));
+        MenuItem iconItem = createStyledMenuItem("Icon Glyph", "shape-star", () -> addElement(ElementType.ICON));
 
         mediaMenu.getItems().addAll(imgItem, svgItem, iconItem);
 
@@ -243,42 +262,57 @@ public class TemplateDesigner extends BorderPane {
         rebuildComponentsMenu();
 
         // Codes Dropdown MenuButton
-        MenuButton codeMenu = new MenuButton("▦ Code");
+        MenuButton codeMenu = new MenuButton("Code");
+        codeMenu.setGraphic(IconHelper.getMenuIcon("code", "#CBD5E1"));
         codeMenu.getStyleClass().addAll("button-sm", "menu-button", "designer-menubtn");
         codeMenu.setTooltip(new Tooltip("Add dynamic QR or Barcode"));
         codeMenu.setMinWidth(Region.USE_PREF_SIZE);
         codeMenu.setStyle("-fx-text-fill: #FFFFFF; -fx-font-weight: bold;");
 
-        MenuItem qrItem = new MenuItem("⛶  UPI QR Code");
-        qrItem.setOnAction(e -> addElement(ElementType.QRCODE));
-
-        MenuItem barItem = new MenuItem("║▌  Invoice Barcode");
-        barItem.setOnAction(e -> addElement(ElementType.BARCODE));
+        MenuItem qrItem = createStyledMenuItem("UPI QR Code", "code-qr", () -> addElement(ElementType.QRCODE));
+        MenuItem barItem = createStyledMenuItem("Invoice Barcode", "code-barcode", () -> addElement(ElementType.BARCODE));
 
         codeMenu.getItems().addAll(qrItem, barItem);
 
-        Separator s2 = new Separator(javafx.geometry.Orientation.VERTICAL);
+        insertGroup.getChildren().addAll(addText, addTable, shapesMenu, mediaMenu, compMenu, codeMenu);
 
-        // Tool Mode: Select vs Pan
-        selectToolBtn = createToolbarBtn("↖ Select", "Select & Move Tool (V)", () -> setPanMode(false));
-        panToolBtn = createToolbarBtn("✋ Pan", "Pan Canvas Tool (H / Space)", () -> setPanMode(true));
+        Separator s1 = new Separator(javafx.geometry.Orientation.VERTICAL);
+
+        // --- GROUP 2: Vector & Drawing Tools (Select, Pan, Pen, Curve Toggle) ---
+        HBox toolsGroup = new HBox(4);
+        toolsGroup.setAlignment(Pos.CENTER_LEFT);
+
+        selectToolBtn = createToolbarBtn("↖ Select", "Select & Move Tool (V)", () -> {
+            if (isPenToolMode) cancelPenTool();
+            setPanMode(false);
+        });
+        panToolBtn = createToolbarBtn("✋ Pan", "Pan Canvas Tool (H / Space)", () -> {
+            if (isPenToolMode) cancelPenTool();
+            setPanMode(true);
+        });
+        penToolBtn = createToolbarBtn("✎ Pen", "Vector Pen Tool (P) - Click canvas to place vertices", () -> {
+            if (isPenToolMode) cancelPenTool();
+            else activatePenTool();
+        });
+        Button penCurveBtn = createToolbarBtn(penCurveMode ? "〰 Curve" : "📐 Straight", "Toggle Pen Mode: Straight Lines vs Smooth Bezier Curves", null);
+        penCurveBtn.setOnAction(e -> {
+            penCurveMode = !penCurveMode;
+            penCurveBtn.setText(penCurveMode ? "〰 Curve" : "📐 Straight");
+            if (isPenToolMode && !penPoints.isEmpty()) {
+                renderPenPreview(penPoints.get(penPoints.size() - 1).getX(), penPoints.get(penPoints.size() - 1).getY());
+            }
+        });
+
+        toolsGroup.getChildren().addAll(selectToolBtn, panToolBtn, penToolBtn, penCurveBtn);
         updateToolButtons();
 
-        // Undo / Redo buttons
-        Button undoBtn = createToolbarBtn("↶ Undo", "Undo last change (Ctrl Z)", this::undo);
-        Button redoBtn = createToolbarBtn("↷ Redo", "Redo undone change (Ctrl Y)", this::redo);
+        Separator s2 = new Separator(javafx.geometry.Orientation.VERTICAL);
 
-        Separator s3 = new Separator(javafx.geometry.Orientation.VERTICAL);
+        // --- GROUP 3: Layout & Page (Page Settings, Grid, Snap, Magnet) ---
+        HBox pageGroup = new HBox(6);
+        pageGroup.setAlignment(Pos.CENTER_LEFT);
 
-        // Zoom Controls
-        Button zoomOut = createToolbarBtn("−", "Zoom Out (Ctrl -)", () -> setZoom(zoom - 0.1));
-
-        zoomLabel.getStyleClass().add("zoom-value");
-        zoomLabel.setTooltip(new Tooltip("Current Zoom Level"));
-        zoomLabel.setMinWidth(Region.USE_PREF_SIZE);
-
-        Button zoomIn = createToolbarBtn("+", "Zoom In (Ctrl +)", () -> setZoom(zoom + 0.1));
-        Button zoomFit = createToolbarBtn("Fit", "Fit Page in Canvas Viewport (Ctrl 0)", () -> setZoom(0.85));
+        Button pageBtn = createToolbarBtn("⚙ Page", "Configure page dimensions, paper size & margins", this::showPageSettingsDialog);
 
         CheckBox gridCb = new CheckBox("Grid");
         gridCb.setSelected(true);
@@ -301,30 +335,90 @@ public class TemplateDesigner extends BorderPane {
         magnetCb.setTooltip(new Tooltip("Snap object borders to align and collapse with other objects and margins"));
         magnetCb.selectedProperty().addListener((obs, old, val) -> magnetSnapping = val);
 
-        Region sp = new Region();
-        HBox.setHgrow(sp, Priority.ALWAYS);
+        pageGroup.getChildren().addAll(pageBtn, gridCb, snapCb, magnetCb);
 
+        Separator s3 = new Separator(javafx.geometry.Orientation.VERTICAL);
+
+        // --- GROUP 4: Help & Support ---
+        HBox helpGroup = new HBox(4);
+        helpGroup.setAlignment(Pos.CENTER_LEFT);
         Button helpBtn = createToolbarBtn("❓ Help", "Keyboard Shortcuts & Designer Guide", this::showShortcutsHelpDialog);
-        Button pageBtn = createToolbarBtn("⚙ Page", "Configure page dimensions, paper size & margins", this::showPageSettingsDialog);
+        helpGroup.getChildren().add(helpBtn);
 
-        Button saveBtn = new Button("Save Template");
-        saveBtn.getStyleClass().addAll("gold-btn");
-        saveBtn.setMinWidth(Region.USE_PREF_SIZE);
-        saveBtn.setTooltip(new Tooltip("Save template changes to database (Ctrl S)"));
-        saveBtn.setOnAction(e -> saveTemplate());
+        Separator s4 = new Separator(javafx.geometry.Orientation.VERTICAL);
 
-        bar.getChildren().addAll(
-                backBtn, nameField, s1,
-                addText, addTable, shapesMenu, mediaMenu, compMenu, codeMenu, s2,
-                selectToolBtn, panToolBtn, undoBtn, redoBtn, s3,
-                zoomOut, zoomLabel, zoomIn, zoomFit, gridCb, snapCb, magnetCb, sp,
-                helpBtn, pageBtn, saveBtn
+        // --- GROUP 5: History & Zoom View ---
+        HBox viewGroup = new HBox(4);
+        viewGroup.setAlignment(Pos.CENTER_LEFT);
+
+        Button undoBtn = createToolbarBtn("↶ Undo", "Undo last change (Ctrl Z)", this::undo);
+        Button redoBtn = createToolbarBtn("↷ Redo", "Redo undone change (Ctrl Y)", this::redo);
+
+        Button zoomOut = createToolbarBtn("−", "Zoom Out (Ctrl -)", () -> setZoom(zoom - 0.1));
+        zoomLabel.getStyleClass().add("zoom-value");
+        zoomLabel.setTooltip(new Tooltip("Current Zoom Level"));
+        zoomLabel.setMinWidth(Region.USE_PREF_SIZE);
+        Button zoomIn = createToolbarBtn("+", "Zoom In (Ctrl +)", () -> setZoom(zoom + 0.1));
+        Button zoomFit = createToolbarBtn("Fit", "Fit Page in Canvas Viewport (Ctrl 0)", () -> setZoom(0.85));
+
+        viewGroup.getChildren().addAll(undoBtn, redoBtn, zoomOut, zoomLabel, zoomIn, zoomFit);
+
+        ribbon.getChildren().addAll(
+                insertGroup, s1,
+                toolsGroup, s2,
+                pageGroup, s3,
+                helpGroup, s4,
+                viewGroup
         );
-        return bar;
+
+        rootToolbar.getChildren().addAll(topBar, ribbon);
+        return rootToolbar;
+    }
+
+    private MenuItem createStyledMenuItem(String text, String iconName, Runnable action) {
+        MenuItem item = new MenuItem(text);
+        if (iconName != null) {
+            Node icon = IconHelper.getMenuIcon(iconName, "#94A3B8");
+            item.setGraphic(icon);
+        }
+        if (action != null) {
+            item.setOnAction(e -> action.run());
+        }
+        return item;
     }
 
     private void setPanMode(boolean pan) {
+        if (pan && isPenToolMode) {
+            cancelPenTool();
+        }
         this.isPanMode = pan;
+        updateToolButtons();
+        Cursor cur = isPanMode ? Cursor.OPEN_HAND : (isPenToolMode ? Cursor.CROSSHAIR : Cursor.DEFAULT);
+        if (canvasScrollPane != null) canvasScrollPane.setCursor(cur);
+        if (centerWrapper != null) centerWrapper.setCursor(cur);
+        canvas.setCursor(cur);
+    }
+
+    private void activatePenTool() {
+        this.isPanMode = false;
+        this.isPenToolMode = true;
+        this.selectedElement = null;
+        updateSelectionOverlay();
+        updatePropertiesPanel();
+        penPoints.clear();
+        penLayer.getChildren().clear();
+        updateToolButtons();
+        Cursor cur = Cursor.CROSSHAIR;
+        if (canvasScrollPane != null) canvasScrollPane.setCursor(cur);
+        if (centerWrapper != null) centerWrapper.setCursor(cur);
+        canvas.setCursor(cur);
+        Toast.show(this, "Pen Tool: Click canvas to place vertices. Double-click or click start point to close. Esc to cancel.");
+    }
+
+    private void cancelPenTool() {
+        this.isPenToolMode = false;
+        penPoints.clear();
+        penLayer.getChildren().clear();
         updateToolButtons();
         Cursor cur = isPanMode ? Cursor.OPEN_HAND : Cursor.DEFAULT;
         if (canvasScrollPane != null) canvasScrollPane.setCursor(cur);
@@ -334,12 +428,18 @@ public class TemplateDesigner extends BorderPane {
 
     private void updateToolButtons() {
         if (selectToolBtn == null || panToolBtn == null) return;
-        if (isPanMode) {
+        if (isPenToolMode) {
+            styleToolButton(selectToolBtn, false);
+            styleToolButton(panToolBtn, false);
+            if (penToolBtn != null) styleToolButton(penToolBtn, true);
+        } else if (isPanMode) {
             styleToolButton(selectToolBtn, false);
             styleToolButton(panToolBtn, true);
+            if (penToolBtn != null) styleToolButton(penToolBtn, false);
         } else {
             styleToolButton(selectToolBtn, true);
             styleToolButton(panToolBtn, false);
+            if (penToolBtn != null) styleToolButton(penToolBtn, false);
         }
     }
 
@@ -406,9 +506,28 @@ public class TemplateDesigner extends BorderPane {
         canvasScrollPane.setContent(centerWrapper);
         updateCenterWrapperSize();
 
+        // Event filters for Pen Tool mode so clicks anywhere on canvas (even over existing elements) register reliably
+        canvas.addEventFilter(MouseEvent.MOUSE_PRESSED, e -> {
+            if (isPenToolMode) {
+                if (e.getButton() == MouseButton.PRIMARY) {
+                    handlePenCanvasClick(e);
+                    e.consume();
+                } else if (e.getButton() == MouseButton.SECONDARY) {
+                    cancelPenTool();
+                    e.consume();
+                }
+            }
+        });
+
+        canvas.addEventFilter(MouseEvent.MOUSE_MOVED, e -> {
+            if (isPenToolMode) {
+                handlePenCanvasMove(e);
+            }
+        });
+
         // Deselect when clicking on empty canvas in Select mode
         canvas.setOnMousePressed(e -> {
-            if (e.isPrimaryButtonDown() && !isPanMode && !isSpaceDown) {
+            if (e.isPrimaryButtonDown() && !isPanMode && !isSpaceDown && !isPenToolMode) {
                 selectedElement = null;
                 updateSelectionOverlay();
                 updatePropertiesPanel();
@@ -1057,8 +1176,7 @@ public class TemplateDesigner extends BorderPane {
             if (isPanMode || isSpaceDown || e.getButton() == MouseButton.MIDDLE) return;
             if (isMoved[0]) {
                 saveState();
-                refreshCanvas();
-                updatePropertiesPanel();
+                syncGeoSpinnersIfPresent();
             }
             e.consume();
         });
@@ -1072,6 +1190,70 @@ public class TemplateDesigner extends BorderPane {
         if (activeSelectionBox != null) {
             activeSelectionBox.setLayoutX(px);
             activeSelectionBox.setLayoutY(py);
+        }
+    }
+
+    private void syncGeoSpinnersIfPresent() {
+        if (selectedElement == null || geoXSpin == null || geoUnitBox == null) return;
+        updatingProperties = true;
+        try {
+            UnitConverter.Unit u = geoUnitBox.getValue() != null ? geoUnitBox.getValue() : UnitConverter.Unit.MM;
+            double xVal = UnitConverter.fromMm(selectedElement.getX(), u);
+            double yVal = UnitConverter.fromMm(selectedElement.getY(), u);
+            double wVal = UnitConverter.fromMm(selectedElement.getW(), u);
+            double hVal = UnitConverter.fromMm(selectedElement.getH(), u);
+            if (geoXSpin.getValueFactory() != null) geoXSpin.getValueFactory().setValue(Math.round(xVal * 100.0) / 100.0);
+            if (geoYSpin.getValueFactory() != null) geoYSpin.getValueFactory().setValue(Math.round(yVal * 100.0) / 100.0);
+            if (geoWSpin.getValueFactory() != null) geoWSpin.getValueFactory().setValue(Math.round(wVal * 100.0) / 100.0);
+            if (geoHSpin.getValueFactory() != null) geoHSpin.getValueFactory().setValue(Math.round(hVal * 100.0) / 100.0);
+            if (geoRotSpin != null && geoRotSpin.getValueFactory() != null) {
+                geoRotSpin.getValueFactory().setValue((double) Math.round(selectedElement.getRotation()));
+            }
+        } catch (Exception ignored) {
+        } finally {
+            updatingProperties = false;
+        }
+    }
+
+    private void updateElementVisualInPlace(TemplateElement el) {
+        if (el == null) return;
+        double wPx = el.getW() * MM_PX;
+        double hPx = el.getH() * MM_PX;
+        double xPx = el.getX() * MM_PX;
+        double yPx = el.getY() * MM_PX;
+
+        for (Node n : elementsPane.getChildren()) {
+            if (n.getUserData() == el && n instanceof Pane wrapper) {
+                wrapper.setLayoutX(xPx);
+                wrapper.setLayoutY(yPx);
+                wrapper.setPrefSize(wPx, hPx);
+                wrapper.setMinSize(wPx, hPx);
+                wrapper.setMaxSize(wPx, hPx);
+                wrapper.setRotate(el.getRotation());
+                wrapper.setOpacity(el.getOpacity());
+
+                if (!wrapper.getChildren().isEmpty()) {
+                    Node hitAreaNode = wrapper.getChildren().get(0);
+                    if (hitAreaNode instanceof Rectangle hitArea) {
+                        hitArea.setWidth(wPx);
+                        hitArea.setHeight(hPx);
+                    }
+                }
+
+                RenderContext ctx = new RenderContext(null, settingsDao.getSettings(), 0, 1, 1);
+                Node newVisual = renderVisualElement(el, ctx, wPx, hPx);
+                if (newVisual != null) {
+                    setRecursivelyMouseTransparent(newVisual);
+                    if (wrapper.getChildren().size() > 1) {
+                        wrapper.getChildren().set(1, newVisual);
+                    } else {
+                        wrapper.getChildren().add(newVisual);
+                    }
+                } else if (wrapper.getChildren().size() > 1) {
+                    wrapper.getChildren().remove(1);
+                }
+                break;
+            }
         }
     }
 
@@ -1124,6 +1306,7 @@ public class TemplateDesigner extends BorderPane {
     private void updateSelBoxGeometry(Pane selBox, Rectangle border, Rectangle moveHitArea,
                                      Rectangle hNW, Rectangle hN, Rectangle hNE, Rectangle hE,
                                      Rectangle hSE, Rectangle hS, Rectangle hSW, Rectangle hW,
+                                     Line rotateStem, Circle handleRotate,
                                      double nwPx, double nhPx) {
         selBox.setPrefSize(nwPx, nhPx);
         selBox.setMinSize(nwPx, nhPx);
@@ -1172,6 +1355,20 @@ public class TemplateDesigner extends BorderPane {
 
         hW.setLayoutX(leftX);
         hW.setLayoutY(midY);
+
+        double stemTopY = topY - 22.0;
+        double stemCenterX = midX + hHalf;
+
+        if (rotateStem != null) {
+            rotateStem.setStartX(stemCenterX);
+            rotateStem.setStartY(topY);
+            rotateStem.setEndX(stemCenterX);
+            rotateStem.setEndY(stemTopY);
+        }
+        if (handleRotate != null) {
+            handleRotate.setCenterX(stemCenterX);
+            handleRotate.setCenterY(stemTopY);
+        }
     }
 
     private void updateSelectionOverlay() {
@@ -1272,8 +1469,7 @@ public class TemplateDesigner extends BorderPane {
             if (isPanMode || isSpaceDown || e.getButton() == MouseButton.MIDDLE) return;
             if (isMoved[0]) {
                 saveState();
-                refreshCanvas();
-                updatePropertiesPanel();
+                syncGeoSpinnersIfPresent();
             }
             e.consume();
         });
@@ -1286,6 +1482,23 @@ public class TemplateDesigner extends BorderPane {
         border.getStrokeDashArray().addAll(5.0, 4.0);
         border.setMouseTransparent(true);
         border.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 4, 0, 0, 1);");
+
+        // Rotation Handle and Stem
+        Line rotateStem = new Line();
+        rotateStem.setStroke(Color.web("#D9A13B"));
+        rotateStem.setStrokeWidth(1.5);
+        rotateStem.getStrokeDashArray().addAll(3.0, 3.0);
+        rotateStem.setMouseTransparent(true);
+
+        Circle handleRotate = new Circle(5.5);
+        handleRotate.setFill(Color.web("#D9A13B"));
+        handleRotate.setStroke(Color.web("#0F172A"));
+        handleRotate.setStrokeWidth(1.5);
+        handleRotate.setCursor(Cursor.CROSSHAIR);
+        handleRotate.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 4, 0, 0, 1);");
+        handleRotate.setOnMouseEntered(ev -> handleRotate.setFill(Color.WHITE));
+        handleRotate.setOnMouseExited(ev -> handleRotate.setFill(Color.web("#D9A13B")));
+        Tooltip.install(handleRotate, new Tooltip("Rotate shape (Drag to rotate, Shift to snap 15°)"));
 
         // 8 Resize Handles
         Rectangle handleNW = createHandleShape(Cursor.NW_RESIZE);
@@ -1300,7 +1513,51 @@ public class TemplateDesigner extends BorderPane {
         updateSelBoxGeometry(selBox, border, moveHitArea,
                 handleNW, handleN, handleNE, handleE,
                 handleSE, handleS, handleSW, handleW,
+                rotateStem, handleRotate,
                 w, h);
+
+        final double[] rotCenter = new double[2];
+        handleRotate.setOnMousePressed(e -> {
+            if (e.isPrimaryButtonDown()) {
+                Point2D centerInScene = selBox.localToScene(w / 2.0, h / 2.0);
+                rotCenter[0] = centerInScene.getX();
+                rotCenter[1] = centerInScene.getY();
+                e.consume();
+            }
+        });
+
+        handleRotate.setOnMouseDragged(e -> {
+            if (el.isLocked()) return;
+            double dx = e.getSceneX() - rotCenter[0];
+            double dy = e.getSceneY() - rotCenter[1];
+            double rad = Math.atan2(dy, dx);
+            double deg = Math.toDegrees(rad) + 90.0;
+            if (deg < 0) deg += 360.0;
+            if (deg >= 360.0) deg -= 360.0;
+
+            if (e.isShiftDown()) {
+                deg = Math.round(deg / 15.0) * 15.0;
+            } else {
+                deg = Math.round(deg * 10.0) / 10.0;
+            }
+
+            el.setRotation(deg);
+            selBox.setRotate(deg);
+            for (Node n : elementsPane.getChildren()) {
+                if (n.getUserData() == el) {
+                    n.setRotate(deg);
+                    break;
+                }
+            }
+            syncGeoSpinnersIfPresent();
+            e.consume();
+        });
+
+        handleRotate.setOnMouseReleased(e -> {
+            saveState();
+            syncGeoSpinnersIfPresent();
+            e.consume();
+        });
 
         final double[] resizeStart = new double[6];
 
@@ -1320,11 +1577,11 @@ public class TemplateDesigner extends BorderPane {
             double newH = Math.max(3.0, resizeStart[3] + dy);
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); }
             el.setW(newW); el.setH(newH);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, newW, newH, el.getX(), el.getY());
             e.consume();
         });
-        handleSE.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
+        handleSE.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 2. E Handle (Right-Center)
         handleE.setOnMousePressed(e -> {
@@ -1340,11 +1597,11 @@ public class TemplateDesigner extends BorderPane {
             double newW = Math.max(5.0, resizeStart[2] + dx);
             if (snapToGrid) newW = Math.round(newW);
             el.setW(newW);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, el.getH() * MM_PX);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, el.getH() * MM_PX);
             updateLiveElementVisual(el, newW, el.getH(), el.getX(), el.getY());
             e.consume();
         });
-        handleE.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
+        handleE.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 3. S Handle (Bottom-Center)
         handleS.setOnMousePressed(e -> {
@@ -1360,11 +1617,11 @@ public class TemplateDesigner extends BorderPane {
             double newH = Math.max(3.0, resizeStart[3] + dy);
             if (snapToGrid) newH = Math.round(newH);
             el.setH(newH);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, el.getW() * MM_PX, newH * MM_PX);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, el.getW() * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, el.getW(), newH, el.getX(), el.getY());
             e.consume();
         });
-        handleS.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
+        handleS.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 4. W Handle (Left-Center with Left-Side Scaling)
         handleW.setOnMousePressed(e -> {
@@ -1383,11 +1640,11 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) { newW = Math.round(newW); newX = Math.round(newX); }
             el.setW(newW); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, el.getH() * MM_PX);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, el.getH() * MM_PX);
             updateLiveElementVisual(el, newW, el.getH(), newX, el.getY());
             e.consume();
         });
-        handleW.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
+        handleW.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 5. N Handle (Top-Center)
         handleN.setOnMousePressed(e -> {
@@ -1406,11 +1663,11 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) { newH = Math.round(newH); newY = Math.round(newY); }
             el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, el.getW() * MM_PX, newH * MM_PX);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, el.getW() * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, el.getW(), newH, el.getX(), newY);
             e.consume();
         });
-        handleN.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
+        handleN.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 6. NW Handle (Top-Left)
         handleNW.setOnMousePressed(e -> {
@@ -1432,11 +1689,11 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newX = Math.round(newX); newY = Math.round(newY); }
             el.setW(newW); el.setH(newH); el.setX(newX); el.setY(newY);
             selBox.setLayoutX(newX * MM_PX); selBox.setLayoutY(newY * MM_PX);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, newW, newH, newX, newY);
             e.consume();
         });
-        handleNW.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
+        handleNW.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 7. NE Handle (Top-Right)
         handleNE.setOnMousePressed(e -> {
@@ -1457,11 +1714,11 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newY = Math.round(newY); }
             el.setW(newW); el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, newW, newH, el.getX(), newY);
             e.consume();
         });
-        handleNE.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
+        handleNE.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 8. SW Handle (Bottom-Left)
         handleSW.setOnMousePressed(e -> {
@@ -1482,13 +1739,16 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newX = Math.round(newX); }
             el.setW(newW); el.setH(newH); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, newW * MM_PX, newH * MM_PX);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
             updateLiveElementVisual(el, newW, newH, newX, el.getY());
             e.consume();
         });
-        handleSW.setOnMouseReleased(e -> { saveState(); refreshCanvas(); updatePropertiesPanel(); e.consume(); });
+        handleSW.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
-        selBox.getChildren().addAll(moveHitArea, border, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW);
+        selBox.getChildren().addAll(moveHitArea, border, rotateStem, handleRotate, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW);
+        if (isPointEditable(el)) {
+            addVertexAnchorHandles(selBox, el);
+        }
         selectionPane.getChildren().add(selBox);
     }
 
@@ -1657,207 +1917,228 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void updatePropertiesPanel() {
-        propBox.getChildren().clear();
+        updatingProperties = true;
+        try {
+            propBox.getChildren().clear();
+            geoXSpin = null;
+            geoYSpin = null;
+            geoWSpin = null;
+            geoHSpin = null;
+            geoRotSpin = null;
+            geoUnitBox = null;
 
-        if (selectedElement == null) {
-            buildPageAndMarginProperties();
-            return;
-        }
+            if (selectedElement == null) {
+                buildPageAndMarginProperties();
+                return;
+            }
 
-        TemplateElement el = selectedElement;
+            TemplateElement el = selectedElement;
 
-        // Header Actions Row
-        HBox headerRow = new HBox(8);
-        headerRow.setAlignment(Pos.CENTER_LEFT);
+            // Header Actions Row
+            HBox headerRow = new HBox(8);
+            headerRow.setAlignment(Pos.CENTER_LEFT);
 
-        Label typeLbl = new Label(el.getType().name());
-        typeLbl.getStyleClass().add("element-type-badge");
+            Label typeLbl = new Label(el.getType().name());
+            typeLbl.getStyleClass().add("element-type-badge");
 
-        Region sp = new Region();
-        HBox.setHgrow(sp, Priority.ALWAYS);
+            Region sp = new Region();
+            HBox.setHgrow(sp, Priority.ALWAYS);
 
-        Button saveCompBtn = createToolbarBtn("📦", "Save selected element or group as custom reusable component", this::saveSelectionAsComponent);
-        Button dupBtn = createToolbarBtn("❐", "Duplicate Element (Ctrl D)", this::duplicateSelected);
-        Button upBtn = createToolbarBtn("▲", "Bring Forward", () -> moveLayer(1));
-        Button downBtn = createToolbarBtn("▼", "Send Backward", () -> moveLayer(-1));
-        Button delBtn = createToolbarBtn("🗑", "Delete Element (Delete key)", this::deleteSelected);
+            Button saveCompBtn = createToolbarBtn("📦", "Save selected element or group as custom reusable component", this::saveSelectionAsComponent);
+            Button dupBtn = createToolbarBtn("❐", "Duplicate Element (Ctrl D)", this::duplicateSelected);
+            Button upBtn = createToolbarBtn("▲", "Bring Forward", () -> moveLayer(1));
+            Button downBtn = createToolbarBtn("▼", "Send Backward", () -> moveLayer(-1));
+            Button delBtn = createToolbarBtn("🗑", "Delete Element (Delete key)", this::deleteSelected);
 
-        headerRow.getChildren().addAll(typeLbl, sp, saveCompBtn, dupBtn, upBtn, downBtn, delBtn);
+            headerRow.getChildren().addAll(typeLbl, sp, saveCompBtn, dupBtn, upBtn, downBtn, delBtn);
 
-        // Object Name Row
-        HBox nameRow = new HBox(8);
-        nameRow.setAlignment(Pos.CENTER_LEFT);
-        Label namePrompt = new Label("Name:");
-        namePrompt.getStyleClass().add("cell-bold-secondary");
-        TextField objNameField = new TextField(el.getName() != null ? el.getName() : "");
-        objNameField.setPromptText(el.getDisplayName());
-        objNameField.setTooltip(new Tooltip("Friendly name for this element in layers panel and inspector"));
-        HBox.setHgrow(objNameField, Priority.ALWAYS);
-        objNameField.textProperty().addListener((obs, o, v) -> {
-            el.setName(v);
-            refreshLayersList();
-        });
-        nameRow.getChildren().addAll(namePrompt, objNameField);
+            // Object Name Row
+            HBox nameRow = new HBox(8);
+            nameRow.setAlignment(Pos.CENTER_LEFT);
+            Label namePrompt = new Label("Name:");
+            namePrompt.getStyleClass().add("cell-bold-secondary");
+            TextField objNameField = new TextField(el.getName() != null ? el.getName() : "");
+            objNameField.setPromptText(el.getDisplayName());
+            objNameField.setTooltip(new Tooltip("Friendly name for this element in layers panel and inspector"));
+            HBox.setHgrow(objNameField, Priority.ALWAYS);
+            objNameField.textProperty().addListener((obs, o, v) -> {
+                el.setName(v);
+                refreshLayersList();
+            });
+            nameRow.getChildren().addAll(namePrompt, objNameField);
 
-        propBox.getChildren().addAll(headerRow, nameRow);
+            propBox.getChildren().addAll(headerRow, nameRow);
 
-        // Position & Size Grid
-        TitledPane geoPane = new TitledPane();
-        geoPane.setText("Position & Size");
-        geoPane.setExpanded(true);
+            // Position & Size Grid
+            TitledPane geoPane = new TitledPane();
+            geoPane.setText("Position & Size");
+            geoPane.setExpanded(true);
 
-        GridPane posGrid = new GridPane();
-        posGrid.setHgap(8); posGrid.setVgap(8);
-        posGrid.setPadding(new Insets(8));
+            GridPane posGrid = new GridPane();
+            posGrid.setHgap(8); posGrid.setVgap(8);
+            posGrid.setPadding(new Insets(8));
 
-        Label unitLbl = new Label("Unit:");
-        unitLbl.getStyleClass().add("cell-bold-secondary");
-        ComboBox<UnitConverter.Unit> unitBox = new ComboBox<>(FXCollections.observableArrayList(UnitConverter.Unit.values()));
-        unitBox.setValue(UnitConverter.Unit.MM);
-        unitBox.getStyleClass().add("designer-combo");
-        unitBox.setTooltip(new Tooltip("Measurement unit: Millimeters (mm), Points (pt), Centimeters (cm), Inches (in)"));
-        HBox unitRow = new HBox(6, unitLbl, unitBox);
-        unitRow.setAlignment(Pos.CENTER_LEFT);
-        posGrid.add(unitRow, 0, 0, 4, 1);
+            Label unitLbl = new Label("Unit:");
+            unitLbl.getStyleClass().add("cell-bold-secondary");
+            ComboBox<UnitConverter.Unit> unitBox = new ComboBox<>(FXCollections.observableArrayList(UnitConverter.Unit.values()));
+            unitBox.setValue(UnitConverter.Unit.MM);
+            unitBox.getStyleClass().add("designer-combo");
+            unitBox.setTooltip(new Tooltip("Measurement unit: Millimeters (mm), Points (pt), Centimeters (cm), Inches (in)"));
+            HBox unitRow = new HBox(6, unitLbl, unitBox);
+            unitRow.setAlignment(Pos.CENTER_LEFT);
+            posGrid.add(unitRow, 0, 0, 4, 1);
 
-        Label xLbl = new Label("X:");
-        Label yLbl = new Label("Y:");
-        Label wLbl = new Label("W:");
-        Label hLbl = new Label("H:");
+            Label xLbl = new Label("X:");
+            Label yLbl = new Label("Y:");
+            Label wLbl = new Label("W:");
+            Label hLbl = new Label("H:");
 
-        Spinner<Double> xSpin = new Spinner<>(0.0, 5000.0, el.getX(), 1.0);
-        xSpin.setPrefWidth(85);
-        xSpin.setTooltip(new Tooltip("Horizontal position (X) from the left edge of the page"));
-        configureNumberSpinner(xSpin);
-
-        Spinner<Double> ySpin = new Spinner<>(0.0, 5000.0, el.getY(), 1.0);
-        ySpin.setPrefWidth(85);
-        ySpin.setTooltip(new Tooltip("Vertical position (Y) from the top edge of the page"));
-        configureNumberSpinner(ySpin);
-
-        Spinner<Double> wSpin = new Spinner<>(0.1, 5000.0, el.getW(), 1.0);
-        wSpin.setPrefWidth(85);
-        wSpin.setTooltip(new Tooltip("Element width in current measurement units"));
-        configureNumberSpinner(wSpin);
-
-        Spinner<Double> hSpin = new Spinner<>(0.1, 5000.0, el.getH(), 1.0);
-        hSpin.setPrefWidth(85);
-        hSpin.setTooltip(new Tooltip("Element height in current measurement units"));
-        configureNumberSpinner(hSpin);
-
-        final boolean[] updatingGeo = {false};
-        Consumer<UnitConverter.Unit> syncGeoSpinners = (u) -> {
-            updatingGeo[0] = true;
-            double xVal = UnitConverter.fromMm(el.getX(), u);
-            double yVal = UnitConverter.fromMm(el.getY(), u);
-            double wVal = UnitConverter.fromMm(el.getW(), u);
-            double hVal = UnitConverter.fromMm(el.getH(), u);
-            double step = (u == UnitConverter.Unit.IN || u == UnitConverter.Unit.INCH) ? 0.1 : (u == UnitConverter.Unit.CM ? 0.5 : 1.0);
-            xSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 5000.0, Math.round(xVal * 100.0) / 100.0, step));
-            ySpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 5000.0, Math.round(yVal * 100.0) / 100.0, step));
-            wSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.1, 5000.0, Math.round(wVal * 100.0) / 100.0, step));
-            hSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.1, 5000.0, Math.round(hVal * 100.0) / 100.0, step));
+            Spinner<Double> xSpin = new Spinner<>(0.0, 5000.0, el.getX(), 1.0);
+            xSpin.setPrefWidth(85);
+            xSpin.setTooltip(new Tooltip("Horizontal position (X) from the left edge of the page"));
             configureNumberSpinner(xSpin);
+
+            Spinner<Double> ySpin = new Spinner<>(0.0, 5000.0, el.getY(), 1.0);
+            ySpin.setPrefWidth(85);
+            ySpin.setTooltip(new Tooltip("Vertical position (Y) from the top edge of the page"));
             configureNumberSpinner(ySpin);
+
+            Spinner<Double> wSpin = new Spinner<>(0.1, 5000.0, el.getW(), 1.0);
+            wSpin.setPrefWidth(85);
+            wSpin.setTooltip(new Tooltip("Element width in current measurement units"));
             configureNumberSpinner(wSpin);
+
+            Spinner<Double> hSpin = new Spinner<>(0.1, 5000.0, el.getH(), 1.0);
+            hSpin.setPrefWidth(85);
+            hSpin.setTooltip(new Tooltip("Element height in current measurement units"));
             configureNumberSpinner(hSpin);
-            updatingGeo[0] = false;
-        };
 
-        xSpin.valueProperty().addListener((obs, o, v) -> {
-            if (!updatingGeo[0] && v != null) {
-                el.setX(UnitConverter.toMm(v, unitBox.getValue()));
-                refreshCanvas();
-            }
-        });
-        ySpin.valueProperty().addListener((obs, o, v) -> {
-            if (!updatingGeo[0] && v != null) {
-                el.setY(UnitConverter.toMm(v, unitBox.getValue()));
-                refreshCanvas();
-            }
-        });
-        wSpin.valueProperty().addListener((obs, o, v) -> {
-            if (!updatingGeo[0] && v != null) {
-                el.setW(UnitConverter.toMm(v, unitBox.getValue()));
-                refreshCanvas();
-            }
-        });
-        hSpin.valueProperty().addListener((obs, o, v) -> {
-            if (!updatingGeo[0] && v != null) {
-                el.setH(UnitConverter.toMm(v, unitBox.getValue()));
-                refreshCanvas();
-            }
-        });
+            geoXSpin = xSpin;
+            geoYSpin = ySpin;
+            geoWSpin = wSpin;
+            geoHSpin = hSpin;
+            geoUnitBox = unitBox;
 
-        unitBox.valueProperty().addListener((obs, o, v) -> {
-            if (v != null) {
-                syncGeoSpinners.accept(v);
+            final boolean[] updatingGeo = {false};
+            Consumer<UnitConverter.Unit> syncGeoSpinners = (u) -> {
+                updatingGeo[0] = true;
+                double xVal = UnitConverter.fromMm(el.getX(), u);
+                double yVal = UnitConverter.fromMm(el.getY(), u);
+                double wVal = UnitConverter.fromMm(el.getW(), u);
+                double hVal = UnitConverter.fromMm(el.getH(), u);
+                double step = (u == UnitConverter.Unit.IN || u == UnitConverter.Unit.INCH) ? 0.1 : (u == UnitConverter.Unit.CM ? 0.5 : 1.0);
+                xSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 5000.0, Math.round(xVal * 100.0) / 100.0, step));
+                ySpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 5000.0, Math.round(yVal * 100.0) / 100.0, step));
+                wSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.1, 5000.0, Math.round(wVal * 100.0) / 100.0, step));
+                hSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.1, 5000.0, Math.round(hVal * 100.0) / 100.0, step));
+                configureNumberSpinner(xSpin);
+                configureNumberSpinner(ySpin);
+                configureNumberSpinner(wSpin);
+                configureNumberSpinner(hSpin);
+                updatingGeo[0] = false;
+            };
+
+            xSpin.valueProperty().addListener((obs, o, v) -> {
+                if (!updatingProperties && !updatingGeo[0] && v != null) {
+                    el.setX(UnitConverter.toMm(v, unitBox.getValue()));
+                    updateElementVisualInPlace(el);
+                    updateSelectionOverlay();
+                }
+            });
+            ySpin.valueProperty().addListener((obs, o, v) -> {
+                if (!updatingProperties && !updatingGeo[0] && v != null) {
+                    el.setY(UnitConverter.toMm(v, unitBox.getValue()));
+                    updateElementVisualInPlace(el);
+                    updateSelectionOverlay();
+                }
+            });
+            wSpin.valueProperty().addListener((obs, o, v) -> {
+                if (!updatingProperties && !updatingGeo[0] && v != null) {
+                    el.setW(UnitConverter.toMm(v, unitBox.getValue()));
+                    updateElementVisualInPlace(el);
+                    updateSelectionOverlay();
+                }
+            });
+            hSpin.valueProperty().addListener((obs, o, v) -> {
+                if (!updatingProperties && !updatingGeo[0] && v != null) {
+                    el.setH(UnitConverter.toMm(v, unitBox.getValue()));
+                    updateElementVisualInPlace(el);
+                    updateSelectionOverlay();
+                }
+            });
+
+            unitBox.valueProperty().addListener((obs, o, v) -> {
+                if (v != null) {
+                    syncGeoSpinners.accept(v);
+                }
+            });
+
+            posGrid.add(xLbl, 0, 1);
+            posGrid.add(xSpin, 1, 1);
+            posGrid.add(yLbl, 2, 1);
+            posGrid.add(ySpin, 3, 1);
+            posGrid.add(wLbl, 0, 2);
+            posGrid.add(wSpin, 1, 2);
+            posGrid.add(hLbl, 2, 2);
+            posGrid.add(hSpin, 3, 2);
+
+            geoPane.setContent(posGrid);
+            propBox.getChildren().add(geoPane);
+
+            // Specific Type Editors
+            if (el.getType() == ElementType.TEXT || el.getType() == ElementType.PAGENO) {
+                buildTextProperties(el);
+            } else if (el.getType() == ElementType.RECT) {
+                buildRectProperties(el);
+            } else if (el.getType() == ElementType.LINE) {
+                buildLineProperties(el);
+            } else if (el.getType() == ElementType.IMAGE) {
+                buildImageProperties(el);
+            } else if (el.getType() == ElementType.QRCODE) {
+                buildQrProperties(el);
+            } else if (el.getType() == ElementType.BARCODE) {
+                buildBarcodeProperties(el);
+            } else if (el.getType() == ElementType.TABLE) {
+                buildTableProperties(el);
+            } else if (isShapeType(el.getType())) {
+                buildShapeProperties(el);
+            } else if (el.getType() == ElementType.SVG) {
+                buildSvgProperties(el);
+            } else if (el.getType() == ElementType.ICON) {
+                buildIconProperties(el);
+            } else if (el.getType() == ElementType.WATERMARK) {
+                buildWatermarkProperties(el);
             }
-        });
 
-        posGrid.add(xLbl, 0, 1);
-        posGrid.add(xSpin, 1, 1);
-        posGrid.add(yLbl, 2, 1);
-        posGrid.add(ySpin, 3, 1);
-        posGrid.add(wLbl, 0, 2);
-        posGrid.add(wSpin, 1, 2);
-        posGrid.add(hLbl, 2, 2);
-        posGrid.add(hSpin, 3, 2);
+            // Universal Effects, Transforms, and Data Binding
+            buildEffectsAndTransformsProperties(el);
+            buildDataBindingProperties(el);
 
-        geoPane.setContent(posGrid);
-        propBox.getChildren().add(geoPane);
+            // Behavior Toggles Box
+            VBox toggles = new VBox(8);
+            toggles.setPadding(new Insets(8));
+            toggles.getStyleClass().add("toggles-box");
 
-        // Specific Type Editors
-        if (el.getType() == ElementType.TEXT || el.getType() == ElementType.PAGENO) {
-            buildTextProperties(el);
-        } else if (el.getType() == ElementType.RECT) {
-            buildRectProperties(el);
-        } else if (el.getType() == ElementType.LINE) {
-            buildLineProperties(el);
-        } else if (el.getType() == ElementType.IMAGE) {
-            buildImageProperties(el);
-        } else if (el.getType() == ElementType.QRCODE) {
-            buildQrProperties(el);
-        } else if (el.getType() == ElementType.BARCODE) {
-            buildBarcodeProperties(el);
-        } else if (el.getType() == ElementType.TABLE) {
-            buildTableProperties(el);
-        } else if (isShapeType(el.getType())) {
-            buildShapeProperties(el);
-        } else if (el.getType() == ElementType.SVG) {
-            buildSvgProperties(el);
-        } else if (el.getType() == ElementType.ICON) {
-            buildIconProperties(el);
-        } else if (el.getType() == ElementType.WATERMARK) {
-            buildWatermarkProperties(el);
+            CheckBox repeatCb = new CheckBox("Repeat on multi-page bills");
+            repeatCb.setSelected(el.isRepeatOnPages());
+            repeatCb.setTooltip(new Tooltip("Print this element on every subsequent page of multi-page invoices"));
+            repeatCb.selectedProperty().addListener((obs, o, v) -> el.setRepeatOnPages(v));
+
+            CheckBox blankCb = new CheckBox("Hide when blank / empty");
+            blankCb.setSelected(el.isHideWhenBlank());
+            blankCb.setTooltip(new Tooltip("Automatically hide this element if its variable or text evaluates to empty"));
+            blankCb.selectedProperty().addListener((obs, o, v) -> el.setHideWhenBlank(v));
+
+            CheckBox lockCb = new CheckBox("Lock position on canvas");
+            lockCb.setSelected(el.isLocked());
+            lockCb.setTooltip(new Tooltip("Lock element position and dimensions to prevent accidental dragging on canvas"));
+            lockCb.selectedProperty().addListener((obs, o, v) -> el.setLocked(v));
+
+            toggles.getChildren().addAll(repeatCb, blankCb, lockCb);
+            propBox.getChildren().add(toggles);
+        } finally {
+            updatingProperties = false;
         }
-
-        // Universal Effects, Transforms, and Data Binding
-        buildEffectsAndTransformsProperties(el);
-        buildDataBindingProperties(el);
-
-        // Behavior Toggles Box
-        VBox toggles = new VBox(8);
-        toggles.setPadding(new Insets(8));
-        toggles.getStyleClass().add("toggles-box");
-
-        CheckBox repeatCb = new CheckBox("Repeat on multi-page bills");
-        repeatCb.setSelected(el.isRepeatOnPages());
-        repeatCb.setTooltip(new Tooltip("Print this element on every subsequent page of multi-page invoices"));
-        repeatCb.selectedProperty().addListener((obs, o, v) -> el.setRepeatOnPages(v));
-
-        CheckBox blankCb = new CheckBox("Hide when blank / empty");
-        blankCb.setSelected(el.isHideWhenBlank());
-        blankCb.setTooltip(new Tooltip("Automatically hide this element if its variable or text evaluates to empty"));
-        blankCb.selectedProperty().addListener((obs, o, v) -> el.setHideWhenBlank(v));
-
-        CheckBox lockCb = new CheckBox("Lock position on canvas");
-        lockCb.setSelected(el.isLocked());
-        lockCb.setTooltip(new Tooltip("Lock element position and dimensions to prevent accidental dragging on canvas"));
-        lockCb.selectedProperty().addListener((obs, o, v) -> el.setLocked(v));
-
-        toggles.getChildren().addAll(repeatCb, blankCb, lockCb);
-        propBox.getChildren().add(toggles);
     }
 
     private void buildTextProperties(TemplateElement el) {
@@ -2558,27 +2839,37 @@ public class TemplateDesigner extends BorderPane {
 
         Node hBgControl = createColorPickerButton(el.getHeaderBg() != null ? el.getHeaderBg() : "#efe9db", hex -> {
             el.setHeaderBg(hex);
-            refreshCanvas();
+            updateElementVisualInPlace(el);
         });
         grid.add(new Label("Header BG:"), 0, 0);
         grid.add(hBgControl, 1, 0);
 
         Node hTextControl = createColorPickerButton(el.getHeaderColor() != null ? el.getHeaderColor() : "#1a1a1a", hex -> {
             el.setHeaderColor(hex);
-            refreshCanvas();
+            updateElementVisualInPlace(el);
         });
         grid.add(new Label("Header Text:"), 0, 1);
         grid.add(hTextControl, 1, 1);
 
         Spinner<Double> rowH = new Spinner<>(4.0, 25.0, el.getRowHeight() > 0 ? el.getRowHeight() : 7.0, 0.5);
         configureNumberSpinner(rowH);
-        rowH.valueProperty().addListener((obs, o, v) -> { el.setRowHeight(v); refreshCanvas(); });
+        rowH.valueProperty().addListener((obs, o, v) -> {
+            if (updatingProperties || v == null || Objects.equals(o, v)) return;
+            el.setRowHeight(v);
+            updateElementVisualInPlace(el);
+            syncGeoSpinnersIfPresent();
+            updateSelectionOverlay();
+        });
         grid.add(new Label("Row Height (mm):"), 0, 2);
         grid.add(rowH, 1, 2);
 
         Spinner<Double> fontS = new Spinner<>(5.0, 20.0, el.getFontSize() > 0 ? el.getFontSize() : 8.5, 0.5);
         configureNumberSpinner(fontS);
-        fontS.valueProperty().addListener((obs, o, v) -> { el.setFontSize(v); refreshCanvas(); });
+        fontS.valueProperty().addListener((obs, o, v) -> {
+            if (updatingProperties || v == null || Objects.equals(o, v)) return;
+            el.setFontSize(v);
+            updateElementVisualInPlace(el);
+        });
         grid.add(new Label("Font Size:"), 0, 3);
         grid.add(fontS, 1, 3);
 
@@ -2594,20 +2885,21 @@ public class TemplateDesigner extends BorderPane {
             default -> "Grid";
         });
         borderTypeCb.valueProperty().addListener((obs, o, v) -> {
-            el.setBorderStyle(switch (v == null ? "" : v) {
+            if (updatingProperties || v == null || Objects.equals(o, v)) return;
+            el.setBorderStyle(switch (v) {
                 case "Rows Only" -> "rows";
                 case "Outline" -> "outline";
                 case "None" -> "none";
                 default -> "grid";
             });
-            refreshCanvas();
+            updateElementVisualInPlace(el);
         });
         grid.add(new Label("Border Type:"), 0, 4);
         grid.add(borderTypeCb, 1, 4);
 
         Node bColorControl = createColorPickerButton(el.getTableBorderColor() != null ? el.getTableBorderColor() : "#c8c8c8", hex -> {
             el.setTableBorderColor(hex);
-            refreshCanvas();
+            updateElementVisualInPlace(el);
         });
         grid.add(new Label("Border Color:"), 0, 5);
         grid.add(bColorControl, 1, 5);
@@ -2615,7 +2907,11 @@ public class TemplateDesigner extends BorderPane {
         Spinner<Double> bWidth = new Spinner<>(0.0, 1.5, el.getTableBorderWidth() > 0 ? el.getTableBorderWidth() : 0.26, 0.05);
         configureNumberSpinner(bWidth);
         bWidth.setTooltip(new Tooltip("Border thickness in mm (~0.26mm = 1px on screen)"));
-        bWidth.valueProperty().addListener((obs, o, v) -> { el.setTableBorderWidth(v); refreshCanvas(); });
+        bWidth.valueProperty().addListener((obs, o, v) -> {
+            if (updatingProperties || v == null || Objects.equals(o, v)) return;
+            el.setTableBorderWidth(v);
+            updateElementVisualInPlace(el);
+        });
         grid.add(new Label("Border Width (mm):"), 0, 6);
         grid.add(bWidth, 1, 6);
 
@@ -2632,10 +2928,10 @@ public class TemplateDesigner extends BorderPane {
         bottomCb.setSelected(el.isBorderBottom());
         leftCb.setSelected(el.isBorderLeft());
         rightCb.setSelected(el.isBorderRight());
-        topCb.setOnAction(e -> { el.setBorderTop(topCb.isSelected()); refreshCanvas(); });
-        bottomCb.setOnAction(e -> { el.setBorderBottom(bottomCb.isSelected()); refreshCanvas(); });
-        leftCb.setOnAction(e -> { el.setBorderLeft(leftCb.isSelected()); refreshCanvas(); });
-        rightCb.setOnAction(e -> { el.setBorderRight(rightCb.isSelected()); refreshCanvas(); });
+        topCb.setOnAction(e -> { el.setBorderTop(topCb.isSelected()); updateElementVisualInPlace(el); });
+        bottomCb.setOnAction(e -> { el.setBorderBottom(bottomCb.isSelected()); updateElementVisualInPlace(el); });
+        leftCb.setOnAction(e -> { el.setBorderLeft(leftCb.isSelected()); updateElementVisualInPlace(el); });
+        rightCb.setOnAction(e -> { el.setBorderRight(rightCb.isSelected()); updateElementVisualInPlace(el); });
         sidesBox.getChildren().addAll(topCb, bottomCb, leftCb, rightCb);
         grid.add(new Label("Sides:"), 0, 7);
         grid.add(sidesBox, 1, 7);
@@ -2643,28 +2939,28 @@ public class TemplateDesigner extends BorderPane {
         // --- Data row (record) colors ---
         Node rowBgControl = createColorPickerButton(el.getRowBg() != null ? el.getRowBg() : "#ffffff", hex -> {
             el.setRowBg(hex);
-            refreshCanvas();
+            updateElementVisualInPlace(el);
         });
         grid.add(new Label("Row BG:"), 0, 8);
         grid.add(rowBgControl, 1, 8);
 
         Node rowTextControl = createColorPickerButton(el.getRowColor() != null ? el.getRowColor() : "#1a1a1a", hex -> {
             el.setRowColor(hex);
-            refreshCanvas();
+            updateElementVisualInPlace(el);
         });
         grid.add(new Label("Row Text:"), 0, 9);
         grid.add(rowTextControl, 1, 9);
 
         Node zebraControl = createColorPickerButton(el.getZebraColor() != null ? el.getZebraColor() : "#f8f8f8", hex -> {
             el.setZebraColor(hex);
-            refreshCanvas();
+            updateElementVisualInPlace(el);
         });
         grid.add(new Label("Zebra Color:"), 0, 10);
         grid.add(zebraControl, 1, 10);
 
         CheckBox zebraCb = new CheckBox("Zebra Row Striping");
         zebraCb.setSelected(el.isShowZebra());
-        zebraCb.setOnAction(e -> { el.setShowZebra(zebraCb.isSelected()); refreshCanvas(); });
+        zebraCb.setOnAction(e -> { el.setShowZebra(zebraCb.isSelected()); updateElementVisualInPlace(el); });
 
         // Columns Manager
         List<TableColumn> cols = el.getColumns();
@@ -2693,7 +2989,11 @@ public class TemplateDesigner extends BorderPane {
             lblField.setMinWidth(75);
             HBox.setHgrow(lblField, Priority.ALWAYS);
             lblField.setTooltip(new Tooltip("Column Header Title"));
-            lblField.textProperty().addListener((obs, o, v) -> { c.setLabel(v); refreshCanvas(); });
+            lblField.textProperty().addListener((obs, o, v) -> {
+                if (updatingProperties || Objects.equals(o, v)) return;
+                c.setLabel(v);
+                updateElementVisualInPlace(el);
+            });
 
             ComboBox<String> keyCombo = new ComboBox<>(FXCollections.observableArrayList(
                     "sr", "desc", "hsn", "qty", "unit", "rate", "disc", "taxable", "gst", "amount",
@@ -2703,23 +3003,36 @@ public class TemplateDesigner extends BorderPane {
             keyCombo.setValue(c.getKey() != null ? c.getKey() : "desc");
             keyCombo.setPrefWidth(95);
             keyCombo.setTooltip(new Tooltip("Data Field Binding (Pick preset or type custom key)"));
-            keyCombo.valueProperty().addListener((obs, o, v) -> { c.setKey(v); refreshCanvas(); });
-            keyCombo.getEditor().textProperty().addListener((obs, o, v) -> { c.setKey(v); refreshCanvas(); });
+            keyCombo.valueProperty().addListener((obs, o, v) -> {
+                if (updatingProperties || v == null || Objects.equals(o, v)) return;
+                c.setKey(v);
+                updateElementVisualInPlace(el);
+            });
+            keyCombo.getEditor().textProperty().addListener((obs, o, v) -> {
+                if (updatingProperties || v == null || Objects.equals(o, v)) return;
+                c.setKey(v);
+                updateElementVisualInPlace(el);
+            });
 
             Spinner<Double> widthSpin = new Spinner<>(1.0, 100.0, c.getWidth(), 1.0);
             widthSpin.setPrefWidth(65);
             configureNumberSpinner(widthSpin);
             widthSpin.setTooltip(new Tooltip("Width percentage (%)"));
-            widthSpin.valueProperty().addListener((obs, o, v) -> { c.setWidth(v); refreshCanvas(); });
+            widthSpin.valueProperty().addListener((obs, o, v) -> {
+                if (updatingProperties || v == null || Objects.equals(o, v)) return;
+                c.setWidth(v);
+                updateElementVisualInPlace(el);
+            });
 
             ComboBox<String> alignCombo = new ComboBox<>(FXCollections.observableArrayList("left", "center", "right"));
             alignCombo.setValue(c.getAlign() != null ? c.getAlign() : "left");
             alignCombo.setPrefWidth(60);
-            alignCombo.valueProperty().addListener((obs, o, v) -> { c.setAlign(v); refreshCanvas(); });
+            alignCombo.valueProperty().addListener((obs, o, v) -> {
+                if (updatingProperties || v == null || Objects.equals(o, v)) return;
+                c.setAlign(v);
+                updateElementVisualInPlace(el);
+            });
 
-            // Reorder controls (▲▼) — reposition a column without remove/re-add.
-            // New order flows straight into canvas, live preview and PDF export,
-            // which all iterate el.getColumns() in list order.
             Button upBtn = new Button("▲");
             Button downBtn = new Button("▼");
             upBtn.getStyleClass().add("col-move-btn");
@@ -2742,8 +3055,8 @@ public class TemplateDesigner extends BorderPane {
             rmBtn.setOnAction(e -> {
                 el.getColumns().remove(idx);
                 saveState();
+                updateElementVisualInPlace(el);
                 updatePropertiesPanel();
-                refreshCanvas();
             });
 
             colRow.getChildren().addAll(moveStack, lblField, keyCombo, widthSpin, alignCombo, rmBtn);
@@ -2754,15 +3067,15 @@ public class TemplateDesigner extends BorderPane {
         Button addColBtn = createToolbarBtn("+ Add Column", "Add a new column to the table", () -> {
             el.getColumns().add(new TableColumn("desc", "New Column", 15.0, "left"));
             saveState();
+            updateElementVisualInPlace(el);
             updatePropertiesPanel();
-            refreshCanvas();
         });
 
         Button presetGst = createToolbarBtn("GST Standard (8)", "Reset to standard 8-column GST table", () -> {
             el.setColumns(PresetTemplates.defaultItemColumns());
             saveState();
+            updateElementVisualInPlace(el);
             updatePropertiesPanel();
-            refreshCanvas();
         });
 
         Button presetSimple = createToolbarBtn("Simple (5)", "Reset to 5-column simple invoice table", () -> {
@@ -2774,8 +3087,8 @@ public class TemplateDesigner extends BorderPane {
             sc.add(new TableColumn("amount", "Amount", 16, "right"));
             el.setColumns(sc);
             saveState();
+            updateElementVisualInPlace(el);
             updatePropertiesPanel();
-            refreshCanvas();
         });
 
         colActions.getChildren().addAll(addColBtn, presetGst, presetSimple);
@@ -2931,6 +3244,9 @@ public class TemplateDesigner extends BorderPane {
 
         sec.getChildren().addAll(title, fillPane, strokePane);
         buildShapeGeometryProperties(el, sec);
+        if (el.getType() == ElementType.POLYGON || el.getType() == ElementType.POLYLINE || el.getType() == ElementType.PATH || el.getType() == ElementType.FREEHAND) {
+            sec.getChildren().add(buildCurveAndAnchorPropertiesPane(el));
+        }
         propBox.getChildren().add(sec);
     }
 
@@ -3036,16 +3352,708 @@ public class TemplateDesigner extends BorderPane {
             pathArea.textProperty().addListener((obs, o, v) -> { el.setPathData(v); refreshCanvas(); });
             g.add(new Label("SVG Path (d):"), 0, 0);
             g.add(pathArea, 0, 1, 2, 1);
-        } else if (el.getType() == ElementType.POLYGON || el.getType() == ElementType.POLYLINE || el.getType() == ElementType.FREEHAND) {
+        } else if (el.getType() == ElementType.POLYGON) {
+            int initialSides = 3;
+            if (el.getPoints() != null && !el.getPoints().isBlank()) {
+                String[] pts = el.getPoints().trim().split("\\s+");
+                if (pts.length >= 3) {
+                    initialSides = Math.min(20, pts.length);
+                }
+            }
+            Spinner<Integer> sidesSpin = new Spinner<>(3, 20, initialSides, 1);
+            sidesSpin.setPrefWidth(85);
             TextField ptsField = new TextField(el.getPoints() != null ? el.getPoints() : "");
             ptsField.setPromptText("x1,y1 x2,y2 x3,y3 ...");
-            ptsField.textProperty().addListener((obs, o, v) -> { el.setPoints(v); refreshCanvas(); });
+
+            sidesSpin.valueProperty().addListener((obs, o, v) -> {
+                if (v != null) {
+                    String newPts = generateRegularPolygonPoints(v, el.getW(), el.getH());
+                    el.setPoints(newPts);
+                    ptsField.setText(newPts);
+                    updateElementVisualInPlace(el);
+                }
+            });
+
+            HBox chipsBox = new HBox(4);
+            int[] presets = {3, 4, 5, 6, 8};
+            String[] labels = {"3 △", "4 ◇", "5 ⬠", "6 ⬡", "8 ⯃"};
+            for (int pi = 0; pi < presets.length; pi++) {
+                int s = presets[pi];
+                Button chip = new Button(labels[pi]);
+                chip.getStyleClass().addAll("button-xs", "button-secondary");
+                chip.setOnAction(ev -> sidesSpin.getValueFactory().setValue(s));
+                chipsBox.getChildren().add(chip);
+            }
+
+            ptsField.textProperty().addListener((obs, o, v) -> {
+                el.setPoints(v);
+                updateElementVisualInPlace(el);
+            });
+
+            g.add(new Label("Edges / Sides:"), 0, 0);
+            g.add(sidesSpin, 1, 0);
+            g.add(new Label("Presets:"), 0, 1);
+            g.add(chipsBox, 1, 1);
+            g.add(new Label("Points (X,Y):"), 0, 2);
+            g.add(ptsField, 1, 2);
+        } else if (el.getType() == ElementType.POLYLINE || el.getType() == ElementType.FREEHAND) {
+            TextField ptsField = new TextField(el.getPoints() != null ? el.getPoints() : "");
+            ptsField.setPromptText("x1,y1 x2,y2 x3,y3 ...");
+            ptsField.textProperty().addListener((obs, o, v) -> { el.setPoints(v); updateElementVisualInPlace(el); });
             g.add(new Label("Points (X,Y):"), 0, 0);
             g.add(ptsField, 1, 0);
         }
 
         geoPane.setContent(g);
         sec.getChildren().add(geoPane);
+    }
+
+    private String generateRegularPolygonPoints(int sides, double wMm, double hMm) {
+        if (sides < 3) sides = 3;
+        StringBuilder sb = new StringBuilder();
+        double cx = wMm / 2.0;
+        double cy = hMm / 2.0;
+        double rx = wMm / 2.0;
+        double ry = hMm / 2.0;
+        for (int i = 0; i < sides; i++) {
+            double angle = -Math.PI / 2.0 + (2.0 * Math.PI * i / sides);
+            double x = cx + rx * Math.cos(angle);
+            double y = cy + ry * Math.sin(angle);
+            if (i > 0) sb.append(" ");
+            sb.append(String.format(java.util.Locale.US, "%.1f,%.1f", x, y));
+        }
+        return sb.toString();
+    }
+
+    private void handlePenCanvasClick(MouseEvent e) {
+        if (!isPenToolMode) return;
+        if (e.getButton() != MouseButton.PRIMARY) {
+            if (e.getButton() == MouseButton.SECONDARY) {
+                cancelPenTool();
+            }
+            return;
+        }
+
+        double ptX = Math.max(0, e.getX() / MM_PX);
+        double ptY = Math.max(0, e.getY() / MM_PX);
+        if (snapToGrid) {
+            ptX = Math.round(ptX);
+            ptY = Math.round(ptY);
+        }
+
+        // Check if double click to finish
+        if (e.getClickCount() >= 2 && penPoints.size() >= 3) {
+            finishPenPath();
+            return;
+        }
+
+        // Check if clicked close to start point (within 5mm) to close polygon
+        if (penPoints.size() >= 3) {
+            Point2D startPt = penPoints.get(0);
+            double dist = Math.hypot(ptX - startPt.getX(), ptY - startPt.getY());
+            if (dist <= 5.0) {
+                finishPenPath();
+                return;
+            }
+        }
+
+        penPoints.add(new Point2D(ptX, ptY));
+        renderPenPreview(ptX, ptY);
+    }
+
+    private void handlePenCanvasMove(MouseEvent e) {
+        if (!isPenToolMode || penPoints.isEmpty()) return;
+        double ptX = Math.max(0, e.getX() / MM_PX);
+        double ptY = Math.max(0, e.getY() / MM_PX);
+        if (snapToGrid) {
+            ptX = Math.round(ptX);
+            ptY = Math.round(ptY);
+        }
+        renderPenPreview(ptX, ptY);
+    }
+
+    private void renderPenPreview(double curMmX, double curMmY) {
+        penLayer.getChildren().clear();
+        if (penPoints.isEmpty()) return;
+
+        if (penCurveMode && penPoints.size() >= 2) {
+            List<Point2D> curvePts = new ArrayList<>(penPoints);
+            curvePts.add(new Point2D(curMmX, curMmY));
+            String bezierD = generateSmoothBezierPath(curvePts, 0.5, false);
+            SVGPath curvePreview = new SVGPath();
+            curvePreview.setContent(bezierD);
+            curvePreview.getTransforms().add(new javafx.scene.transform.Scale(MM_PX, MM_PX, 0, 0));
+            curvePreview.setStroke(Color.web("#3B82F6"));
+            curvePreview.setStrokeWidth(2.0);
+            curvePreview.setFill(Color.TRANSPARENT);
+            curvePreview.getStrokeDashArray().addAll(4.0, 4.0);
+            penLayer.getChildren().add(curvePreview);
+        } else {
+            // Draw existing connected segments
+            Polyline polyline = new Polyline();
+            polyline.setStroke(Color.web("#3B82F6"));
+            polyline.setStrokeWidth(2.0);
+            polyline.getStrokeDashArray().addAll(4.0, 4.0);
+
+            for (Point2D pt : penPoints) {
+                polyline.getPoints().addAll(pt.getX() * MM_PX, pt.getY() * MM_PX);
+            }
+            penLayer.getChildren().add(polyline);
+
+            // Draw dynamic rubberband line to current mouse position
+            Point2D lastPt = penPoints.get(penPoints.size() - 1);
+            Line rubberBand = new Line(lastPt.getX() * MM_PX, lastPt.getY() * MM_PX, curMmX * MM_PX, curMmY * MM_PX);
+            rubberBand.setStroke(Color.web("#60A5FA"));
+            rubberBand.setStrokeWidth(1.5);
+            rubberBand.getStrokeDashArray().addAll(2.0, 3.0);
+            penLayer.getChildren().add(rubberBand);
+        }
+
+        // Draw anchor handles
+        for (int i = 0; i < penPoints.size(); i++) {
+            Point2D pt = penPoints.get(i);
+            double r = (i == 0 && penPoints.size() >= 3) ? 6.0 : 4.0;
+            Circle handle = new Circle(pt.getX() * MM_PX, pt.getY() * MM_PX, r);
+            if (i == 0 && penPoints.size() >= 3) {
+                // Highlight start point when closeable
+                handle.setFill(Color.web("#10B981"));
+                handle.setStroke(Color.web("#FFFFFF"));
+                handle.setStrokeWidth(2.0);
+            } else {
+                handle.setFill(Color.web("#3B82F6"));
+                handle.setStroke(Color.web("#FFFFFF"));
+                handle.setStrokeWidth(1.5);
+            }
+            penLayer.getChildren().add(handle);
+        }
+    }
+
+    private void finishPenPath() {
+        if (penPoints.size() < 3) {
+            cancelPenTool();
+            return;
+        }
+
+        double minX = Double.MAX_VALUE;
+        double minY = Double.MAX_VALUE;
+        double maxX = -Double.MAX_VALUE;
+        double maxY = -Double.MAX_VALUE;
+
+        for (Point2D pt : penPoints) {
+            if (pt.getX() < minX) minX = pt.getX();
+            if (pt.getY() < minY) minY = pt.getY();
+            if (pt.getX() > maxX) maxX = pt.getX();
+            if (pt.getY() > maxY) maxY = pt.getY();
+        }
+
+        double w = Math.max(10.0, maxX - minX);
+        double h = Math.max(10.0, maxY - minY);
+
+        List<Point2D> relPts = new ArrayList<>();
+        StringBuilder ptsBuilder = new StringBuilder();
+        for (int i = 0; i < penPoints.size(); i++) {
+            Point2D pt = penPoints.get(i);
+            double relX = pt.getX() - minX;
+            double relY = pt.getY() - minY;
+            relPts.add(new Point2D(relX, relY));
+            if (i > 0) ptsBuilder.append(" ");
+            ptsBuilder.append(String.format(java.util.Locale.US, "%.1f,%.1f", relX, relY));
+        }
+
+        TemplateElement el = new TemplateElement();
+        el.setId(UUID.randomUUID().toString());
+        el.setName((penCurveMode ? "Curved Vector " : "Custom Vector ") + (template.getElements().size() + 1));
+        el.setX(minX);
+        el.setY(minY);
+        el.setW(w);
+        el.setH(h);
+        el.setPoints(ptsBuilder.toString());
+        el.setBg("#3B82F6");
+        el.setFillType("solid");
+        el.setBorderColor("#1E40AF");
+        el.setBorderWidth(0.5);
+        el.setStrokeEnabled(true);
+
+        if (penCurveMode) {
+            el.setType(ElementType.PATH);
+            String curveD = generateSmoothBezierPath(relPts, 0.5, true);
+            el.setPathData(curveD);
+        } else {
+            el.setType(ElementType.POLYGON);
+        }
+
+        template.getElements().add(el);
+        cancelPenTool();
+        saveState();
+        refreshCanvas();
+        selectedElement = el;
+        updateSelectionOverlay();
+        updatePropertiesPanel();
+        refreshLayersList();
+        Toast.show(this, (penCurveMode ? "Curved vector path" : "Custom vector shape") + " created successfully.");
+    }
+
+    private boolean isPointEditable(TemplateElement el) {
+        if (el == null) return false;
+        ElementType t = el.getType();
+        if (t == ElementType.POLYGON || t == ElementType.POLYLINE || t == ElementType.FREEHAND) {
+            return el.getPoints() != null && !el.getPoints().isBlank();
+        }
+        if (t == ElementType.PATH) {
+            return (el.getPathData() != null && !el.getPathData().isBlank()) || (el.getPoints() != null && !el.getPoints().isBlank());
+        }
+        if (t == ElementType.SVG) {
+            return (el.getSvgSource() != null && !el.getSvgSource().isBlank()) || (el.getPoints() != null && !el.getPoints().isBlank());
+        }
+        return false;
+    }
+
+    private boolean isCurved(TemplateElement el) {
+        if (el == null) return false;
+        if (el.getType() == ElementType.PATH && el.getPathData() != null && !el.getPathData().isBlank()) {
+            String d = el.getPathData().toUpperCase(java.util.Locale.ROOT);
+            return d.contains("C") || d.contains("S") || d.contains("Q") || d.contains("T");
+        }
+        if (el.getType() == ElementType.SVG && el.getSvgSource() != null && !el.getSvgSource().isBlank()) {
+            String s = el.getSvgSource().toUpperCase(java.util.Locale.ROOT);
+            return s.contains("C") || s.contains("S") || s.contains("Q") || s.contains("T");
+        }
+        return false;
+    }
+
+    public static List<Point2D> parseElementVertices(TemplateElement el) {
+        List<Point2D> pts = new ArrayList<>();
+        if (el == null) return pts;
+
+        boolean hasCustomPoints = el.getPoints() != null && !el.getPoints().isBlank() && !"0,0 20,40 40,0".equals(el.getPoints().trim());
+
+        if (el.getType() == ElementType.PATH && el.getPathData() != null && !el.getPathData().isBlank() && !hasCustomPoints) {
+            pts.addAll(extractPointsFromSvgPath(el.getPathData()));
+        } else if (el.getType() == ElementType.SVG && el.getSvgSource() != null && !el.getSvgSource().isBlank() && !hasCustomPoints) {
+            pts.addAll(extractPointsFromSvgPath(el.getSvgSource()));
+        } else if (el.getPoints() != null && !el.getPoints().isBlank()) {
+            String[] tokens = el.getPoints().trim().split("[,\\s]+");
+            for (int i = 0; i + 1 < tokens.length; i += 2) {
+                try {
+                    double x = Double.parseDouble(tokens[i]);
+                    double y = Double.parseDouble(tokens[i + 1]);
+                    pts.add(new Point2D(x, y));
+                } catch (Exception ignored) {}
+            }
+        }
+        return pts;
+    }
+
+    public static List<Point2D> extractPointsFromSvgPath(String d) {
+        List<Point2D> pts = new ArrayList<>();
+        if (d == null || d.isBlank()) return pts;
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("([a-zA-Z])|([-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)").matcher(d);
+            List<String> tokens = new ArrayList<>();
+            while (m.find()) {
+                tokens.add(m.group());
+            }
+            char cmd = 'M';
+            int i = 0;
+            double curX = 0, curY = 0;
+            while (i < tokens.size()) {
+                String tok = tokens.get(i);
+                if (Character.isLetter(tok.charAt(0))) {
+                    cmd = tok.charAt(0);
+                    i++;
+                }
+                switch (cmd) {
+                    case 'M' -> {
+                        if (i + 1 < tokens.size()) {
+                            curX = Double.parseDouble(tokens.get(i++));
+                            curY = Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'm' -> {
+                        if (i + 1 < tokens.size()) {
+                            curX += Double.parseDouble(tokens.get(i++));
+                            curY += Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'L' -> {
+                        if (i + 1 < tokens.size()) {
+                            curX = Double.parseDouble(tokens.get(i++));
+                            curY = Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'l' -> {
+                        if (i + 1 < tokens.size()) {
+                            curX += Double.parseDouble(tokens.get(i++));
+                            curY += Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'H' -> {
+                        if (i < tokens.size()) {
+                            curX = Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'h' -> {
+                        if (i < tokens.size()) {
+                            curX += Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'V' -> {
+                        if (i < tokens.size()) {
+                            curY = Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'v' -> {
+                        if (i < tokens.size()) {
+                            curY += Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'C' -> {
+                        if (i + 5 < tokens.size()) {
+                            i += 4;
+                            curX = Double.parseDouble(tokens.get(i++));
+                            curY = Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'c' -> {
+                        if (i + 5 < tokens.size()) {
+                            i += 4;
+                            curX += Double.parseDouble(tokens.get(i++));
+                            curY += Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'S', 'Q' -> {
+                        if (i + 3 < tokens.size()) {
+                            i += 2;
+                            curX = Double.parseDouble(tokens.get(i++));
+                            curY = Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 's', 'q' -> {
+                        if (i + 3 < tokens.size()) {
+                            i += 2;
+                            curX += Double.parseDouble(tokens.get(i++));
+                            curY += Double.parseDouble(tokens.get(i++));
+                            pts.add(new Point2D(curX, curY));
+                        }
+                    }
+                    case 'Z', 'z' -> {
+                        // Closed
+                    }
+                    default -> i++;
+                }
+            }
+        } catch (Exception ignored) {}
+        return pts;
+    }
+
+    public static String generateSmoothBezierPath(List<Point2D> pts, double tension, boolean closed) {
+        if (pts == null || pts.isEmpty()) return "";
+        if (pts.size() == 1) {
+            Point2D p = pts.get(0);
+            return String.format(java.util.Locale.US, "M %.2f,%.2f", p.getX(), p.getY());
+        }
+        if (pts.size() == 2) {
+            Point2D p0 = pts.get(0);
+            Point2D p1 = pts.get(1);
+            return String.format(java.util.Locale.US, "M %.2f,%.2f L %.2f,%.2f%s",
+                    p0.getX(), p0.getY(), p1.getX(), p1.getY(), closed ? " Z" : "");
+        }
+
+        double t = Math.max(0.05, Math.min(1.5, tension));
+        double factor = t / 3.0;
+
+        StringBuilder sb = new StringBuilder();
+        Point2D p0 = pts.get(0);
+        sb.append(String.format(java.util.Locale.US, "M %.2f,%.2f", p0.getX(), p0.getY()));
+
+        int n = pts.size();
+        int count = closed ? n : n - 1;
+
+        for (int i = 0; i < count; i++) {
+            Point2D curr = pts.get(i);
+            Point2D next = pts.get((i + 1) % n);
+
+            Point2D prev;
+            if (i > 0) {
+                prev = pts.get(i - 1);
+            } else if (closed) {
+                prev = pts.get(n - 1);
+            } else {
+                prev = new Point2D(curr.getX() - (next.getX() - curr.getX()), curr.getY() - (next.getY() - curr.getY()));
+            }
+
+            Point2D nextNext;
+            if (i + 2 < n) {
+                nextNext = pts.get(i + 2);
+            } else if (closed) {
+                nextNext = pts.get((i + 2) % n);
+            } else {
+                nextNext = new Point2D(next.getX() + (next.getX() - curr.getX()), next.getY() + (next.getY() - curr.getY()));
+            }
+
+            double cp1x = curr.getX() + factor * (next.getX() - prev.getX());
+            double cp1y = curr.getY() + factor * (next.getY() - prev.getY());
+            double cp2x = next.getX() - factor * (nextNext.getX() - curr.getX());
+            double cp2y = next.getY() - factor * (nextNext.getY() - curr.getY());
+
+            sb.append(String.format(java.util.Locale.US, " C %.2f,%.2f %.2f,%.2f %.2f,%.2f",
+                    cp1x, cp1y, cp2x, cp2y, next.getX(), next.getY()));
+        }
+
+        if (closed) {
+            sb.append(" Z");
+        }
+        return sb.toString();
+    }
+
+    private void syncVerticesToElement(TemplateElement el, List<Point2D> curPts, boolean curved, double tension) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < curPts.size(); i++) {
+            Point2D p = curPts.get(i);
+            if (i > 0) sb.append(" ");
+            sb.append(String.format(java.util.Locale.US, "%.1f,%.1f", p.getX(), p.getY()));
+        }
+        el.setPoints(sb.toString());
+        if (curved) {
+            boolean closed = el.getType() != ElementType.POLYLINE && el.getType() != ElementType.FREEHAND;
+            String bezierD = generateSmoothBezierPath(curPts, tension, closed);
+            el.setPathData(bezierD);
+            if (el.getType() == ElementType.SVG) {
+                el.setSvgSource(bezierD);
+            } else {
+                el.setType(ElementType.PATH);
+            }
+        }
+    }
+
+    private void addVertexAnchorHandles(Pane selBox, TemplateElement el) {
+        List<Point2D> pts = parseElementVertices(el);
+        if (pts.isEmpty()) return;
+
+        for (int idx = 0; idx < pts.size(); idx++) {
+            final int vertexIdx = idx;
+            Point2D pt = pts.get(idx);
+
+            Circle handle = new Circle(pt.getX() * MM_PX, pt.getY() * MM_PX, 5.5);
+            handle.setFill(Color.web("#0EA5E9"));
+            handle.setStroke(Color.WHITE);
+            handle.setStrokeWidth(1.8);
+            handle.setCursor(Cursor.CROSSHAIR);
+            handle.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.55), 3, 0, 0, 1);");
+
+            handle.setOnMouseEntered(e -> {
+                handle.setScaleX(1.35);
+                handle.setScaleY(1.35);
+                handle.setFill(Color.web("#38BDF8"));
+            });
+            handle.setOnMouseExited(e -> {
+                handle.setScaleX(1.0);
+                handle.setScaleY(1.0);
+                handle.setFill(Color.web("#0EA5E9"));
+            });
+
+            Tooltip.install(handle, new Tooltip("Anchor Point #" + (vertexIdx + 1) + " (Drag to reposition)"));
+
+            final double[] startPos = new double[4];
+            final boolean[] isVertexMoved = new boolean[1];
+
+            handle.setOnMousePressed(e -> {
+                if (e.isPrimaryButtonDown()) {
+                    startPos[0] = e.getScreenX();
+                    startPos[1] = e.getScreenY();
+                    List<Point2D> currentPts = parseElementVertices(el);
+                    if (vertexIdx < currentPts.size()) {
+                        startPos[2] = currentPts.get(vertexIdx).getX();
+                        startPos[3] = currentPts.get(vertexIdx).getY();
+                    }
+                    isVertexMoved[0] = false;
+                    e.consume();
+                }
+            });
+
+            handle.setOnMouseDragged(e -> {
+                if (el.isLocked() || !e.isPrimaryButtonDown()) return;
+                isVertexMoved[0] = true;
+
+                double rad = Math.toRadians(-el.getRotation());
+                double screenDx = (e.getScreenX() - startPos[0]) / zoom / MM_PX;
+                double screenDy = (e.getScreenY() - startPos[1]) / zoom / MM_PX;
+
+                double localDx = screenDx * Math.cos(rad) - screenDy * Math.sin(rad);
+                double localDy = screenDx * Math.sin(rad) + screenDy * Math.cos(rad);
+
+                double newMmX = startPos[2] + localDx;
+                double newMmY = startPos[3] + localDy;
+                if (snapToGrid) {
+                    newMmX = Math.round(newMmX);
+                    newMmY = Math.round(newMmY);
+                }
+
+                handle.setCenterX(newMmX * MM_PX);
+                handle.setCenterY(newMmY * MM_PX);
+
+                List<Point2D> currentPts = parseElementVertices(el);
+                if (vertexIdx < currentPts.size()) {
+                    currentPts.set(vertexIdx, new Point2D(newMmX, newMmY));
+
+                    double maxMmX = el.getW();
+                    double maxMmY = el.getH();
+                    for (Point2D p : currentPts) {
+                        if (p.getX() > maxMmX) maxMmX = p.getX();
+                        if (p.getY() > maxMmY) maxMmY = p.getY();
+                    }
+                    if (maxMmX > el.getW()) el.setW(maxMmX);
+                    if (maxMmY > el.getH()) el.setH(maxMmY);
+
+                    syncVerticesToElement(el, currentPts, isCurved(el), 0.5);
+                    updateElementVisualInPlace(el);
+                }
+                e.consume();
+            });
+
+            handle.setOnMouseReleased(e -> {
+                if (isVertexMoved[0]) {
+                    saveState();
+                    syncGeoSpinnersIfPresent();
+                    updatePropertiesPanel();
+                }
+                e.consume();
+            });
+
+            selBox.getChildren().add(handle);
+        }
+    }
+
+    private TitledPane buildCurveAndAnchorPropertiesPane(TemplateElement el) {
+        TitledPane pane = new TitledPane();
+        pane.setText("Vector Curves & Anchor Points");
+        pane.setExpanded(true);
+
+        VBox box = new VBox(8);
+        box.setPadding(new Insets(8));
+
+        Label infoLbl = new Label("💡 Drag the cyan circle handles directly on the canvas to move any vertex.");
+        infoLbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #0EA5E9; -fx-wrap-text: true;");
+
+        List<Point2D> pts = parseElementVertices(el);
+        Label ptsCountLbl = new Label("Vertices: " + pts.size() + " anchor points");
+        ptsCountLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 11px;");
+
+        boolean curved = isCurved(el);
+        Button toggleCurveBtn = new Button(curved ? "📐 Convert to Sharp Corners" : "〰 Convert to Smooth Bezier Curves");
+        toggleCurveBtn.getStyleClass().addAll("button-xs", curved ? "button-secondary" : "button-primary");
+        toggleCurveBtn.setMaxWidth(Double.MAX_VALUE);
+
+        Label tensionLbl = new Label("Curve Tension (Curvature):");
+        Slider tensionSlider = new Slider(0.1, 1.0, 0.5);
+        tensionSlider.setShowTickMarks(true);
+        tensionSlider.setMajorTickUnit(0.2);
+        tensionSlider.setDisable(!curved);
+
+        toggleCurveBtn.setOnAction(e -> {
+            List<Point2D> curPts = parseElementVertices(el);
+            if (curPts.size() < 2) {
+                Toast.show(this, "Need at least 2 points to curve.");
+                return;
+            }
+            boolean currentlyCurved = isCurved(el);
+            if (currentlyCurved) {
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < curPts.size(); i++) {
+                    Point2D p = curPts.get(i);
+                    if (i > 0) sb.append(" ");
+                    sb.append(String.format(java.util.Locale.US, "%.1f,%.1f", p.getX(), p.getY()));
+                }
+                el.setPoints(sb.toString());
+                el.setPathData(null);
+                if (el.getType() == ElementType.PATH) {
+                    el.setType(ElementType.POLYGON);
+                }
+            } else {
+                boolean closed = el.getType() != ElementType.POLYLINE && el.getType() != ElementType.FREEHAND;
+                String bezierD = generateSmoothBezierPath(curPts, tensionSlider.getValue(), closed);
+                el.setPathData(bezierD);
+                if (el.getType() == ElementType.SVG) {
+                    el.setSvgSource(bezierD);
+                } else {
+                    el.setType(ElementType.PATH);
+                }
+            }
+            saveState();
+            updateElementVisualInPlace(el);
+            updateSelectionOverlay();
+            updatePropertiesPanel();
+        });
+
+        tensionSlider.valueProperty().addListener((obs, o, v) -> {
+            if (isCurved(el)) {
+                List<Point2D> curPts = parseElementVertices(el);
+                if (curPts.size() >= 2) {
+                    boolean closed = el.getType() != ElementType.POLYLINE && el.getType() != ElementType.FREEHAND;
+                    String bezierD = generateSmoothBezierPath(curPts, v.doubleValue(), closed);
+                    el.setPathData(bezierD);
+                    if (el.getType() == ElementType.SVG) {
+                        el.setSvgSource(bezierD);
+                    }
+                    updateElementVisualInPlace(el);
+                }
+            }
+        });
+        tensionSlider.setOnMouseReleased(e -> saveState());
+
+        Button addPtBtn = new Button("+ Add Vertex");
+        addPtBtn.getStyleClass().addAll("button-xs", "button-secondary");
+        addPtBtn.setOnAction(e -> {
+            List<Point2D> curPts = parseElementVertices(el);
+            if (curPts.isEmpty()) {
+                curPts.add(new Point2D(0, 0));
+                curPts.add(new Point2D(el.getW() / 2, el.getH()));
+                curPts.add(new Point2D(el.getW(), 0));
+            } else if (curPts.size() == 1) {
+                curPts.add(new Point2D(curPts.get(0).getX() + 10, curPts.get(0).getY() + 10));
+            } else {
+                Point2D p1 = curPts.get(curPts.size() - 1);
+                Point2D p2 = curPts.get(0);
+                curPts.add(new Point2D((p1.getX() + p2.getX()) / 2.0, (p1.getY() + p2.getY()) / 2.0));
+            }
+            syncVerticesToElement(el, curPts, isCurved(el), tensionSlider.getValue());
+            saveState();
+            updateElementVisualInPlace(el);
+            updateSelectionOverlay();
+            updatePropertiesPanel();
+        });
+
+        Button removePtBtn = new Button("- Remove Last Vertex");
+        removePtBtn.getStyleClass().addAll("button-xs", "button-secondary");
+        removePtBtn.setDisable(pts.size() <= 3);
+        removePtBtn.setOnAction(e -> {
+            List<Point2D> curPts = parseElementVertices(el);
+            if (curPts.size() > 3) {
+                curPts.remove(curPts.size() - 1);
+                syncVerticesToElement(el, curPts, isCurved(el), tensionSlider.getValue());
+                saveState();
+                updateElementVisualInPlace(el);
+                updateSelectionOverlay();
+                updatePropertiesPanel();
+            }
+        });
+
+        HBox ptBtnRow = new HBox(6, addPtBtn, removePtBtn);
+
+        box.getChildren().addAll(infoLbl, ptsCountLbl, toggleCurveBtn, tensionLbl, tensionSlider, ptBtnRow);
+        pane.setContent(box);
+        return pane;
     }
 
     private void buildSvgProperties(TemplateElement el) {
@@ -3092,6 +4100,7 @@ public class TemplateDesigner extends BorderPane {
         colRow.setAlignment(Pos.CENTER_LEFT);
 
         sec.getChildren().addAll(title, guideLbl, loadSvgBtn, new Label("SVG Source XML:"), svgArea, colRow);
+        sec.getChildren().add(buildCurveAndAnchorPropertiesPane(el));
         propBox.getChildren().add(sec);
     }
 
@@ -3184,7 +4193,16 @@ public class TemplateDesigner extends BorderPane {
         Spinner<Double> rotSpin = new Spinner<>(-360.0, 360.0, el.getRotation(), 5.0);
         rotSpin.setTooltip(new Tooltip("Rotation angle in degrees (-360° to +360°)"));
         configureNumberSpinner(rotSpin);
-        rotSpin.valueProperty().addListener((obs, o, v) -> { el.setRotation(v); refreshCanvas(); });
+        geoRotSpin = rotSpin;
+        rotSpin.valueProperty().addListener((obs, o, v) -> {
+            if (!updatingProperties && v != null) {
+                el.setRotation(v);
+                updateElementVisualInPlace(el);
+                if (activeSelectionBox != null) {
+                    activeSelectionBox.setRotate(v);
+                }
+            }
+        });
 
         Spinner<Double> sxSpin = new Spinner<>(0.1, 5.0, el.getScaleX() > 0 ? el.getScaleX() : 1.0, 0.1);
         sxSpin.setTooltip(new Tooltip("Horizontal scaling factor (1.0 = 100%)"));
@@ -3643,8 +4661,8 @@ public class TemplateDesigner extends BorderPane {
         }
         Collections.swap(cols, from, to);
         saveState();
+        updateElementVisualInPlace(el);
         updatePropertiesPanel();
-        refreshCanvas();
     }
 
     private String colorToHex(Color c) {
@@ -4744,11 +5762,18 @@ public class TemplateDesigner extends BorderPane {
 
         // Mode shortcuts
         if (e.getCode() == KeyCode.V && !e.isControlDown()) {
+            if (isPenToolMode) cancelPenTool();
             setPanMode(false);
             e.consume();
             return;
         } else if (e.getCode() == KeyCode.H && !e.isControlDown()) {
+            if (isPenToolMode) cancelPenTool();
             setPanMode(true);
+            e.consume();
+            return;
+        } else if (e.getCode() == KeyCode.P && !e.isControlDown()) {
+            if (isPenToolMode) cancelPenTool();
+            else activatePenTool();
             e.consume();
             return;
         }
@@ -4789,6 +5814,11 @@ public class TemplateDesigner extends BorderPane {
             setZoom(zoom - 0.1);
             e.consume();
         } else if (e.getCode() == KeyCode.ESCAPE) {
+            if (isPenToolMode) {
+                cancelPenTool();
+                e.consume();
+                return;
+            }
             selectedElement = null;
             updateSelectionOverlay();
             updatePropertiesPanel();
@@ -4798,26 +5828,30 @@ public class TemplateDesigner extends BorderPane {
             double step = e.isShiftDown() ? 5.0 : 1.0;
             if (e.getCode() == KeyCode.LEFT) {
                 selectedElement.setX(Math.max(0, selectedElement.getX() - step));
-                refreshCanvas();
-                updatePropertiesPanel();
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                syncGeoSpinnersIfPresent();
                 saveState();
                 e.consume();
             } else if (e.getCode() == KeyCode.RIGHT) {
                 selectedElement.setX(selectedElement.getX() + step);
-                refreshCanvas();
-                updatePropertiesPanel();
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                syncGeoSpinnersIfPresent();
                 saveState();
                 e.consume();
             } else if (e.getCode() == KeyCode.UP) {
                 selectedElement.setY(Math.max(0, selectedElement.getY() - step));
-                refreshCanvas();
-                updatePropertiesPanel();
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                syncGeoSpinnersIfPresent();
                 saveState();
                 e.consume();
             } else if (e.getCode() == KeyCode.DOWN) {
                 selectedElement.setY(selectedElement.getY() + step);
-                refreshCanvas();
-                updatePropertiesPanel();
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                syncGeoSpinnersIfPresent();
                 saveState();
                 e.consume();
             }

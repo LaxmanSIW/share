@@ -177,6 +177,10 @@ public class DesignObjectRenderer {
         path.setContent(data);
         path.setFill(buildPaint(el, w, h));
         applyStroke(path, el);
+
+        if (el.getPoints() != null && !el.getPoints().isBlank()) {
+            path.getTransforms().add(new javafx.scene.transform.Scale(MM_PX, MM_PX, 0, 0));
+        }
         return path;
     }
 
