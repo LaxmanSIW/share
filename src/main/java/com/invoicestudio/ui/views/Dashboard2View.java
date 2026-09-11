@@ -16,6 +16,7 @@ import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.chart.*;
 import javafx.scene.control.*;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.stage.PopupWindow;
 import javafx.util.Duration;
@@ -610,17 +611,7 @@ public class Dashboard2View extends BorderPane {
 
     private void installCustomTooltip(Node node, String badgeText, String titleText, String valueText, String accentColorHex, String detailText) {
         Tooltip tooltip = new Tooltip();
-        tooltip.setShowDelay(Duration.millis(50));
-        tooltip.setHideDelay(Duration.millis(120));
-        tooltip.setShowDuration(Duration.seconds(20));
         tooltip.setAnchorLocation(PopupWindow.AnchorLocation.CONTENT_BOTTOM_LEFT);
-        tooltip.setOnShowing(ev -> {
-            // Anchor location CONTENT_BOTTOM_LEFT places the bottom of the tooltip at anchorY.
-            // By default JavaFX sets anchorY to cursorY + 20.
-            // Subtracting 27px places the bottom of the tooltip ~7px right above the cursor,
-            // decreasing the space by more than half while mouse transparency prevents blinking.
-            tooltip.setAnchorY(tooltip.getAnchorY() - 27);
-        });
         tooltip.setStyle(
             "-fx-background-color: transparent; " +
             "-fx-padding: 0; " +
@@ -628,7 +619,7 @@ public class Dashboard2View extends BorderPane {
             "-fx-effect: null;"
         );
 
-        VBox box = new VBox(6);
+        VBox box = new VBox(5);
         box.setMouseTransparent(true);
         box.setStyle(
             "-fx-background-color: #070B12; " +
@@ -636,10 +627,10 @@ public class Dashboard2View extends BorderPane {
             "-fx-border-width: 1.2px; " +
             "-fx-border-radius: 8px; " +
             "-fx-background-radius: 8px; " +
-            "-fx-padding: 10px 14px; " +
-            "-fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.85), 14, 0.35, 0, 3);"
+            "-fx-padding: 8px 12px; " +
+            "-fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.75), 4, 0.2, 0, 1);"
         );
-        box.setMinWidth(170);
+        box.setMinWidth(160);
 
         HBox headerRow = new HBox(8);
         headerRow.setAlignment(Pos.CENTER_LEFT);
@@ -678,9 +669,22 @@ public class Dashboard2View extends BorderPane {
         );
 
         box.getChildren().addAll(headerRow, valLbl, detailLbl);
-
         tooltip.setGraphic(box);
-        Tooltip.install(node, tooltip);
+
+        node.addEventHandler(MouseEvent.MOUSE_ENTERED, e -> {
+            if (node.getScene() != null && node.getScene().getWindow() != null) {
+                tooltip.show(node, e.getScreenX(), e.getScreenY() - 7);
+            }
+        });
+        node.addEventHandler(MouseEvent.MOUSE_MOVED, e -> {
+            if (tooltip.isShowing()) {
+                tooltip.setAnchorX(e.getScreenX());
+                tooltip.setAnchorY(e.getScreenY() - 7);
+            } else if (node.getScene() != null && node.getScene().getWindow() != null) {
+                tooltip.show(node, e.getScreenX(), e.getScreenY() - 7);
+            }
+        });
+        node.addEventHandler(MouseEvent.MOUSE_EXITED, e -> tooltip.hide());
     }
 
     private Node createTop5WidgetsRow(List<Transaction> txs) {
