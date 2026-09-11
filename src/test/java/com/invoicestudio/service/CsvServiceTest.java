@@ -64,10 +64,23 @@ class CsvServiceTest {
         b1.setGstin("27AAPFU0939F1ZV");
         b1.setPhone("9876543210");
         b1.setAddress("Nariman Point, Mumbai");
+        b1.setState("Maharashtra");
+        b1.setStateCode("27");
 
         String csv = CsvService.exportBuyers(List.of(b1), List.of());
         assertTrue(csv.contains("Acme Corp"));
         assertTrue(csv.contains("27AAPFU0939F1ZV"));
         assertTrue(csv.contains("9876543210"));
+        assertTrue(csv.contains("State Code"));
+        assertTrue(csv.contains("27"));
+    }
+
+    @Test
+    void testSampleBuyerCsvIncludesStateCode() {
+        String sample = CsvService.getSampleBuyerCsv(List.of());
+        assertTrue(sample.contains("State Code"));
+        assertTrue(sample.contains("27"));
+        assertTrue(sample.contains("Maharashtra"));
+        assertTrue(sample.contains("Acme Enterprises"));
     }
 }

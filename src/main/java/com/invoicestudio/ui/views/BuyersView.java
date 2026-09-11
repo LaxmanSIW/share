@@ -440,20 +440,26 @@ public class BuyersView extends BorderPane {
         g.setHgap(10); g.setVgap(10); g.setPadding(new Insets(16));
 
         ColumnConstraints col0 = new ColumnConstraints();
-        col0.setPrefWidth(130);
+        col0.setPrefWidth(140);
         ColumnConstraints col1 = new ColumnConstraints();
-        col1.setPrefWidth(280);
+        col1.setPrefWidth(300);
+        col1.setHgrow(Priority.ALWAYS);
         g.getColumnConstraints().addAll(col0, col1);
 
         TextField nameF = new TextField(existing != null ? existing.getName() : "");
+        nameF.setPromptText("Customer / Business Name");
         TextArea addrF = new TextArea(existing != null ? existing.getAddress() : "");
         addrF.setPrefRowCount(2);
+        addrF.setPromptText("Address, City, Pincode");
         TextField gstF = new TextField(existing != null ? existing.getGst() : "");
+        gstF.setPromptText("15-digit GSTIN (e.g. 27AAPFU0939F1ZV)");
         TextField phoneF = new TextField(existing != null ? existing.getPhone() : "");
+        phoneF.setPromptText("Mobile / Phone number");
         TextField stateF = new TextField(existing != null ? existing.getState() : "");
+        stateF.setPromptText("e.g. Maharashtra");
         TextField stateCodeF = new TextField(existing != null ? existing.getStateCode() : "");
         stateCodeF.setPromptText("e.g. 27");
-        stateCodeF.setPrefWidth(90);
+        stateCodeF.setPrefWidth(100);
 
         // Auto-extract 2-digit state code from GSTIN if empty
         gstF.textProperty().addListener((obs, o, v) -> {
@@ -465,26 +471,25 @@ public class BuyersView extends BorderPane {
             }
         });
 
-        HBox stateBox = new HBox(8);
-        stateBox.setAlignment(Pos.CENTER_LEFT);
-        stateF.setPromptText("e.g. Maharashtra");
-        HBox.setHgrow(stateF, Priority.ALWAYS);
-        Label scLbl = new Label("Code:");
-        scLbl.getStyleClass().add("kpi-subtext");
-        stateBox.getChildren().addAll(stateF, scLbl, stateCodeF);
+        HBox stateCodeBox = new HBox(8);
+        stateCodeBox.setAlignment(Pos.CENTER_LEFT);
+        Label scHint = new Label("(2-digit GST state code)");
+        scHint.getStyleClass().add("kpi-subtext");
+        stateCodeBox.getChildren().addAll(stateCodeF, scHint);
 
         g.add(new Label("Customer Name:"), 0, 0); g.add(nameF, 1, 0);
         g.add(new Label("Billing Address:"), 0, 1); g.add(addrF, 1, 1);
         g.add(new Label("GSTIN:"), 0, 2); g.add(gstF, 1, 2);
         g.add(new Label("Phone:"), 0, 3); g.add(phoneF, 1, 3);
-        g.add(new Label("Place of Supply:"), 0, 4); g.add(stateBox, 1, 4);
+        g.add(new Label("State Name:"), 0, 4); g.add(stateF, 1, 4);
+        g.add(new Label("State Code:"), 0, 5); g.add(stateCodeBox, 1, 5);
 
         // Query custom buyer fields defined under Settings
         Settings settings = app.getData().getSettings();
         List<BuyerFieldDef> defs = settings != null && settings.getBuyerFields() != null ? settings.getBuyerFields() : List.of();
         Map<String, TextField> customInputs = new LinkedHashMap<>();
 
-        int rowIdx = 5;
+        int rowIdx = 6;
         if (!defs.isEmpty()) {
             Separator sep = new Separator();
             sep.setPadding(new Insets(4, 0, 4, 0));
@@ -657,10 +662,14 @@ public class BuyersView extends BorderPane {
             CheckBox updateExistingCb = new CheckBox("Update existing buyers if name matches");
             updateExistingCb.setSelected(true);
 
-            Label info = new Label("Detected " + rows.size() + " total rows. Headers: " + String.join(", ", rows.get(0)));
+            Label info = new Label("Detected " + (rows.size() - 1) + " records. Headers: " + String.join(", ", rows.get(0)));
             info.getStyleClass().add("kpi-subtext");
+            info.setWrapText(true);
 
-            box.getChildren().addAll(info, updateExistingCb);
+            Label fieldsNotice = new Label("Supported columns: Name, Address, GSTIN, Phone, State, State Code + Custom Fields");
+            fieldsNotice.getStyleClass().add("section-eyebrow");
+
+            box.getChildren().addAll(fieldsNotice, info, updateExistingCb);
             dlg.getDialogPane().setContent(box);
             dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
             DialogHelper.styleDialog(dlg);
@@ -669,22 +678,86 @@ public class BuyersView extends BorderPane {
                 if (ans == ButtonType.OK) {
                     List<String> headers = rows.get(0);
                     List<BuyerFieldDef> defs = app.getData().getSettings().getBuyerFields();
+
+                    // Detect column mappings by header name
+                    int nameCol = -1;
+                    int addrCol = -1;
+                    int gstCol = -1;
+                    int phoneCol = -1;
+                    int stateCol = -1;
+                    int stateCodeCol = -1;
+
+                    for (int c = 0; c < headers.size(); c++) {
+                        String h = headers.get(c).trim().toLowerCase().replaceAll("[_\\-\\s]+", "");
+                        if (nameCol == -1 && (h.equals("name") || h.equals("customername") || h.equals("buyername"))) {
+                            nameCol = c;
+                        } else if (addrCol == -1 && (h.equals("address") || h.equals("billingaddress") || h.equals("addr"))) {
+                            addrCol = c;
+                        } else if (gstCol == -1 && (h.equals("gstin") || h.equals("gst") || h.equals("gstno") || h.equals("gstnumber"))) {
+                            gstCol = c;
+                        } else if (phoneCol == -1 && (h.equals("phone") || h.equals("mobile") || h.equals("contact") || h.equals("phoneno"))) {
+                            phoneCol = c;
+                        } else if (stateCodeCol == -1 && (h.equals("statecode") || h.equals("poscode") || h.equals("gststatecode") || h.equals("code"))) {
+                            stateCodeCol = c;
+                        } else if (stateCol == -1 && (h.equals("state") || h.equals("placeofsupply") || h.equals("statename") || h.equals("pos"))) {
+                            stateCol = c;
+                        }
+                    }
+
+                    // Fallbacks for positional standard columns if not detected by header name
+                    if (nameCol == -1 && headers.size() > 0) nameCol = 0;
+                    if (addrCol == -1 && headers.size() > 1) addrCol = 1;
+                    if (gstCol == -1 && headers.size() > 2) gstCol = 2;
+                    if (phoneCol == -1 && headers.size() > 3) phoneCol = 3;
+                    if (stateCol == -1 && headers.size() > 4) stateCol = 4;
+                    if (stateCodeCol == -1 && headers.size() > 5) {
+                        String h5 = headers.get(5).trim().toLowerCase();
+                        if (h5.contains("code") || h5.contains("state")) {
+                            stateCodeCol = 5;
+                        }
+                    }
+
+                    Set<Integer> standardCols = new HashSet<>();
+                    if (nameCol >= 0) standardCols.add(nameCol);
+                    if (addrCol >= 0) standardCols.add(addrCol);
+                    if (gstCol >= 0) standardCols.add(gstCol);
+                    if (phoneCol >= 0) standardCols.add(phoneCol);
+                    if (stateCol >= 0) standardCols.add(stateCol);
+                    if (stateCodeCol >= 0) standardCols.add(stateCodeCol);
+
                     int imported = 0;
                     for (int i = 1; i < rows.size(); i++) {
                         List<String> r = rows.get(i);
                         if (r.isEmpty()) continue;
-                        String name = r.size() > 0 ? r.get(0).trim() : "";
+                        String name = (nameCol >= 0 && nameCol < r.size()) ? r.get(nameCol).trim() : "";
                         if (name.isBlank()) continue;
-                        String addr = r.size() > 1 ? r.get(1).trim() : "";
-                        String gst = r.size() > 2 ? r.get(2).trim() : "";
-                        String phone = r.size() > 3 ? r.get(3).trim() : "";
-                        String state = r.size() > 4 ? r.get(4).trim() : "";
+                        String addr = (addrCol >= 0 && addrCol < r.size()) ? r.get(addrCol).trim() : "";
+                        String gst = (gstCol >= 0 && gstCol < r.size()) ? r.get(gstCol).trim() : "";
+                        String phone = (phoneCol >= 0 && phoneCol < r.size()) ? r.get(phoneCol).trim() : "";
+                        String state = (stateCol >= 0 && stateCol < r.size()) ? r.get(stateCol).trim() : "";
+                        String stateCode = (stateCodeCol >= 0 && stateCodeCol < r.size()) ? r.get(stateCodeCol).trim() : "";
+
+                        // Auto-derive 2-digit state code from GSTIN if empty
+                        if (stateCode.isBlank() && gst.length() >= 2) {
+                            String prefix = gst.substring(0, 2);
+                            if (prefix.matches("\\d{2}")) {
+                                stateCode = prefix;
+                            }
+                        }
 
                         Buyer existing = app.getData().buyers().findByName(name);
                         if (existing != null && !updateExistingCb.isSelected()) continue;
 
                         String id = existing != null ? existing.getId() : "byr_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
-                        Buyer b = new Buyer(id, name, addr, gst, phone, state);
+                        if (existing != null) {
+                            if (addr.isBlank() && existing.getAddress() != null) addr = existing.getAddress();
+                            if (gst.isBlank() && existing.getGst() != null) gst = existing.getGst();
+                            if (phone.isBlank() && existing.getPhone() != null) phone = existing.getPhone();
+                            if (state.isBlank() && existing.getState() != null) state = existing.getState();
+                            if (stateCode.isBlank() && existing.getStateCode() != null) stateCode = existing.getStateCode();
+                        }
+
+                        Buyer b = new Buyer(id, name, addr, gst, phone, state, stateCode);
 
                         // Populate custom columns if present in CSV
                         Map<String, String> customMap = new HashMap<>();
@@ -693,7 +766,8 @@ public class BuyersView extends BorderPane {
                         }
                         if (defs != null) {
                             for (BuyerFieldDef def : defs) {
-                                for (int colIdx = 5; colIdx < headers.size() && colIdx < r.size(); colIdx++) {
+                                for (int colIdx = 0; colIdx < headers.size() && colIdx < r.size(); colIdx++) {
+                                    if (standardCols.contains(colIdx)) continue;
                                     String h = headers.get(colIdx).trim();
                                     if (h.equalsIgnoreCase(def.getLabel()) || h.equalsIgnoreCase(def.getKey())) {
                                         customMap.put(def.getKey(), r.get(colIdx).trim());

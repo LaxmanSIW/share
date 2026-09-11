@@ -25,6 +25,17 @@ public class ComponentPreset {
 
         public String getTitle() { return title; }
         public String getDescription() { return description; }
+        public String getIcon() {
+            return switch (this) {
+                case INVOICE_HEADER -> "🏢";
+                case CUSTOMER_ADDRESS -> "👤";
+                case INVOICE_TOTALS -> "💰";
+                case BANK_DETAILS -> "🏦";
+                case PAYMENT_TERMS -> "📜";
+                case SIGNATURE_SECTION -> "✍";
+                case DOCUMENT_FOOTER -> "📄";
+            };
+        }
     }
 
     private static String uid() {

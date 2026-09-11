@@ -2190,6 +2190,57 @@ Label {
     -fx-padding: 2 4 2 6;
 }
 
+/* --- Redesigned Layers Panel Card & Badges --- */
+.layer-card {
+    -fx-background-color: #161F2E;
+    -fx-border-color: #222F3E;
+    -fx-border-width: 1px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-padding: 6 10;
+    -fx-cursor: hand;
+}
+.layer-card:hover {
+    -fx-background-color: #1E293B;
+    -fx-border-color: #334155;
+}
+.layer-card-selected {
+    -fx-border-color: #D9A13B !important;
+    -fx-background-color: rgba(217, 161, 59, 0.14) !important;
+}
+.layer-type-badge {
+    -fx-font-weight: bold;
+    -fx-font-size: 10px;
+    -fx-text-fill: #FFFFFF;
+    -fx-min-width: 22px;
+    -fx-min-height: 22px;
+    -fx-max-width: 22px;
+    -fx-max-height: 22px;
+    -fx-alignment: center;
+    -fx-background-radius: 4px;
+}
+.layer-search-field {
+    -fx-background-color: #0F172A;
+    -fx-border-color: #222F3E;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+    -fx-text-fill: -color-text;
+    -fx-padding: 4 8;
+    -fx-font-size: 11px;
+}
+.layer-search-field:focused {
+    -fx-border-color: -color-accent;
+}
+.layer-count-badge {
+    -fx-background-color: #222F3E;
+    -fx-text-fill: -color-accent;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-padding: 1 6;
+    -fx-background-radius: 10px;
+}
+
+
 /* Designer Toolbar Shapes & Code Dropdowns - Crisp White Text and Dropdowns */
 .designer-menubtn,
 .designer-toolbar .menu-button {

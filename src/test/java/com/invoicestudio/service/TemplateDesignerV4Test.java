@@ -330,4 +330,176 @@ class TemplateDesignerV4Test {
         assertTrue(outFile.exists(), "Legacy template PDF must export successfully");
         assertTrue(outFile.length() > 1000, "Legacy template PDF must have full content");
     }
+
+    @Test
+    void testShapeRotationAndTransforms() {
+        TemplateElement shape = new TemplateElement();
+        shape.setId("shape_rot_1");
+        shape.setType(ElementType.RECT);
+        shape.setX(20.0);
+        shape.setY(30.0);
+        shape.setW(60.0);
+        shape.setH(40.0);
+        shape.setRotation(45.0);
+        shape.setScaleX(1.2);
+        shape.setScaleY(0.8);
+        shape.setFlipHorizontal(true);
+        shape.setFlipVertical(false);
+
+        assertEquals(45.0, shape.getRotation(), 0.001);
+        assertEquals(1.2, shape.getScaleX(), 0.001);
+        assertEquals(0.8, shape.getScaleY(), 0.001);
+        assertTrue(shape.isFlipHorizontal());
+        assertFalse(shape.isFlipVertical());
+
+        javafx.scene.layout.Pane node = new javafx.scene.layout.Pane();
+        DesignObjectRenderer.applyEffectsAndTransforms(node, shape);
+        assertEquals(45.0, node.getRotate(), 0.001, "Rotation must be applied to JavaFX node");
+        assertEquals(-1.2, node.getScaleX(), 0.001, "Flip horizontal should invert scaleX");
+        assertEquals(0.8, node.getScaleY(), 0.001);
+    }
+
+    @Test
+    void testSvgVectorParser() {
+        String svgXml = """
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                    <rect x="5" y="5" width="90" height="90" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+                    <circle cx="50" cy="50" r="30" fill="#3B82F6"/>
+                    <path d="M 30 50 L 45 65 L 70 35" fill="none" stroke="#FFFFFF" stroke-width="4"/>
+                </svg>
+                """;
+
+        SvgVectorParser.ParsedSvg parsed = SvgVectorParser.parseSvg(svgXml);
+        assertNotNull(parsed, "Parsed SVG result should not be null");
+        assertTrue(parsed.hasViewBox, "SVG has viewBox");
+        assertEquals(100.0, parsed.width, 0.001);
+        assertEquals(100.0, parsed.height, 0.001);
+        assertEquals(3, parsed.shapes.size(), "Should have extracted rect, circle, and path shapes");
+
+        TemplateElement el = new TemplateElement();
+        el.setType(ElementType.SVG);
+        el.setSvgSource(svgXml);
+        el.setW(50.0);
+        el.setH(50.0);
+
+        // Verify JavaFX rendering
+        javafx.scene.Node fxNode = SvgVectorParser.renderToJavaFx(el, 200, 200);
+        assertNotNull(fxNode, "JavaFX vector render should produce a node");
+        assertTrue(fxNode instanceof javafx.scene.Group, "JavaFX vector render should be a Group");
+        assertEquals(3, ((javafx.scene.Group) fxNode).getChildren().size());
+
+        // Verify Java2D rendering
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(200, 200, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g2 = img.createGraphics();
+        assertDoesNotThrow(() -> SvgVectorParser.renderToGraphics2D(g2, el, 0, 0, 200, 200));
+        g2.dispose();
+    }
+
+    @Test
+    void testCustomComponentPersistenceAndInstantiation() throws Exception {
+        List<TemplateElement> source = new ArrayList<>();
+        TemplateElement bg = new TemplateElement();
+        bg.setId("orig_1");
+        bg.setType(ElementType.RECT);
+        bg.setX(100.0);
+        bg.setY(150.0);
+        bg.setW(80.0);
+        bg.setH(30.0);
+        source.add(bg);
+
+        TemplateElement text = new TemplateElement();
+        text.setId("orig_2");
+        text.setType(ElementType.TEXT);
+        text.setX(110.0);
+        text.setY(160.0);
+        text.setW(60.0);
+        text.setH(15.0);
+        text.setText("Customer Note");
+        source.add(text);
+
+        CustomComponent saved = CustomComponentManager.saveComponent("Test Banner Block", "Testing save", source);
+        assertNotNull(saved);
+        assertNotNull(saved.getId());
+        assertEquals("Test Banner Block", saved.getName());
+        assertEquals(2, saved.getElements().size());
+
+        // Verify normalized relative coordinates (origin at 0,0)
+        assertEquals(0.0, saved.getElements().get(0).getX(), 0.001);
+        assertEquals(0.0, saved.getElements().get(0).getY(), 0.001);
+        assertEquals(10.0, saved.getElements().get(1).getX(), 0.001);
+        assertEquals(10.0, saved.getElements().get(1).getY(), 0.001);
+
+        // Instantiate at (25, 40)
+        List<TemplateElement> instantiated = CustomComponentManager.instantiateComponent(saved, 25.0, 40.0);
+        assertEquals(2, instantiated.size());
+
+        TemplateElement instBg = instantiated.get(0);
+        TemplateElement instText = instantiated.get(1);
+
+        assertNotEquals("orig_1", instBg.getId(), "Must generate fresh ID");
+        assertNotEquals("orig_2", instText.getId(), "Must generate fresh ID");
+        assertEquals(25.0, instBg.getX(), 0.001);
+        assertEquals(40.0, instBg.getY(), 0.001);
+        assertEquals(35.0, instText.getX(), 0.001);
+        assertEquals(50.0, instText.getY(), 0.001);
+
+        // Both must share the same groupId for synchronized group drag
+        assertNotNull(instBg.getGroupId());
+        assertEquals(instBg.getGroupId(), instText.getGroupId(), "Group elements must share groupId");
+        assertTrue(instBg.isGrouped());
+        assertTrue(instText.isGrouped());
+
+        // Cleanup
+        CustomComponentManager.deleteComponent(saved.getId());
+    }
+
+    @Test
+    void testAdvancedTypographyAttributes() {
+        TemplateElement textEl = new TemplateElement();
+        textEl.setText("invoice studio professional billing");
+        textEl.setLineSpacing(4.0);
+        textEl.setLetterSpacing(1.5);
+        textEl.setWordSpacing(2.0);
+        textEl.setTextTransform("uppercase");
+
+        assertEquals(4.0, textEl.getLineSpacing(), 0.001);
+        assertEquals(1.5, textEl.getLetterSpacing(), 0.001);
+        assertEquals(2.0, textEl.getWordSpacing(), 0.001);
+        assertEquals("uppercase", textEl.getTextTransform());
+
+        // Test text transform logic
+        assertEquals("INVOICE STUDIO PROFESSIONAL BILLING", DesignObjectRenderer.applyTextTransform(textEl.getText(), "uppercase", false));
+        assertEquals("invoice studio professional billing", DesignObjectRenderer.applyTextTransform(textEl.getText(), "lowercase", false));
+        assertEquals("Invoice Studio Professional Billing", DesignObjectRenderer.applyTextTransform(textEl.getText(), "capitalize", false));
+        assertEquals("invoice studio professional billing", DesignObjectRenderer.applyTextTransform(textEl.getText(), "none", false));
+    }
+
+    @Test
+    void testMultiElementGroupMovementLogic() {
+        String gid = "grp_test_sync";
+        TemplateElement el1 = new TemplateElement();
+        el1.setGroupId(gid); el1.setX(10.0); el1.setY(20.0);
+
+        TemplateElement el2 = new TemplateElement();
+        el2.setGroupId(gid); el2.setX(30.0); el2.setY(25.0);
+
+        assertTrue(el1.isGrouped());
+        assertTrue(el2.isGrouped());
+        assertEquals(el1.getGroupId(), el2.getGroupId());
+
+        // Simulate group displacement of dx = +15, dy = +10
+        double dx = 15.0;
+        double dy = 10.0;
+
+        List<TemplateElement> group = List.of(el1, el2);
+        for (TemplateElement elem : group) {
+            elem.setX(elem.getX() + dx);
+            elem.setY(elem.getY() + dy);
+        }
+
+        assertEquals(25.0, el1.getX(), 0.001);
+        assertEquals(30.0, el1.getY(), 0.001);
+        assertEquals(45.0, el2.getX(), 0.001);
+        assertEquals(35.0, el2.getY(), 0.001);
+    }
 }

@@ -6,6 +6,7 @@ import com.invoicestudio.db.VariableDao;
 import com.invoicestudio.model.*;
 import com.invoicestudio.model.TableColumn;
 import com.invoicestudio.service.BarcodeService;
+import com.invoicestudio.service.CustomComponentManager;
 import com.invoicestudio.service.RenderContext;
 import com.invoicestudio.ui.CustomColorChooserDialog;
 import com.invoicestudio.ui.DialogHelper;
@@ -13,6 +14,7 @@ import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -99,6 +101,10 @@ public class TemplateDesigner extends BorderPane {
     private final Label zoomLabel = new Label("90%");
     private final VBox propBox = new VBox(12);
     private final ListView<TemplateElement> layersList = new ListView<>();
+    private final javafx.collections.ObservableList<TemplateElement> layersData = FXCollections.observableArrayList();
+    private final FilteredList<TemplateElement> filteredLayers = new FilteredList<>(layersData, p -> true);
+    private final Label layerCountBadge = new Label("0");
+    private final MenuButton compMenu = new MenuButton("📦 Components");
     private final TabPane sideTabs = new TabPane();
 
     private static final double MM_PX = 3.7795275591; // ~96 DPI screen pixels per mm
@@ -230,17 +236,11 @@ public class TemplateDesigner extends BorderPane {
         mediaMenu.getItems().addAll(imgItem, svgItem, iconItem);
 
         // Components Dropdown MenuButton
-        MenuButton compMenu = new MenuButton("📦 Components");
         compMenu.getStyleClass().addAll("button-sm", "menu-button", "designer-menubtn");
-        compMenu.setTooltip(new Tooltip("Add pre-built template layout blocks"));
+        compMenu.setTooltip(new Tooltip("Add pre-built or custom saved template layout blocks"));
         compMenu.setMinWidth(Region.USE_PREF_SIZE);
         compMenu.setStyle("-fx-text-fill: #FFFFFF; -fx-font-weight: bold;");
-
-        for (ComponentPreset.PresetType pt : ComponentPreset.PresetType.values()) {
-            MenuItem mi = new MenuItem(pt.getTitle());
-            mi.setOnAction(e -> addComponent(pt));
-            compMenu.getItems().add(mi);
-        }
+        rebuildComponentsMenu();
 
         // Codes Dropdown MenuButton
         MenuButton codeMenu = new MenuButton("▦ Code");
@@ -525,7 +525,51 @@ public class TemplateDesigner extends BorderPane {
         layersBox.getStyleClass().add("bg-side");
         layersBox.setPadding(new Insets(14));
 
+        // Modern Header: Title, Elements Count Badge, and Toolbar
+        HBox layersHeader = new HBox(8);
+        layersHeader.setAlignment(Pos.CENTER_LEFT);
+        Label layersTitle = new Label("Canvas Layers");
+        layersTitle.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #E2E8F0;");
+        Region headerSpacer = new Region();
+        HBox.setHgrow(headerSpacer, Priority.ALWAYS);
+        layerCountBadge.getStyleClass().add("layer-count-badge");
+        layerCountBadge.setText(template.getElements().size() + " items");
+        layersHeader.getChildren().addAll(layersTitle, headerSpacer, layerCountBadge);
+
+        // Search / Filter Field
+        TextField searchField = new TextField();
+        searchField.setPromptText("🔍 Search layers by name, type, group...");
+        searchField.getStyleClass().add("layer-search-field");
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal == null || newVal.isBlank()) {
+                filteredLayers.setPredicate(p -> true);
+            } else {
+                String filter = newVal.toLowerCase().trim();
+                filteredLayers.setPredicate(el ->
+                        (el.getDisplayName() != null && el.getDisplayName().toLowerCase().contains(filter)) ||
+                        (el.getType() != null && el.getType().name().toLowerCase().contains(filter)) ||
+                        (el.getGroupName() != null && el.getGroupName().toLowerCase().contains(filter))
+                );
+            }
+        });
+
+        // Layer Action Buttons (Group, Ungroup, Toggle All, Up, Down, Delete)
+        HBox layerActions = new HBox(6);
+        layerActions.setAlignment(Pos.CENTER_LEFT);
+        Button grpBtn = createToolbarBtn("📁 Group", "Group selected layers or element (Ctrl+G)", this::groupSelected);
+        Button ungrpBtn = createToolbarBtn("📂 Ungroup", "Ungroup selected elements (Ctrl+Shift+G)", this::ungroupSelected);
+        Button togAllBtn = createToolbarBtn("👁 All", "Toggle visibility of all layers", this::toggleAllVisibility);
+        Button upBtn = createToolbarBtn("▲", "Bring layer forward", () -> moveLayer(1));
+        Button downBtn = createToolbarBtn("▼", "Send layer backward", () -> moveLayer(-1));
+        Button delBtn = createToolbarBtn("🗑", "Delete selected element (Del)", this::deleteSelected);
+        layerActions.getChildren().addAll(grpBtn, ungrpBtn, togAllBtn, upBtn, downBtn, delBtn);
+
+        // Layers List with Card ListCell
         layersList.getStyleClass().add("layers-list");
+        layersList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        layersList.setItems(filteredLayers);
+        VBox.setVgrow(layersList, Priority.ALWAYS);
+
         layersList.setCellFactory(lv -> new ListCell<>() {
             @Override
             protected void updateItem(TemplateElement item, boolean empty) {
@@ -533,52 +577,74 @@ public class TemplateDesigner extends BorderPane {
                 if (empty || item == null) {
                     setText(null);
                     setGraphic(null);
+                    setStyle("");
                 } else {
                     setText(null);
 
-                    HBox row = new HBox(6);
-                    row.setAlignment(Pos.CENTER_LEFT);
-                    row.setPadding(new Insets(2, 4, 2, 4));
+                    HBox card = new HBox(8);
+                    card.setAlignment(Pos.CENTER_LEFT);
+                    card.getStyleClass().add("layer-card");
+                    if (isSelected()) {
+                        card.getStyleClass().add("layer-card-selected");
+                    }
 
-                    Button hideBtn = new Button(item.isHidden() ? "🚫" : "👁");
-                    hideBtn.getStyleClass().addAll("button-xs", "layer-action-btn");
-                    hideBtn.setTooltip(new Tooltip(item.isHidden() ? "Show Element" : "Hide Element"));
-                    hideBtn.setOnAction(e -> {
-                        item.setHidden(!item.isHidden());
-                        hideBtn.setText(item.isHidden() ? "🚫" : "👁");
-                        hideBtn.setTooltip(new Tooltip(item.isHidden() ? "Show Element" : "Hide Element"));
-                        saveState();
-                        refreshCanvas();
-                        if (item == selectedElement && item.isHidden()) {
-                            updateSelectionOverlay();
-                        }
-                        e.consume();
-                    });
+                    // Element Type Badge (TXT, TBL, IMG, SHP, etc.)
+                    Label typeBadge = new Label(getTypeGlyph(item));
+                    typeBadge.getStyleClass().add("layer-type-badge");
+                    typeBadge.setStyle("-fx-background-color: " + getTypeBadgeBg(item) + ";");
+                    typeBadge.setTooltip(new Tooltip("Element Type: " + item.getType().name()));
 
-                    Button lockBtn = new Button(item.isLocked() ? "🔒" : "🔓");
-                    lockBtn.getStyleClass().addAll("button-xs", "layer-action-btn");
-                    lockBtn.setTooltip(new Tooltip(item.isLocked() ? "Unlock Element" : "Lock Element Position"));
-                    lockBtn.setOnAction(e -> {
-                        item.setLocked(!item.isLocked());
-                        lockBtn.setText(item.isLocked() ? "🔒" : "🔓");
-                        lockBtn.setTooltip(new Tooltip(item.isLocked() ? "Unlock Element" : "Lock Element Position"));
-                        saveState();
-                        updatePropertiesPanel();
-                        e.consume();
-                    });
+                    // Center Labels: Name and Optional Group indicator
+                    VBox infoBox = new VBox(2);
+                    infoBox.setAlignment(Pos.CENTER_LEFT);
+                    HBox.setHgrow(infoBox, Priority.ALWAYS);
 
                     Label nameLbl = new Label(item.getDisplayName());
-                    nameLbl.setMaxWidth(Double.MAX_VALUE);
-                    HBox.setHgrow(nameLbl, Priority.ALWAYS);
                     nameLbl.getStyleClass().add("layer-cell-label");
                     if (item.isHidden()) {
                         nameLbl.setStyle("-fx-opacity: 0.45;");
                     } else if (item.isLocked()) {
                         nameLbl.setStyle("-fx-opacity: 0.85;");
                     }
+                    infoBox.getChildren().add(nameLbl);
 
-                    row.getChildren().addAll(hideBtn, lockBtn, nameLbl);
-                    setGraphic(row);
+                    if (item.isGrouped()) {
+                        Label groupLbl = new Label("📁 " + (item.getGroupName() != null ? item.getGroupName() : "Group"));
+                        groupLbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #D9A13B; -fx-font-weight: bold;");
+                        infoBox.getChildren().add(groupLbl);
+                    }
+
+                    // Visibility Toggle
+                    Button hideBtn = new Button(item.isHidden() ? "🚫" : "👁");
+                    hideBtn.getStyleClass().addAll("button-xs", "layer-action-btn");
+                    hideBtn.setTooltip(new Tooltip(item.isHidden() ? "Element is hidden. Click to show" : "Element is visible. Click to hide"));
+                    hideBtn.setOnAction(e -> {
+                        item.setHidden(!item.isHidden());
+                        hideBtn.setText(item.isHidden() ? "🚫" : "👁");
+                        saveState();
+                        refreshCanvas();
+                        if (item == selectedElement && item.isHidden()) {
+                            updateSelectionOverlay();
+                        }
+                        refreshLayersList();
+                        e.consume();
+                    });
+
+                    // Lock Toggle
+                    Button lockBtn = new Button(item.isLocked() ? "🔒" : "🔓");
+                    lockBtn.getStyleClass().addAll("button-xs", "layer-action-btn");
+                    lockBtn.setTooltip(new Tooltip(item.isLocked() ? "Element is locked. Click to unlock" : "Element is unlocked. Click to lock position"));
+                    lockBtn.setOnAction(e -> {
+                        item.setLocked(!item.isLocked());
+                        lockBtn.setText(item.isLocked() ? "🔒" : "🔓");
+                        saveState();
+                        updatePropertiesPanel();
+                        refreshLayersList();
+                        e.consume();
+                    });
+
+                    card.getChildren().addAll(typeBadge, infoBox, hideBtn, lockBtn);
+                    setGraphic(card);
                 }
             }
         });
@@ -592,13 +658,7 @@ public class TemplateDesigner extends BorderPane {
             }
         });
 
-        HBox layerActions = new HBox(8);
-        Button upBtn = createToolbarBtn("▲ Up", "Move layer upward", () -> moveLayer(1));
-        Button downBtn = createToolbarBtn("▼ Down", "Move layer downward", () -> moveLayer(-1));
-        Button delBtn = createToolbarBtn("🗑 Delete", "Delete selected element", this::deleteSelected);
-        layerActions.getChildren().addAll(upBtn, downBtn, delBtn);
-
-        layersBox.getChildren().addAll(layersList, layerActions);
+        layersBox.getChildren().addAll(layersHeader, searchField, layerActions, layersList);
         layersTab.setContent(layersBox);
 
         sideTabs.getStyleClass().add("bg-side");
@@ -905,6 +965,7 @@ public class TemplateDesigner extends BorderPane {
         wrapper.setPrefSize(w, h);
         wrapper.setMinSize(w, h);
         wrapper.setMaxSize(w, h);
+        wrapper.setRotate(el.getRotation());
         wrapper.setPickOnBounds(true);
         wrapper.setCursor(Cursor.MOVE);
         wrapper.setStyle("-fx-background-color: rgba(255, 255, 255, 0.005);");
@@ -922,9 +983,10 @@ public class TemplateDesigner extends BorderPane {
             wrapper.getChildren().add(visual);
         }
 
-        // Element selection and moving
+        // Element selection and moving (with synchronized multi-element group drag)
         final double[] moveStart = new double[4];
         final boolean[] isMoved = new boolean[1];
+        final Map<TemplateElement, double[]> groupOrigins = new HashMap<>();
 
         wrapper.setOnMousePressed(e -> {
             if (isPanMode || isSpaceDown || e.getButton() == MouseButton.MIDDLE) return;
@@ -934,6 +996,17 @@ public class TemplateDesigner extends BorderPane {
                 moveStart[2] = el.getX();
                 moveStart[3] = el.getY();
                 isMoved[0] = false;
+                groupOrigins.clear();
+
+                if (el.isGrouped()) {
+                    for (TemplateElement sibling : template.getElements()) {
+                        if (Objects.equals(sibling.getGroupId(), el.getGroupId())) {
+                            groupOrigins.put(sibling, new double[]{sibling.getX(), sibling.getY()});
+                        }
+                    }
+                } else {
+                    groupOrigins.put(el, new double[]{el.getX(), el.getY()});
+                }
 
                 selectedElement = el;
                 updateSelectionOverlay();
@@ -956,15 +1029,26 @@ public class TemplateDesigner extends BorderPane {
             double newY = Math.max(0, moveStart[3] + dy);
 
             double[] snapped = applySnapping(el, newX, newY);
-            newX = snapped[0];
-            newY = snapped[1];
+            double finalDx = snapped[0] - moveStart[2];
+            double finalDy = snapped[1] - moveStart[3];
 
-            el.setX(newX);
-            el.setY(newY);
+            for (Map.Entry<TemplateElement, double[]> entry : groupOrigins.entrySet()) {
+                TemplateElement sibling = entry.getKey();
+                double[] orig = entry.getValue();
+                double nx = Math.max(0, orig[0] + finalDx);
+                double ny = Math.max(0, orig[1] + finalDy);
+                sibling.setX(nx);
+                sibling.setY(ny);
+                for (Node n : elementsPane.getChildren()) {
+                    if (n.getUserData() == sibling) {
+                        n.setLayoutX(nx * MM_PX);
+                        n.setLayoutY(ny * MM_PX);
+                        break;
+                    }
+                }
+            }
 
-            wrapper.setLayoutX(newX * MM_PX);
-            wrapper.setLayoutY(newY * MM_PX);
-            updateSelectionOverlayPos(newX * MM_PX, newY * MM_PX);
+            updateSelectionOverlayPos(el.getX() * MM_PX, el.getY() * MM_PX);
             e.consume();
         });
 
@@ -1109,6 +1193,7 @@ public class TemplateDesigner extends BorderPane {
         selBox.setLayoutY(y);
         selBox.setPrefSize(w, h);
         selBox.setMinSize(w, h);
+        selBox.setRotate(el.getRotation());
         selBox.setPickOnBounds(false); // Allows handles at negative coordinate offsets to be clicked
         activeSelectionBox = selBox;
 
@@ -1120,6 +1205,7 @@ public class TemplateDesigner extends BorderPane {
 
         final double[] moveStart = new double[4];
         final boolean[] isMoved = new boolean[1];
+        final Map<TemplateElement, double[]> groupOrigins = new HashMap<>();
 
         moveHitArea.setOnMousePressed(e -> {
             if (isPanMode || isSpaceDown || e.getButton() == MouseButton.MIDDLE) return;
@@ -1129,6 +1215,17 @@ public class TemplateDesigner extends BorderPane {
                 moveStart[2] = el.getX();
                 moveStart[3] = el.getY();
                 isMoved[0] = false;
+                groupOrigins.clear();
+
+                if (el.isGrouped()) {
+                    for (TemplateElement sibling : template.getElements()) {
+                        if (Objects.equals(sibling.getGroupId(), el.getGroupId())) {
+                            groupOrigins.put(sibling, new double[]{sibling.getX(), sibling.getY()});
+                        }
+                    }
+                } else {
+                    groupOrigins.put(el, new double[]{el.getX(), el.getY()});
+                }
                 e.consume();
             }
         });
@@ -1146,23 +1243,27 @@ public class TemplateDesigner extends BorderPane {
             double newY = Math.max(0, moveStart[3] + dy);
 
             double[] snapped = applySnapping(el, newX, newY);
-            newX = snapped[0];
-            newY = snapped[1];
+            double finalDx = snapped[0] - moveStart[2];
+            double finalDy = snapped[1] - moveStart[3];
 
-            el.setX(newX);
-            el.setY(newY);
-
-            selBox.setLayoutX(newX * MM_PX);
-            selBox.setLayoutY(newY * MM_PX);
-
-            // Directly update the element's wrapper in elementsPane via userData
-            for (Node n : elementsPane.getChildren()) {
-                if (n.getUserData() == el) {
-                    n.setLayoutX(newX * MM_PX);
-                    n.setLayoutY(newY * MM_PX);
-                    break;
+            for (Map.Entry<TemplateElement, double[]> entry : groupOrigins.entrySet()) {
+                TemplateElement sibling = entry.getKey();
+                double[] orig = entry.getValue();
+                double nx = Math.max(0, orig[0] + finalDx);
+                double ny = Math.max(0, orig[1] + finalDy);
+                sibling.setX(nx);
+                sibling.setY(ny);
+                for (Node n : elementsPane.getChildren()) {
+                    if (n.getUserData() == sibling) {
+                        n.setLayoutX(nx * MM_PX);
+                        n.setLayoutY(ny * MM_PX);
+                        break;
+                    }
                 }
             }
+
+            selBox.setLayoutX(el.getX() * MM_PX);
+            selBox.setLayoutY(el.getY() * MM_PX);
             e.consume();
         });
 
@@ -1575,12 +1676,13 @@ public class TemplateDesigner extends BorderPane {
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
+        Button saveCompBtn = createToolbarBtn("📦", "Save selected element or group as custom reusable component", this::saveSelectionAsComponent);
         Button dupBtn = createToolbarBtn("❐", "Duplicate Element (Ctrl D)", this::duplicateSelected);
         Button upBtn = createToolbarBtn("▲", "Bring Forward", () -> moveLayer(1));
         Button downBtn = createToolbarBtn("▼", "Send Backward", () -> moveLayer(-1));
         Button delBtn = createToolbarBtn("🗑", "Delete Element (Delete key)", this::deleteSelected);
 
-        headerRow.getChildren().addAll(typeLbl, sp, dupBtn, upBtn, downBtn, delBtn);
+        headerRow.getChildren().addAll(typeLbl, sp, saveCompBtn, dupBtn, upBtn, downBtn, delBtn);
 
         // Object Name Row
         HBox nameRow = new HBox(8);
@@ -1589,6 +1691,7 @@ public class TemplateDesigner extends BorderPane {
         namePrompt.getStyleClass().add("cell-bold-secondary");
         TextField objNameField = new TextField(el.getName() != null ? el.getName() : "");
         objNameField.setPromptText(el.getDisplayName());
+        objNameField.setTooltip(new Tooltip("Friendly name for this element in layers panel and inspector"));
         HBox.setHgrow(objNameField, Priority.ALWAYS);
         objNameField.textProperty().addListener((obs, o, v) -> {
             el.setName(v);
@@ -1612,6 +1715,7 @@ public class TemplateDesigner extends BorderPane {
         ComboBox<UnitConverter.Unit> unitBox = new ComboBox<>(FXCollections.observableArrayList(UnitConverter.Unit.values()));
         unitBox.setValue(UnitConverter.Unit.MM);
         unitBox.getStyleClass().add("designer-combo");
+        unitBox.setTooltip(new Tooltip("Measurement unit: Millimeters (mm), Points (pt), Centimeters (cm), Inches (in)"));
         HBox unitRow = new HBox(6, unitLbl, unitBox);
         unitRow.setAlignment(Pos.CENTER_LEFT);
         posGrid.add(unitRow, 0, 0, 4, 1);
@@ -1623,18 +1727,22 @@ public class TemplateDesigner extends BorderPane {
 
         Spinner<Double> xSpin = new Spinner<>(0.0, 5000.0, el.getX(), 1.0);
         xSpin.setPrefWidth(85);
+        xSpin.setTooltip(new Tooltip("Horizontal position (X) from the left edge of the page"));
         configureNumberSpinner(xSpin);
 
         Spinner<Double> ySpin = new Spinner<>(0.0, 5000.0, el.getY(), 1.0);
         ySpin.setPrefWidth(85);
+        ySpin.setTooltip(new Tooltip("Vertical position (Y) from the top edge of the page"));
         configureNumberSpinner(ySpin);
 
         Spinner<Double> wSpin = new Spinner<>(0.1, 5000.0, el.getW(), 1.0);
         wSpin.setPrefWidth(85);
+        wSpin.setTooltip(new Tooltip("Element width in current measurement units"));
         configureNumberSpinner(wSpin);
 
         Spinner<Double> hSpin = new Spinner<>(0.1, 5000.0, el.getH(), 1.0);
         hSpin.setPrefWidth(85);
+        hSpin.setTooltip(new Tooltip("Element height in current measurement units"));
         configureNumberSpinner(hSpin);
 
         final boolean[] updatingGeo = {false};
@@ -1735,14 +1843,17 @@ public class TemplateDesigner extends BorderPane {
 
         CheckBox repeatCb = new CheckBox("Repeat on multi-page bills");
         repeatCb.setSelected(el.isRepeatOnPages());
+        repeatCb.setTooltip(new Tooltip("Print this element on every subsequent page of multi-page invoices"));
         repeatCb.selectedProperty().addListener((obs, o, v) -> el.setRepeatOnPages(v));
 
         CheckBox blankCb = new CheckBox("Hide when blank / empty");
         blankCb.setSelected(el.isHideWhenBlank());
+        blankCb.setTooltip(new Tooltip("Automatically hide this element if its variable or text evaluates to empty"));
         blankCb.selectedProperty().addListener((obs, o, v) -> el.setHideWhenBlank(v));
 
         CheckBox lockCb = new CheckBox("Lock position on canvas");
         lockCb.setSelected(el.isLocked());
+        lockCb.setTooltip(new Tooltip("Lock element position and dimensions to prevent accidental dragging on canvas"));
         lockCb.selectedProperty().addListener((obs, o, v) -> el.setLocked(v));
 
         toggles.getChildren().addAll(repeatCb, blankCb, lockCb);
@@ -1848,9 +1959,11 @@ public class TemplateDesigner extends BorderPane {
         }
         ComboBox<String> fontCombo = new ComboBox<>(FXCollections.observableArrayList(fontList));
         fontCombo.setValue(el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI");
+        fontCombo.setTooltip(new Tooltip("Font typeface family"));
         fontCombo.valueProperty().addListener((obs, o, v) -> { el.setFontFamily(v); refreshCanvas(); });
 
         Spinner<Double> fontSpin = new Spinner<>(5.0, 72.0, el.getFontSize(), 0.5);
+        fontSpin.setTooltip(new Tooltip("Font size in points (pt)"));
         configureNumberSpinner(fontSpin);
         fontSpin.valueProperty().addListener((obs, o, v) -> { el.setFontSize(v); refreshCanvas(); });
 
@@ -1863,13 +1976,13 @@ public class TemplateDesigner extends BorderPane {
         ToggleButton boldBtn = new ToggleButton("B");
         boldBtn.setSelected(el.getFontWeight() >= 700);
         boldBtn.getStyleClass().add("text-bold");
-        boldBtn.setTooltip(new Tooltip("Bold"));
+        boldBtn.setTooltip(new Tooltip("Bold font weight"));
         boldBtn.setOnAction(e -> { el.setFontWeight(boldBtn.isSelected() ? 700 : 400); refreshCanvas(); });
 
         ToggleButton italicBtn = new ToggleButton("I");
         italicBtn.setSelected(el.isItalic());
         italicBtn.getStyleClass().add("text-italic");
-        italicBtn.setTooltip(new Tooltip("Italic"));
+        italicBtn.setTooltip(new Tooltip("Italic font style"));
         italicBtn.setOnAction(e -> { el.setItalic(italicBtn.isSelected()); refreshCanvas(); });
 
         Button alignL = createToolbarBtn("⯇", "Align Left", () -> { el.setAlign("left"); refreshCanvas(); });
@@ -1917,6 +2030,7 @@ public class TemplateDesigner extends BorderPane {
 
         CheckBox bgTransCb = new CheckBox("Transparent");
         bgTransCb.setSelected(el.getBg() == null || "transparent".equalsIgnoreCase(el.getBg()));
+        bgTransCb.setTooltip(new Tooltip("Make text box background transparent"));
         bgTransCb.setOnAction(e -> {
             if (bgTransCb.isSelected()) {
                 el.setBg("transparent");
@@ -1929,7 +2043,55 @@ public class TemplateDesigner extends BorderPane {
         colorGrid.add(new Label("Background:"), 0, 1);
         colorGrid.add(new HBox(6, bgColControl, bgTransCb), 1, 1);
 
-        sec.getChildren().addAll(textLbl, ta, varSec, fontRow, styleRow, colorGrid);
+        // Advanced Typography & Spacing
+        TitledPane spacingPane = new TitledPane();
+        spacingPane.setText("Typography & Spacing");
+        spacingPane.setExpanded(true);
+
+        GridPane spacingGrid = new GridPane();
+        spacingGrid.setHgap(8); spacingGrid.setVgap(8);
+        spacingGrid.setPadding(new Insets(8));
+
+        Spinner<Double> lineSpacingSpin = new Spinner<>(-10.0, 50.0, el.getLineSpacing(), 1.0);
+        lineSpacingSpin.setPrefWidth(85);
+        configureNumberSpinner(lineSpacingSpin);
+        lineSpacingSpin.setTooltip(new Tooltip("Line height / vertical spacing between lines in points (pt)"));
+        lineSpacingSpin.valueProperty().addListener((obs, o, v) -> { el.setLineSpacing(v); refreshCanvas(); });
+
+        Spinner<Double> letterSpacingSpin = new Spinner<>(-5.0, 20.0, el.getLetterSpacing(), 0.5);
+        letterSpacingSpin.setPrefWidth(85);
+        configureNumberSpinner(letterSpacingSpin);
+        letterSpacingSpin.setTooltip(new Tooltip("Letter / character tracking spacing in points (pt)"));
+        letterSpacingSpin.valueProperty().addListener((obs, o, v) -> { el.setLetterSpacing(v); refreshCanvas(); });
+
+        Spinner<Double> wordSpacingSpin = new Spinner<>(-10.0, 50.0, el.getWordSpacing(), 1.0);
+        wordSpacingSpin.setPrefWidth(85);
+        configureNumberSpinner(wordSpacingSpin);
+        wordSpacingSpin.setTooltip(new Tooltip("Spacing between words in points (pt)"));
+        wordSpacingSpin.valueProperty().addListener((obs, o, v) -> { el.setWordSpacing(v); refreshCanvas(); });
+
+        ComboBox<String> transformCombo = new ComboBox<>(FXCollections.observableArrayList("None", "UPPERCASE", "lowercase", "Capitalize"));
+        transformCombo.setValue(el.getTextTransform() != null && !el.getTextTransform().isBlank() ? el.getTextTransform() : "None");
+        transformCombo.getStyleClass().add("designer-combo");
+        transformCombo.setTooltip(new Tooltip("Text capitalization casing: None (original), UPPERCASE, lowercase, or Capitalize First Letters"));
+        transformCombo.valueProperty().addListener((obs, o, v) -> {
+            el.setTextTransform("None".equalsIgnoreCase(v) ? null : v);
+            refreshCanvas();
+        });
+
+        spacingGrid.add(new Label("Line Spacing:"), 0, 0);
+        spacingGrid.add(lineSpacingSpin, 1, 0);
+        spacingGrid.add(new Label("Letter Spacing:"), 2, 0);
+        spacingGrid.add(letterSpacingSpin, 3, 0);
+
+        spacingGrid.add(new Label("Word Spacing:"), 0, 1);
+        spacingGrid.add(wordSpacingSpin, 1, 1);
+        spacingGrid.add(new Label("Text Case:"), 2, 1);
+        spacingGrid.add(transformCombo, 3, 1);
+
+        spacingPane.setContent(spacingGrid);
+
+        sec.getChildren().addAll(textLbl, ta, varSec, fontRow, styleRow, colorGrid, spacingPane);
         propBox.getChildren().add(sec);
     }
 
@@ -2823,7 +2985,11 @@ public class TemplateDesigner extends BorderPane {
         Label title = new Label("SVG Vector Properties:");
         title.getStyleClass().add("prop-title");
 
-        Button loadSvgBtn = createToolbarBtn("📁 Load SVG File...", "Import .svg file content", () -> {
+        // SVG Help / Guidance banner
+        Label guideLbl = new Label("ℹ Supports full .svg vector files (<svg>, <path>, <rect>, <circle>, <polygon>) and raw path strings. Vectors scale sharply at any resolution.");
+        guideLbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #94A3B8; -fx-background-color: rgba(30, 41, 59, 0.6); -fx-padding: 6 8; -fx-background-radius: 4; -fx-wrap-text: true;");
+
+        Button loadSvgBtn = createToolbarBtn("📁 Load SVG File...", "Import .svg vector file from your computer", () -> {
             FileChooser fc = new FileChooser();
             fc.setTitle("Select SVG File");
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("SVG Files (*.svg)", "*.svg"));
@@ -2846,9 +3012,18 @@ public class TemplateDesigner extends BorderPane {
         TextArea svgArea = new TextArea(el.getSvgSource() != null ? el.getSvgSource() : "");
         svgArea.setPrefRowCount(4);
         svgArea.setWrapText(true);
+        svgArea.setTooltip(new Tooltip("Raw SVG XML markup or SVG path commands ('M... Z')"));
         svgArea.textProperty().addListener((obs, o, v) -> { el.setSvgSource(v); refreshCanvas(); });
 
-        sec.getChildren().addAll(title, loadSvgBtn, new Label("SVG Source XML:"), svgArea);
+        // Optional Color Tint
+        Node colControl = createColorPickerButton(el.getColor() != null ? el.getColor() : "#2563EB", hex -> {
+            el.setColor(hex);
+            refreshCanvas();
+        });
+        HBox colRow = new HBox(8, new Label("Color Tint / Fill:"), colControl);
+        colRow.setAlignment(Pos.CENTER_LEFT);
+
+        sec.getChildren().addAll(title, guideLbl, loadSvgBtn, new Label("SVG Source XML:"), svgArea, colRow);
         propBox.getChildren().add(sec);
     }
 
@@ -2866,6 +3041,7 @@ public class TemplateDesigner extends BorderPane {
                 "info", "heart", "shopping-cart", "truck", "zap", "tag", "award"
         ));
         iconCombo.setValue(el.getIconName() != null ? el.getIconName() : "check");
+        iconCombo.setTooltip(new Tooltip("Vector icon glyph to display"));
         iconCombo.valueProperty().addListener((obs, o, v) -> { el.setIconName(v); refreshCanvas(); });
 
         Node colNode = createColorPickerButton(el.getColor() != null ? el.getColor() : "#2563eb", hex -> {
@@ -2888,33 +3064,24 @@ public class TemplateDesigner extends BorderPane {
         GridPane g = new GridPane();
         g.setHgap(8); g.setVgap(6);
 
-        TextField wmText = new TextField(el.getWatermarkText() != null ? el.getWatermarkText() : (el.getText() != null ? el.getText() : "ORIGINAL"));
-        wmText.textProperty().addListener((obs, o, v) -> {
-            el.setWatermarkText(v);
-            el.setText(v);
-            refreshCanvas();
-        });
+        TextField wmField = new TextField(el.getText() != null ? el.getText() : "CONFIDENTIAL");
+        wmField.setTooltip(new Tooltip("Watermark text printed across the page background"));
+        wmField.textProperty().addListener((obs, o, v) -> { el.setText(v); refreshCanvas(); });
 
-        Slider opacSlider = new Slider(0.01, 1.0, el.getWatermarkOpacity() > 0 ? el.getWatermarkOpacity() : 0.12);
-        opacSlider.setShowTickMarks(true);
-        opacSlider.valueProperty().addListener((obs, o, v) -> {
-            el.setWatermarkOpacity(v.doubleValue());
-            refreshCanvas();
-        });
+        Slider opacSlider = new Slider(0.02, 0.5, el.getOpacity() > 0 ? el.getOpacity() : 0.08);
+        opacSlider.setTooltip(new Tooltip("Watermark transparency level"));
+        opacSlider.valueProperty().addListener((obs, o, v) -> { el.setOpacity(v.doubleValue()); refreshCanvas(); });
 
-        Slider rotSlider = new Slider(-90.0, 90.0, el.getWatermarkAngle() != 0 ? el.getWatermarkAngle() : -30.0);
-        rotSlider.setShowTickMarks(true);
-        rotSlider.valueProperty().addListener((obs, o, v) -> {
-            el.setWatermarkAngle(v.doubleValue());
-            refreshCanvas();
-        });
+        Slider rotSlider = new Slider(-90, 90, el.getRotation() != 0 ? el.getRotation() : -30);
+        rotSlider.setTooltip(new Tooltip("Watermark diagonal tilt angle in degrees"));
+        rotSlider.valueProperty().addListener((obs, o, v) -> { el.setRotation(v.doubleValue()); refreshCanvas(); });
 
-        Node colNode = createColorPickerButton(el.getColor() != null ? el.getColor() : "#94a3b8", hex -> {
+        Node colNode = createColorPickerButton(el.getColor() != null ? el.getColor() : "#000000", hex -> {
             el.setColor(hex);
             refreshCanvas();
         });
 
-        g.add(new Label("Text:"), 0, 0); g.add(wmText, 1, 0);
+        g.add(new Label("Text:"), 0, 0); g.add(wmField, 1, 0);
         g.add(new Label("Opacity:"), 0, 1); g.add(opacSlider, 1, 1);
         g.add(new Label("Angle (°):"), 0, 2); g.add(rotSlider, 1, 2);
         g.add(new Label("Color:"), 0, 3); g.add(colNode, 1, 3);
@@ -2934,6 +3101,7 @@ public class TemplateDesigner extends BorderPane {
         // Opacity
         Label opacLbl = new Label(String.format("Opacity (%.0f%%):", el.getOpacity() * 100));
         Slider opacSlider = new Slider(0.0, 1.0, el.getOpacity());
+        opacSlider.setTooltip(new Tooltip("Element layer opacity (0% to 100%)"));
         opacSlider.valueProperty().addListener((obs, o, v) -> {
             el.setOpacity(v.doubleValue());
             opacLbl.setText(String.format("Opacity (%.0f%%):", v.doubleValue() * 100));
@@ -2946,23 +3114,28 @@ public class TemplateDesigner extends BorderPane {
         transGrid.setHgap(8); transGrid.setVgap(6);
 
         Spinner<Double> rotSpin = new Spinner<>(-360.0, 360.0, el.getRotation(), 5.0);
+        rotSpin.setTooltip(new Tooltip("Rotation angle in degrees (-360° to +360°)"));
         configureNumberSpinner(rotSpin);
         rotSpin.valueProperty().addListener((obs, o, v) -> { el.setRotation(v); refreshCanvas(); });
 
         Spinner<Double> sxSpin = new Spinner<>(0.1, 5.0, el.getScaleX() > 0 ? el.getScaleX() : 1.0, 0.1);
+        sxSpin.setTooltip(new Tooltip("Horizontal scaling factor (1.0 = 100%)"));
         configureNumberSpinner(sxSpin);
         sxSpin.valueProperty().addListener((obs, o, v) -> { el.setScaleX(v); refreshCanvas(); });
 
         Spinner<Double> sySpin = new Spinner<>(0.1, 5.0, el.getScaleY() > 0 ? el.getScaleY() : 1.0, 0.1);
+        sySpin.setTooltip(new Tooltip("Vertical scaling factor (1.0 = 100%)"));
         configureNumberSpinner(sySpin);
         sySpin.valueProperty().addListener((obs, o, v) -> { el.setScaleY(v); refreshCanvas(); });
 
         CheckBox flipH = new CheckBox("Flip Horizontal");
         flipH.setSelected(el.isFlipHorizontal());
+        flipH.setTooltip(new Tooltip("Mirror element horizontally"));
         flipH.selectedProperty().addListener((obs, o, v) -> { el.setFlipHorizontal(v); refreshCanvas(); });
 
         CheckBox flipV = new CheckBox("Flip Vertical");
         flipV.setSelected(el.isFlipVertical());
+        flipV.setTooltip(new Tooltip("Mirror element vertically"));
         flipV.selectedProperty().addListener((obs, o, v) -> { el.setFlipVertical(v); refreshCanvas(); });
 
         transGrid.add(new Label("Rotation (°):"), 0, 0); transGrid.add(rotSpin, 1, 0);
@@ -2975,6 +3148,7 @@ public class TemplateDesigner extends BorderPane {
         // Drop Shadow
         CheckBox shadowCb = new CheckBox("Enable Drop Shadow");
         shadowCb.setSelected(el.isShadowEnabled());
+        shadowCb.setTooltip(new Tooltip("Render a drop shadow behind this element"));
         shadowCb.selectedProperty().addListener((obs, o, v) -> { el.setShadowEnabled(v); refreshCanvas(); });
 
         Node shadowCol = createColorPickerButton(el.getShadowColor() != null ? el.getShadowColor() : "#000000", hex -> {
@@ -2983,14 +3157,17 @@ public class TemplateDesigner extends BorderPane {
         });
 
         Spinner<Double> blurSpin = new Spinner<>(0.0, 50.0, el.getShadowBlur() > 0 ? el.getShadowBlur() : 4.0, 1.0);
+        blurSpin.setTooltip(new Tooltip("Shadow blur softness radius in pixels"));
         configureNumberSpinner(blurSpin);
         blurSpin.valueProperty().addListener((obs, o, v) -> { el.setShadowBlur(v); refreshCanvas(); });
 
         Spinner<Double> offXSpin = new Spinner<>(-50.0, 50.0, el.getShadowOffsetX(), 1.0);
+        offXSpin.setTooltip(new Tooltip("Horizontal shadow offset in pixels"));
         configureNumberSpinner(offXSpin);
         offXSpin.valueProperty().addListener((obs, o, v) -> { el.setShadowOffsetX(v); refreshCanvas(); });
 
         Spinner<Double> offYSpin = new Spinner<>(-50.0, 50.0, el.getShadowOffsetY(), 1.0);
+        offYSpin.setTooltip(new Tooltip("Vertical shadow offset in pixels"));
         configureNumberSpinner(offYSpin);
         offYSpin.valueProperty().addListener((obs, o, v) -> { el.setShadowOffsetY(v); refreshCanvas(); });
 
@@ -3007,10 +3184,12 @@ public class TemplateDesigner extends BorderPane {
         // Clipping
         CheckBox clipCb = new CheckBox("Clip to Container");
         clipCb.setSelected(el.isClipEnabled());
+        clipCb.setTooltip(new Tooltip("Clip element rendering inside a geometric shape"));
         clipCb.selectedProperty().addListener((obs, o, v) -> { el.setClipEnabled(v); refreshCanvas(); });
 
         ComboBox<String> clipShape = new ComboBox<>(FXCollections.observableArrayList("RECTANGLE", "CIRCLE", "ROUNDED_RECT"));
         clipShape.setValue(el.getClipShape() != null ? el.getClipShape() : "RECTANGLE");
+        clipShape.setTooltip(new Tooltip("Clipping container shape"));
         clipShape.valueProperty().addListener((obs, o, v) -> { el.setClipShape(v); refreshCanvas(); });
 
         HBox clipRow = new HBox(8, clipCb, clipShape);
@@ -3026,22 +3205,77 @@ public class TemplateDesigner extends BorderPane {
         bindPane.setText("Data Binding & Conditions");
         bindPane.setExpanded(false);
 
+        VBox contentBox = new VBox(8);
+        contentBox.setPadding(new Insets(8));
+
+        // Help & Syntax Guide banner with rich hover tooltip
+        HBox helpBanner = new HBox(6);
+        helpBanner.setAlignment(Pos.CENTER_LEFT);
+        helpBanner.setStyle("-fx-background-color: rgba(59, 130, 246, 0.12); -fx-border-color: rgba(59, 130, 246, 0.35); -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 6 10;");
+
+        Label helpIcon = new Label("ⓘ");
+        helpIcon.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #38BDF8;");
+
+        Label helpText = new Label("How Data Binding works (Hover to view guide)");
+        helpText.setStyle("-fx-font-size: 11px; -fx-text-fill: #93C5FD; -fx-cursor: hand; -fx-font-weight: bold;");
+
+        String guideTooltip = """
+                DATA BINDING GUIDE & SYNTAX REFERENCE:
+                ─────────────────────────────────────────────────────────────
+                1. Text Ingestion & Placeholders:
+                   Embed variables directly inside any text object:
+                   • {{invoice_no}}       - Invoice / Bill serial number
+                   • {{invoice_date}}     - Date of invoice issue
+                   • {{due_date}}         - Payment due date
+                   • {{buyer_name}}       - Customer / Client legal name
+                   • {{buyer_gstin}}      - Customer GST identification number
+                   • {{grand_total}}      - Total bill amount payable
+                   • {{due_amount}}       - Remaining balance due
+                   • {{seller_bank_name}} - Business bank name for payment
+                   • {{seller_acc_no}}    - Business bank account number
+                   • {{seller_ifsc}}      - Business IFSC branch code
+
+                2. Binding Path (Direct Model Field Access):
+                   Binds this entire object directly to a data property:
+                   • invoice.number, invoice.date, invoice.total, invoice.balance
+                   • buyer.name, buyer.gstin, buyer.phone, buyer.address
+                   • seller.name, seller.gstin, seller.bankName, seller.accountNo
+                   • meta.pageNumber, meta.totalPages, meta.printDate
+
+                3. Visible Condition (Conditional Logic):
+                   Only render this element when the condition is TRUE:
+                   • invoice.balance > 0      (Show 'UNPAID / BALANCE' stamp only if due)
+                   • buyer.gstin != null      (Show B2B Tax details only if GSTIN present)
+                   • invoice.taxTotal > 0     (Show Tax breakdown table only when taxed)
+                   • seller.state == buyer.state (Show Intra-state CGST/SGST note)
+                ─────────────────────────────────────────────────────────────""";
+
+        Tooltip guideTip = new Tooltip(guideTooltip);
+        guideTip.setStyle("-fx-font-size: 11px; -fx-font-family: 'Consolas', monospace; -fx-background-color: #0F172A; -fx-text-fill: #E2E8F0; -fx-border-color: #38BDF8; -fx-border-width: 1px; -fx-padding: 8;");
+        guideTip.setShowDelay(javafx.util.Duration.millis(80));
+        guideTip.setShowDuration(javafx.util.Duration.seconds(30));
+        Tooltip.install(helpBanner, guideTip);
+
+        helpBanner.getChildren().addAll(helpIcon, helpText);
+
         GridPane g = new GridPane();
         g.setHgap(8); g.setVgap(6);
-        g.setPadding(new Insets(8));
 
         TextField bindField = new TextField(el.getBinding() != null ? el.getBinding() : "");
         bindField.setPromptText("e.g. buyer.name or invoice.number");
+        bindField.setTooltip(new Tooltip("Direct context binding path (e.g. invoice.number, buyer.name, seller.bankName)"));
         bindField.textProperty().addListener((obs, o, v) -> el.setBinding(v));
 
         TextField condField = new TextField(el.getVisibleCondition() != null ? el.getVisibleCondition() : "");
         condField.setPromptText("e.g. invoice.balance > 0");
+        condField.setTooltip(new Tooltip("Conditional expression: element renders only if condition is true (e.g. invoice.balance > 0)"));
         condField.textProperty().addListener((obs, o, v) -> el.setVisibleCondition(v));
 
         g.add(new Label("Binding Path:"), 0, 0); g.add(bindField, 1, 0);
         g.add(new Label("Visible Condition:"), 0, 1); g.add(condField, 1, 1);
 
-        bindPane.setContent(g);
+        contentBox.getChildren().addAll(helpBanner, g);
+        bindPane.setContent(contentBox);
         propBox.getChildren().add(bindPane);
     }
 
@@ -3068,6 +3302,261 @@ public class TemplateDesigner extends BorderPane {
         updatePropertiesPanel();
         refreshLayersList();
         Toast.show(app.getRootPane(), "Component Added", "Added " + type.getTitle() + " (" + compElements.size() + " elements)", false);
+    }
+
+    private void rebuildComponentsMenu() {
+        compMenu.getItems().clear();
+
+        MenuItem headerPreset = new MenuItem("── Built-in Presets ──");
+        headerPreset.setDisable(true);
+        compMenu.getItems().add(headerPreset);
+
+        for (ComponentPreset.PresetType type : ComponentPreset.PresetType.values()) {
+            MenuItem item = new MenuItem(type.getIcon() + "  " + type.getTitle());
+            item.setOnAction(e -> addComponent(type));
+            compMenu.getItems().add(item);
+        }
+
+        compMenu.getItems().add(new SeparatorMenuItem());
+
+        MenuItem headerCustom = new MenuItem("── Saved Custom Components ──");
+        headerCustom.setDisable(true);
+        compMenu.getItems().add(headerCustom);
+
+        List<CustomComponent> customList = CustomComponentManager.loadComponents();
+        if (customList.isEmpty()) {
+            MenuItem emptyItem = new MenuItem("(No custom components saved yet)");
+            emptyItem.setDisable(true);
+            compMenu.getItems().add(emptyItem);
+        } else {
+            for (CustomComponent cc : customList) {
+                MenuItem ccItem = new MenuItem("🧩  " + cc.getName() + " (" + (cc.getElements() != null ? cc.getElements().size() : 0) + " items)");
+                ccItem.setOnAction(e -> addCustomComponent(cc));
+                compMenu.getItems().add(ccItem);
+            }
+        }
+
+        compMenu.getItems().add(new SeparatorMenuItem());
+        MenuItem saveCustomItem = new MenuItem("💾  Save Selected as Component...");
+        saveCustomItem.setOnAction(e -> saveSelectionAsComponent());
+        compMenu.getItems().add(saveCustomItem);
+    }
+
+    private void addCustomComponent(CustomComponent cc) {
+        if (cc == null || cc.getElements() == null || cc.getElements().isEmpty()) return;
+        double startY = 30.0;
+        if (template.getElements() != null && !template.getElements().isEmpty()) {
+            double maxY = 0;
+            for (TemplateElement e : template.getElements()) {
+                if (e != null) maxY = Math.max(maxY, e.getY() + e.getH());
+            }
+            if (maxY < 220 && maxY > 10) {
+                startY = maxY + 5.0;
+            }
+        }
+        List<TemplateElement> compElements = CustomComponentManager.instantiateComponent(cc, 15.0, startY);
+        for (TemplateElement e : compElements) {
+            template.getElements().add(e);
+        }
+        if (!compElements.isEmpty()) {
+            selectedElement = compElements.get(0);
+        }
+        saveState();
+        refreshCanvas();
+        updatePropertiesPanel();
+        refreshLayersList();
+        Toast.show(app.getRootPane(), "Component Added", "Added \"" + cc.getName() + "\" (" + compElements.size() + " elements)", false);
+    }
+
+    private void saveSelectionAsComponent() {
+        List<TemplateElement> toSave = new ArrayList<>();
+        if (selectedElement != null) {
+            if (selectedElement.isGrouped()) {
+                for (TemplateElement el : template.getElements()) {
+                    if (Objects.equals(el.getGroupId(), selectedElement.getGroupId())) {
+                        toSave.add(el);
+                    }
+                }
+            } else {
+                ObservableList<TemplateElement> selectedLayers = layersList.getSelectionModel().getSelectedItems();
+                if (selectedLayers != null && selectedLayers.size() > 1) {
+                    toSave.addAll(selectedLayers);
+                } else {
+                    toSave.add(selectedElement);
+                }
+            }
+        } else {
+            ObservableList<TemplateElement> selectedLayers = layersList.getSelectionModel().getSelectedItems();
+            if (selectedLayers != null && !selectedLayers.isEmpty()) {
+                toSave.addAll(selectedLayers);
+            }
+        }
+
+        if (toSave.isEmpty()) {
+            Toast.show(app.getRootPane(), "Save Component", "Please select an element, group, or multiple layers to save as a component.", true);
+            return;
+        }
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Save as Custom Component");
+        dialog.setHeaderText("Save " + toSave.size() + " element(s) as reusable component:");
+        if (getScene() != null && getScene().getWindow() != null) {
+            dialog.initOwner(getScene().getWindow());
+        }
+
+        VBox box = new VBox(10);
+        box.setPadding(new Insets(16));
+        box.setPrefWidth(360);
+
+        Label nameLbl = new Label("Component Name:");
+        nameLbl.setStyle("-fx-text-fill: #94A3B8; -fx-font-weight: bold;");
+        TextField nameInput = new TextField(selectedElement != null && selectedElement.getGroupName() != null ? selectedElement.getGroupName() : "My Custom Block");
+
+        Label descLbl = new Label("Description (optional):");
+        descLbl.setStyle("-fx-text-fill: #94A3B8; -fx-font-weight: bold;");
+        TextField descInput = new TextField();
+        descInput.setPromptText("e.g. Header with logo and metadata");
+
+        box.getChildren().addAll(nameLbl, nameInput, descLbl, descInput);
+        dialog.getDialogPane().setContent(box);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        dialog.showAndWait().ifPresent(btn -> {
+            if (btn == ButtonType.OK) {
+                String name = nameInput.getText().trim();
+                if (name.isEmpty()) name = "Untitled Component";
+                String desc = descInput.getText().trim();
+                try {
+                    CustomComponentManager.saveComponent(name, desc, toSave);
+                    rebuildComponentsMenu();
+                    Toast.show(app.getRootPane(), "Component Saved", "Saved \"" + name + "\" to custom components.", false);
+                } catch (Exception ex) {
+                    Toast.show(app.getRootPane(), "Save Error", "Failed to save component: " + ex.getMessage(), true);
+                }
+            }
+        });
+    }
+
+    private void groupSelected() {
+        ObservableList<TemplateElement> selectedItems = layersList.getSelectionModel().getSelectedItems();
+        List<TemplateElement> toGroup = new ArrayList<>();
+        if (selectedItems != null && selectedItems.size() > 1) {
+            toGroup.addAll(selectedItems);
+        } else if (selectedElement != null) {
+            toGroup.add(selectedElement);
+        }
+
+        if (toGroup.isEmpty()) {
+            Toast.show(app.getRootPane(), "Group", "Select two or more elements in Layers or on Canvas to group.", true);
+            return;
+        }
+
+        String defaultName = "Group " + (template.getElements().stream().map(TemplateElement::getGroupId).filter(Objects::nonNull).distinct().count() + 1);
+        TextInputDialog d = new TextInputDialog(toGroup.size() == 1 && toGroup.get(0).getGroupName() != null ? toGroup.get(0).getGroupName() : defaultName);
+        d.setTitle("Create Group");
+        d.setHeaderText("Group " + toGroup.size() + " element(s) together:");
+        d.setContentText("Group Name:");
+        if (getScene() != null && getScene().getWindow() != null) {
+            d.initOwner(getScene().getWindow());
+        }
+
+        Optional<String> res = d.showAndWait();
+        if (res.isPresent()) {
+            String gname = res.get().trim().isEmpty() ? defaultName : res.get().trim();
+            String newGid = UUID.randomUUID().toString();
+            for (TemplateElement elem : toGroup) {
+                elem.setGroupId(newGid);
+                elem.setGroupName(gname);
+            }
+            saveState();
+            refreshCanvas();
+            refreshLayersList();
+            updatePropertiesPanel();
+            Toast.show(app.getRootPane(), "Grouped", "Grouped " + toGroup.size() + " elements as \"" + gname + "\".", false);
+        }
+    }
+
+    private void ungroupSelected() {
+        ObservableList<TemplateElement> selectedItems = layersList.getSelectionModel().getSelectedItems();
+        List<TemplateElement> targets = new ArrayList<>();
+        if (selectedItems != null && !selectedItems.isEmpty()) {
+            targets.addAll(selectedItems);
+        }
+        if (targets.isEmpty() && selectedElement != null) {
+            targets.add(selectedElement);
+        }
+        if (targets.isEmpty()) return;
+
+        Set<String> affectedGroups = new HashSet<>();
+        for (TemplateElement elem : targets) {
+            if (elem.isGrouped()) {
+                affectedGroups.add(elem.getGroupId());
+            }
+        }
+
+        if (affectedGroups.isEmpty()) {
+            Toast.show(app.getRootPane(), "Ungroup", "Selected element(s) are not part of any group.", true);
+            return;
+        }
+
+        int count = 0;
+        for (TemplateElement elem : template.getElements()) {
+            if (elem.getGroupId() != null && affectedGroups.contains(elem.getGroupId())) {
+                elem.setGroupId(null);
+                elem.setGroupName(null);
+                count++;
+            }
+        }
+
+        saveState();
+        refreshCanvas();
+        refreshLayersList();
+        updatePropertiesPanel();
+        Toast.show(app.getRootPane(), "Ungrouped", "Ungrouped " + count + " elements.", false);
+    }
+
+    private void toggleAllVisibility() {
+        if (template.getElements().isEmpty()) return;
+        boolean anyVisible = template.getElements().stream().anyMatch(e -> !e.isHidden());
+        for (TemplateElement el : template.getElements()) {
+            el.setHidden(anyVisible);
+        }
+        saveState();
+        refreshCanvas();
+        refreshLayersList();
+        updateSelectionOverlay();
+    }
+
+    private String getTypeGlyph(TemplateElement item) {
+        if (item == null || item.getType() == null) return "EL";
+        return switch (item.getType()) {
+            case TEXT, PAGENO -> "TXT";
+            case TABLE -> "TBL";
+            case IMAGE -> "IMG";
+            case RECT, CIRCLE, ELLIPSE, STAR, POLYGON, ARROW, ARC -> "SHP";
+            case LINE, DIVIDER -> "LIN";
+            case SVG, PATH -> "SVG";
+            case QRCODE -> "QR";
+            case BARCODE -> "BAR";
+            case ICON -> "ICO";
+            case WATERMARK -> "WM";
+            case FREEHAND -> "SIG";
+            default -> "OBJ";
+        };
+    }
+
+    private String getTypeBadgeBg(TemplateElement item) {
+        if (item == null || item.getType() == null) return "rgba(148, 163, 184, 0.2)";
+        return switch (item.getType()) {
+            case TEXT, PAGENO -> "rgba(59, 130, 246, 0.25)";
+            case TABLE -> "rgba(16, 185, 129, 0.25)";
+            case IMAGE -> "rgba(236, 72, 153, 0.25)";
+            case RECT, CIRCLE, ELLIPSE, STAR, POLYGON, ARROW, ARC -> "rgba(217, 161, 59, 0.25)";
+            case LINE, DIVIDER -> "rgba(139, 92, 246, 0.25)";
+            case SVG, PATH -> "rgba(6, 182, 212, 0.25)";
+            case QRCODE, BARCODE -> "rgba(249, 115, 22, 0.25)";
+            default -> "rgba(100, 116, 139, 0.25)";
+        };
     }
 
     /**
@@ -3918,7 +4407,9 @@ public class TemplateDesigner extends BorderPane {
         isUpdatingLayersSelection = true;
         try {
             if (selectedElement != null) {
+                layersList.getSelectionModel().clearSelection();
                 layersList.getSelectionModel().select(selectedElement);
+                layersList.scrollTo(selectedElement);
             } else {
                 layersList.getSelectionModel().clearSelection();
             }
@@ -3928,7 +4419,8 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void refreshLayersList() {
-        layersList.setItems(FXCollections.observableArrayList(template.getElements()));
+        layersData.setAll(template.getElements());
+        layerCountBadge.setText(template.getElements().size() + " items");
         syncLayersListSelection();
     }
 
@@ -4072,6 +4564,8 @@ public class TemplateDesigner extends BorderPane {
                 {"Ctrl + Y / Ctrl + Shift + Z", "Redo previously undone action"},
                 {"Ctrl + C / Ctrl + V", "Copy and paste selected element"},
                 {"Ctrl + D", "Duplicate selected element"},
+                {"Ctrl + G", "Group selected elements together"},
+                {"Ctrl + Shift + G", "Ungroup selected elements"},
                 {"Delete / Backspace", "Delete selected canvas element (safe while typing)"},
                 {"Space (Hold) / H", "Pan canvas freely with hand tool"},
                 {"V", "Switch to select & move tool"},
@@ -4203,6 +4697,13 @@ public class TemplateDesigner extends BorderPane {
             e.consume();
         } else if (e.isControlDown() && e.getCode() == KeyCode.D) {
             duplicateSelected();
+            e.consume();
+        } else if (e.isControlDown() && e.getCode() == KeyCode.G) {
+            if (e.isShiftDown()) {
+                ungroupSelected();
+            } else {
+                groupSelected();
+            }
             e.consume();
         } else if (e.getCode() == KeyCode.DELETE || e.getCode() == KeyCode.BACK_SPACE) {
             deleteSelected();

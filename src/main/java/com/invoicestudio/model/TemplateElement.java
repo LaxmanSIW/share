@@ -47,7 +47,11 @@ public class TemplateElement {
     private String align = "left"; // left, center, right
     private String vAlign = "top"; // top, middle, bottom
     private double lineHeight = 1.25;
+    private double lineSpacing = 0;
     private double letterSpacing = 0;
+    private double wordSpacing = 0;
+    private String textTransform = "none"; // none, uppercase, lowercase, capitalize
+    private String groupName = "";
 
     /* ---- appearance ---- */
     private String bg = "transparent";
@@ -232,8 +236,17 @@ public class TemplateElement {
     public double getLineHeight() { return lineHeight; }
     public void setLineHeight(double lineHeight) { this.lineHeight = lineHeight; }
 
+    public double getLineSpacing() { return lineSpacing; }
+    public void setLineSpacing(double lineSpacing) { this.lineSpacing = lineSpacing; }
+
     public double getLetterSpacing() { return letterSpacing; }
     public void setLetterSpacing(double letterSpacing) { this.letterSpacing = letterSpacing; }
+
+    public double getWordSpacing() { return wordSpacing; }
+    public void setWordSpacing(double wordSpacing) { this.wordSpacing = wordSpacing; }
+
+    public String getTextTransform() { return textTransform != null ? textTransform : "none"; }
+    public void setTextTransform(String textTransform) { this.textTransform = textTransform; }
 
     public String getBg() { return bg; }
     public void setBg(String bg) { this.bg = bg; }
@@ -651,6 +664,11 @@ public class TemplateElement {
 
     public String getGroupId() { return groupId != null ? groupId : ""; }
     public void setGroupId(String groupId) { this.groupId = groupId; }
+
+    public String getGroupName() { return groupName != null ? groupName : ""; }
+    public void setGroupName(String groupName) { this.groupName = groupName; }
+
+    public boolean isGrouped() { return groupId != null && !groupId.isBlank(); }
 
     public String getComponentType() { return componentType != null ? componentType : ""; }
     public void setComponentType(String componentType) { this.componentType = componentType; }

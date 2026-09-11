@@ -167,8 +167,11 @@ public class DesignObjectRenderer {
     }
 
     private static Node renderPath(TemplateElement el, double w, double h) {
-        String data = !el.getPathData().isBlank() ? el.getPathData() : el.getSvgSource();
-        if (data.isBlank()) data = "M 0 0 L " + w + " 0 L " + (w / 2.0) + " " + h + " Z";
+        String data = el.getSvgSource() != null && !el.getSvgSource().isBlank() ? el.getSvgSource() : el.getPathData();
+        if (data != null && data.trim().toLowerCase(java.util.Locale.ROOT).contains("<svg")) {
+            return SvgVectorParser.renderToJavaFx(el, w, h);
+        }
+        if (data == null || data.isBlank()) data = "M 0 0 L " + w + " 0 L " + (w / 2.0) + " " + h + " Z";
 
         SVGPath path = new SVGPath();
         path.setContent(data);
@@ -303,12 +306,17 @@ public class DesignObjectRenderer {
     private static Node renderText(TemplateElement el, RenderContext ctx, double w, double h) {
         String raw = el.getText() != null ? el.getText() : "";
         String resolved = ctx != null ? ctx.resolveText(raw) : raw;
-        if (el.isUppercase()) resolved = resolved.toUpperCase();
+        resolved = applyTextTransform(resolved, el.getTextTransform(), el.isUppercase());
 
         Label lbl = new Label(resolved);
         lbl.setPrefSize(w, h);
         lbl.setMinSize(w, h);
         lbl.setWrapText(true);
+
+        if (el.getLineHeight() > 0) {
+            double lineSpacingPx = (el.getLineHeight() - 1.0) * (el.getFontSize() * 1.3);
+            lbl.setLineSpacing(Math.max(-5.0, lineSpacingPx));
+        }
 
         String colorHex = el.getColor() != null && !el.getColor().isBlank() ? el.getColor() : "#1a1a1a";
         String bgStyle = "";
@@ -323,13 +331,21 @@ public class DesignObjectRenderer {
             borderStyle += "-fx-background-radius: " + (el.getBorderRadius() * MM_PX) + "; -fx-border-radius: " + (el.getBorderRadius() * MM_PX) + ";";
         }
 
+        String spacingStyle = "";
+        if (el.getLetterSpacing() != 0) {
+            spacingStyle += "-fx-letter-spacing: " + el.getLetterSpacing() + "px; ";
+        }
+        if (el.getWordSpacing() != 0) {
+            spacingStyle += "-fx-word-spacing: " + el.getWordSpacing() + "px; ";
+        }
+
         String fw = el.getFontWeight() >= 700 ? "bold" : "normal";
         String fs = el.isItalic() ? "italic" : "normal";
         String family = el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI";
 
         lbl.setStyle("-fx-text-fill: " + colorHex + "; -fx-fill: " + colorHex +
                 "; -fx-font-size: " + (el.getFontSize() * 1.3) + "px; -fx-font-family: '" + family +
-                "'; -fx-font-weight: " + fw + "; -fx-font-style: " + fs + "; " + bgStyle + " " + borderStyle);
+                "'; -fx-font-weight: " + fw + "; -fx-font-style: " + fs + "; " + bgStyle + " " + borderStyle + " " + spacingStyle);
 
         Pos alignment = Pos.TOP_LEFT;
         if ("center".equalsIgnoreCase(el.getAlign())) alignment = Pos.TOP_CENTER;
@@ -346,6 +362,37 @@ public class DesignObjectRenderer {
         }
         lbl.setAlignment(alignment);
         return lbl;
+    }
+
+    public static String applyTextTransform(String text, String transform, boolean legacyUppercase) {
+        if (text == null || text.isEmpty()) return "";
+        if (legacyUppercase || "uppercase".equalsIgnoreCase(transform)) {
+            return text.toUpperCase(java.util.Locale.ROOT);
+        }
+        if ("lowercase".equalsIgnoreCase(transform)) {
+            return text.toLowerCase(java.util.Locale.ROOT);
+        }
+        if ("capitalize".equalsIgnoreCase(transform)) {
+            return capitalizeText(text);
+        }
+        return text;
+    }
+
+    public static String capitalizeText(String text) {
+        if (text == null || text.isBlank()) return text;
+        char[] chars = text.toCharArray();
+        boolean startWord = true;
+        for (int i = 0; i < chars.length; i++) {
+            if (Character.isWhitespace(chars[i])) {
+                startWord = true;
+            } else if (startWord) {
+                chars[i] = Character.toTitleCase(chars[i]);
+                startWord = false;
+            } else {
+                chars[i] = Character.toLowerCase(chars[i]);
+            }
+        }
+        return new String(chars);
     }
 
     private static Node renderImage(TemplateElement el, RenderContext ctx, double w, double h) {
@@ -503,7 +550,7 @@ public class DesignObjectRenderer {
         }
     }
 
-    private static void applyEffectsAndTransforms(Node node, TemplateElement el) {
+    public static void applyEffectsAndTransforms(Node node, TemplateElement el) {
         if (el.isShadowEnabled()) {
             DropShadow ds = new DropShadow();
             ds.setBlurType(BlurType.GAUSSIAN);
@@ -518,6 +565,10 @@ public class DesignObjectRenderer {
 
         if (el.getOpacity() < 1.0 && el.getOpacity() >= 0.0) {
             node.setOpacity(el.getOpacity());
+        }
+
+        if (el.getRotation() != 0) {
+            node.setRotate(el.getRotation());
         }
 
         if (el.isFlipHorizontal()) {

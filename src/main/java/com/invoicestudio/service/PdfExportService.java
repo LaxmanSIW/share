@@ -19,7 +19,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class PdfExportService {
 
@@ -356,17 +358,21 @@ public class PdfExportService {
                 }
             }
             case PATH, SVG -> {
-                String d = !el.getPathData().isBlank() ? el.getPathData() : el.getSvgSource();
-                Path2D.Double path = parseSvgPathToAwt(d, x, y, PX_PER_MM);
-                Paint p = buildPaint2D(el, x, y, w, h);
-                if (p != null) {
-                    g2.setPaint(p);
-                    g2.fill(path);
-                }
-                if (el.isStrokeEnabled() || el.getBorderWidth() > 0) {
-                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
-                    g2.setStroke(buildStroke2D(el));
-                    g2.draw(path);
+                String d = el.getSvgSource() != null && !el.getSvgSource().isBlank() ? el.getSvgSource() : el.getPathData();
+                if (d != null && d.trim().toLowerCase(java.util.Locale.ROOT).contains("<svg")) {
+                    SvgVectorParser.renderToGraphics2D(g2, el, x, y, w, h);
+                } else {
+                    Path2D.Double path = parseSvgPathToAwt(d, x, y, PX_PER_MM);
+                    Paint p = buildPaint2D(el, x, y, w, h);
+                    if (p != null) {
+                        g2.setPaint(p);
+                        g2.fill(path);
+                    }
+                    if (el.isStrokeEnabled() || el.getBorderWidth() > 0) {
+                        g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                        g2.setStroke(buildStroke2D(el));
+                        g2.draw(path);
+                    }
                 }
             }
             case STAR -> {
@@ -470,7 +476,7 @@ public class PdfExportService {
                 }
 
                 String text = ctx.resolveText(el.getText());
-                if (el.isUppercase()) text = text.toUpperCase();
+                text = DesignObjectRenderer.applyTextTransform(text, el.getTextTransform(), el.isUppercase());
 
                 int fontStyle = Font.PLAIN;
                 if (el.getFontWeight() >= 700) fontStyle |= Font.BOLD;
@@ -479,6 +485,11 @@ public class PdfExportService {
                 String fontName = el.getFontFamily() != null ? el.getFontFamily() : "SansSerif";
                 int fontSizePx = (int) Math.max(8, Math.round(el.getFontSize() * (DPI / 72.0)));
                 Font font = new Font(fontName, fontStyle, fontSizePx);
+                if (el.getLetterSpacing() != 0) {
+                    Map<java.awt.font.TextAttribute, Object> attr = new HashMap<>();
+                    attr.put(java.awt.font.TextAttribute.TRACKING, el.getLetterSpacing() / 10.0);
+                    font = font.deriveFont(attr);
+                }
                 g2.setFont(font);
                 g2.setColor(parseColor(el.getColor(), Color.BLACK));
 
@@ -565,7 +576,7 @@ public class PdfExportService {
         return null;
     }
 
-    private static BasicStroke buildStroke2D(TemplateElement el) {
+    public static BasicStroke buildStroke2D(TemplateElement el) {
         float bw = (float) Math.max(0.5, (el.getBorderWidth() > 0 ? el.getBorderWidth() : 0.5) * PX_PER_MM);
         int cap = switch (el.getLineCap().toLowerCase()) {
             case "round" -> BasicStroke.CAP_ROUND;
@@ -669,7 +680,11 @@ public class PdfExportService {
         return p;
     }
 
-    private static Path2D.Double parseSvgPathToAwt(String d, double offsetX, double offsetY, double scale) {
+    public static Path2D.Double parseSvgPathToAwt(String d) {
+        return parseSvgPathToAwt(d, 0.0, 0.0, 1.0);
+    }
+
+    public static Path2D.Double parseSvgPathToAwt(String d, double offsetX, double offsetY, double scale) {
         Path2D.Double p = new Path2D.Double();
         if (d == null || d.isBlank()) return p;
         try {
@@ -1231,7 +1246,7 @@ public class PdfExportService {
         }
     }
 
-    private static Color parseColor(String hex, Color fallback) {
+    public static Color parseColor(String hex, Color fallback) {
         if (hex == null || hex.isBlank()) return fallback;
         try {
             if (hex.startsWith("#")) {

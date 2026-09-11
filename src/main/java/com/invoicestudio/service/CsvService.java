@@ -107,7 +107,7 @@ public class CsvService {
 
     public static String exportBuyers(List<Buyer> buyers, List<BuyerFieldDef> customFields) {
         StringBuilder sb = new StringBuilder("\uFEFF");
-        List<String> header = new ArrayList<>(List.of("Name", "Address", "GSTIN", "Phone", "State"));
+        List<String> header = new ArrayList<>(List.of("Name", "Address", "GSTIN", "Phone", "State", "State Code"));
         if (customFields != null) {
             for (BuyerFieldDef cf : customFields) {
                 header.add(cf.getLabel());
@@ -122,6 +122,7 @@ public class CsvService {
             row.add(b.getGst());
             row.add(b.getPhone());
             row.add(b.getState());
+            row.add(b.getEffectiveStateCode());
             if (customFields != null) {
                 for (BuyerFieldDef cf : customFields) {
                     row.add(b.getCustom().getOrDefault(cf.getKey(), ""));
@@ -216,13 +217,13 @@ public class CsvService {
 
     public static String getSampleBuyerCsv(List<BuyerFieldDef> customFields) {
         StringBuilder sb = new StringBuilder("\uFEFF");
-        List<String> header = new ArrayList<>(List.of("Name", "Address", "GSTIN", "Phone", "State"));
+        List<String> header = new ArrayList<>(List.of("Name", "Address", "GSTIN", "Phone", "State", "State Code"));
         if (customFields != null) {
             for (BuyerFieldDef cf : customFields) header.add(cf.getLabel());
         }
         sb.append(csvRow(header));
 
-        List<String> sampleRow = new ArrayList<>(List.of("Acme Enterprises", "101 Industrial Area, Phase 2, Pune", "27AAAAA0000A1Z5", "9876543210", "Maharashtra"));
+        List<String> sampleRow = new ArrayList<>(List.of("Acme Enterprises", "101 Industrial Area, Phase 2, Pune", "27AAAAA0000A1Z5", "9876543210", "Maharashtra", "27"));
         if (customFields != null) {
             for (BuyerFieldDef ignored : customFields) sampleRow.add("Sample Value");
         }
