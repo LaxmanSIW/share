@@ -60,6 +60,20 @@ public class SvgVectorParser {
         return parseSvg(content, 100.0, 100.0);
     }
 
+    public static boolean isValidPathData(String d) {
+        if (d == null || d.isBlank()) return false;
+        String trimmed = d.trim();
+        char first = Character.toUpperCase(trimmed.charAt(0));
+        if ("MLHVCSQTAZ".indexOf(first) < 0) return false;
+        if (first != 'Z') {
+            String rest = trimmed.substring(1).trim();
+            if (rest.isEmpty()) return false;
+            char next = rest.charAt(0);
+            return Character.isDigit(next) || next == '-' || next == '+' || next == '.';
+        }
+        return true;
+    }
+
     public static ParsedSvg parseSvg(String content, double defaultW, double defaultH) {
         ParsedSvg result = new ParsedSvg();
         result.width = defaultW > 0 ? defaultW : 100;
@@ -73,19 +87,26 @@ public class SvgVectorParser {
 
         // If not full SVG markup, treat as direct path data string
         if (!raw.toLowerCase(Locale.ROOT).contains("<svg")) {
-            result.shapes.add(new SvgSubShape(raw, null, null, null, "nonzero"));
+            if (isValidPathData(raw)) {
+                result.shapes.add(new SvgSubShape(raw, null, null, null, "nonzero"));
+            }
             return result;
         }
 
         try {
+            // Strip DOCTYPE to prevent DTD parsing failures from external DTDs while keeping XML safe
+            String cleanXml = raw.replaceAll("(?s)<!DOCTYPE[^>]*>", "");
+
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(false);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            try {
+                factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+                factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            } catch (Exception ignored) {}
 
             DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(new ByteArrayInputStream(raw.getBytes(StandardCharsets.UTF_8)));
+            Document doc = builder.parse(new ByteArrayInputStream(cleanXml.getBytes(StandardCharsets.UTF_8)));
             Element root = doc.getDocumentElement();
 
             // Extract viewBox
@@ -117,12 +138,12 @@ public class SvgVectorParser {
             extractElements(root, result);
 
         } catch (Exception e) {
-            // Fallback: regex extraction of d="..." attributes
-            Pattern dPattern = Pattern.compile("d\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+            // Fallback: regex extraction of d="..." attributes with word boundary
+            Pattern dPattern = Pattern.compile("\\b[dD]\\s*=\\s*[\"']([^\"']+)[\"']");
             Matcher matcher = dPattern.matcher(raw);
             while (matcher.find()) {
-                String d = matcher.group(1);
-                if (!d.isBlank()) {
+                String d = matcher.group(1).trim();
+                if (isValidPathData(d)) {
                     result.shapes.add(new SvgSubShape(d, null, null, null, "nonzero"));
                 }
             }
@@ -266,8 +287,13 @@ public class SvgVectorParser {
         }
 
         for (SvgSubShape shape : parsed.shapes) {
+            if (!isValidPathData(shape.pathData)) continue;
             SVGPath path = new SVGPath();
-            path.setContent(shape.pathData);
+            try {
+                path.setContent(shape.pathData);
+            } catch (Exception e) {
+                continue;
+            }
 
             if ("evenodd".equalsIgnoreCase(shape.fillRule)) {
                 path.setFillRule(FillRule.EVEN_ODD);

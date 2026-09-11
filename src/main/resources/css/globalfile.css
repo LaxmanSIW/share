@@ -2587,10 +2587,121 @@ Label {
 }
 
 .chart-line-symbol {
-    -fx-background-color: #0B0E14, -fx-stroke;
+    -fx-background-color: #0B0E14, #F2CA6B;
     -fx-background-insets: 0, 1.5;
-    -fx-background-radius: 4px;
-    -fx-padding: 3.5px;
+    -fx-background-radius: 50%;
+    -fx-padding: 4px;
+    -fx-cursor: hand;
 }
+
+.default-color0.chart-line-symbol {
+    -fx-background-color: #0B0E14, #F2CA6B;
+    -fx-background-insets: 0, 1.5;
+    -fx-background-radius: 50%;
+}
+
+.default-color1.chart-line-symbol {
+    -fx-background-color: #0B0E14, #34D399;
+    -fx-background-insets: 0, 1.5;
+    -fx-background-radius: 50%;
+}
+
+.default-color2.chart-line-symbol {
+    -fx-background-color: #0B0E14, #38BDF8;
+    -fx-background-insets: 0, 1.5;
+    -fx-background-radius: 50%;
+}
+
+.chart-bar {
+    -fx-cursor: hand;
+}
+
+/* ==========================================================================
+   DESIGNER FOOTER STATUS BAR
+   ========================================================================== */
+
+.designer-footer-bar {
+    -fx-background-color: #070B12;
+    -fx-border-color: #1A2333;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 5 14 5 14;
+    -fx-alignment: center-left;
+}
+
+.designer-footer-badge {
+    -fx-background-color: #1E293B;
+    -fx-background-radius: 4px;
+    -fx-padding: 2px 7px 2px 7px;
+    -fx-text-fill: #F1F5F9;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.designer-footer-pageinfo {
+    -fx-text-fill: #64748B;
+    -fx-font-size: 11px;
+}
+
+.designer-footer-coords {
+    -fx-text-fill: #CBD5E1;
+    -fx-font-size: 11px;
+    -fx-font-weight: 500;
+    -fx-font-family: "Segoe UI", -apple-system, sans-serif;
+}
+
+.designer-footer-btn {
+    -fx-background-color: #1E293B;
+    -fx-text-fill: #CBD5E1;
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 4px;
+    -fx-padding: 3px 9px 3px 9px;
+    -fx-cursor: hand;
+    -fx-border-color: #334155;
+    -fx-border-radius: 4px;
+    -fx-border-width: 0.5px;
+}
+
+.designer-footer-btn:hover {
+    -fx-background-color: #334155;
+    -fx-text-fill: #FFFFFF;
+    -fx-border-color: #475569;
+}
+
+.designer-footer-btn:pressed {
+    -fx-background-color: #0F172A;
+}
+
+.designer-footer-slider {
+    -fx-pref-width: 130px;
+}
+
+.designer-footer-slider .track {
+    -fx-background-color: #1E293B;
+    -fx-background-radius: 3px;
+    -fx-pref-height: 5px;
+}
+
+.designer-footer-slider .thumb {
+    -fx-background-color: #E7A92B;
+    -fx-background-radius: 10px;
+    -fx-pref-width: 12px;
+    -fx-pref-height: 12px;
+    -fx-cursor: hand;
+}
+
+.designer-footer-slider .thumb:hover {
+    -fx-background-color: #F59E0B;
+    -fx-effect: dropshadow(gaussian, rgba(231, 169, 43, 0.4), 6, 0, 0, 0);
+}
+
+.designer-footer-zoomlabel {
+    -fx-text-fill: #F8FAFC;
+    -fx-font-size: 11.5px;
+    -fx-font-weight: bold;
+    -fx-min-width: 44px;
+    -fx-alignment: center-right;
+}
+
 
 

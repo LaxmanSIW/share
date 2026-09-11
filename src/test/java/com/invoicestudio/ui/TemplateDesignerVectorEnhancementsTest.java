@@ -111,4 +111,26 @@ class TemplateDesignerVectorEnhancementsTest {
         assertEquals(35.0, vertices.get(2).getX(), 0.001);
         assertEquals(5.0, vertices.get(2).getY(), 0.001);
     }
+
+    @Test
+    void testSvgParserDoesNotTreatIdAttributesAsPaths() {
+        assertFalse(com.invoicestudio.service.SvgVectorParser.isValidPathData("Capa_1"));
+        assertFalse(com.invoicestudio.service.SvgVectorParser.isValidPathData("XMLID_36_"));
+        assertFalse(com.invoicestudio.service.SvgVectorParser.isValidPathData(null));
+        assertFalse(com.invoicestudio.service.SvgVectorParser.isValidPathData(""));
+        assertTrue(com.invoicestudio.service.SvgVectorParser.isValidPathData("M 10 10 L 20 20 Z"));
+        assertTrue(com.invoicestudio.service.SvgVectorParser.isValidPathData("M10,10 C20,20 30,30 40,40"));
+
+        String illustratorSvg = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
+                "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n" +
+                "<svg version=\"1.1\" id=\"Capa_1\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">\n" +
+                "  <g id=\"XMLID_36_\">\n" +
+                "    <path id=\"XMLID_37_\" d=\"M 10 10 L 50 10 L 50 50 Z\" fill=\"#FF0000\"/>\n" +
+                "  </g>\n" +
+                "</svg>";
+
+        var parsed = com.invoicestudio.service.SvgVectorParser.parseSvg(illustratorSvg, 100, 100);
+        assertEquals(1, parsed.shapes.size(), "Should only extract the real path, not id attributes");
+        assertEquals("M 10 10 L 50 10 L 50 50 Z", parsed.shapes.get(0).pathData);
+    }
 }

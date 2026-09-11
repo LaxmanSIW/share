@@ -124,6 +124,12 @@ public class TemplateDesigner extends BorderPane {
     private final Label layerCountBadge = new Label("0");
     private final MenuButton compMenu = new MenuButton("📦 Components");
     private final TabPane sideTabs = new TabPane();
+    private Label coordStatusLabel;
+    private Label pageFormatLabel;
+    private Slider zoomSlider;
+    private boolean updatingZoom = false;
+    private double currentCursorXMm = -1;
+    private double currentCursorYMm = -1;
 
     private static final double MM_PX = 3.7795275591; // ~96 DPI screen pixels per mm
     private static final double RULER_SIZE = 22.0;
@@ -155,6 +161,7 @@ public class TemplateDesigner extends BorderPane {
         mainSplit.setDividerPositions(0.68);
         SplitPane.setResizableWithParent(sidebar, false);
         setCenter(mainSplit);
+        setBottom(createFooterBar());
 
         setupKeyboardShortcuts();
         saveState();
@@ -347,21 +354,14 @@ public class TemplateDesigner extends BorderPane {
 
         Separator s4 = new Separator(javafx.geometry.Orientation.VERTICAL);
 
-        // --- GROUP 5: History & Zoom View ---
+        // --- GROUP 5: History View ---
         HBox viewGroup = new HBox(4);
         viewGroup.setAlignment(Pos.CENTER_LEFT);
 
         Button undoBtn = createToolbarBtn("↶ Undo", "Undo last change (Ctrl Z)", this::undo);
         Button redoBtn = createToolbarBtn("↷ Redo", "Redo undone change (Ctrl Y)", this::redo);
 
-        Button zoomOut = createToolbarBtn("−", "Zoom Out (Ctrl -)", () -> setZoom(zoom - 0.1));
-        zoomLabel.getStyleClass().add("zoom-value");
-        zoomLabel.setTooltip(new Tooltip("Current Zoom Level"));
-        zoomLabel.setMinWidth(Region.USE_PREF_SIZE);
-        Button zoomIn = createToolbarBtn("+", "Zoom In (Ctrl +)", () -> setZoom(zoom + 0.1));
-        Button zoomFit = createToolbarBtn("Fit", "Fit Page in Canvas Viewport (Ctrl 0)", () -> setZoom(0.85));
-
-        viewGroup.getChildren().addAll(undoBtn, redoBtn, zoomOut, zoomLabel, zoomIn, zoomFit);
+        viewGroup.getChildren().addAll(undoBtn, redoBtn);
 
         ribbon.getChildren().addAll(
                 insertGroup, s1,
@@ -463,6 +463,11 @@ public class TemplateDesigner extends BorderPane {
         scaleGroup.setScaleX(zoom);
         scaleGroup.setScaleY(zoom);
         zoomLabel.setText((int) Math.round(zoom * 100) + "%");
+        if (zoomSlider != null && !updatingZoom) {
+            updatingZoom = true;
+            zoomSlider.setValue(zoom);
+            updatingZoom = false;
+        }
         updateCenterWrapperSize();
     }
 
@@ -489,6 +494,97 @@ public class TemplateDesigner extends BorderPane {
 
         centerWrapper.setPrefSize(totalW, totalH);
         centerWrapper.setMinSize(totalW, totalH);
+    }
+
+    private Node createFooterBar() {
+        HBox footer = new HBox(12);
+        footer.getStyleClass().add("designer-footer-bar");
+        footer.setAlignment(Pos.CENTER_LEFT);
+
+        pageFormatLabel = new Label();
+        pageFormatLabel.getStyleClass().add("designer-footer-pageinfo");
+        updatePageFormatLabel();
+
+        coordStatusLabel = new Label();
+        coordStatusLabel.getStyleClass().add("designer-footer-coords");
+        updateStatusBarCoords();
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button fitBtn = new Button("FIT");
+        fitBtn.getStyleClass().add("designer-footer-btn");
+        fitBtn.setTooltip(new Tooltip("Fit page in view (Ctrl 0)"));
+        fitBtn.setOnAction(e -> setZoom(0.85));
+
+        Button zoomMinusBtn = new Button("−");
+        zoomMinusBtn.getStyleClass().add("designer-footer-btn");
+        zoomMinusBtn.setTooltip(new Tooltip("Zoom out (Ctrl -)"));
+        zoomMinusBtn.setOnAction(e -> setZoom(zoom - 0.1));
+
+        zoomSlider = new Slider(0.3, 2.5, zoom);
+        zoomSlider.getStyleClass().add("designer-footer-slider");
+        zoomSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if (!updatingZoom && newVal != null) {
+                updatingZoom = true;
+                setZoom(newVal.doubleValue());
+                updatingZoom = false;
+            }
+        });
+
+        Button zoomPlusBtn = new Button("+");
+        zoomPlusBtn.getStyleClass().add("designer-footer-btn");
+        zoomPlusBtn.setTooltip(new Tooltip("Zoom in (Ctrl +)"));
+        zoomPlusBtn.setOnAction(e -> setZoom(zoom + 0.1));
+
+        zoomLabel.getStyleClass().clear();
+        zoomLabel.getStyleClass().add("designer-footer-zoomlabel");
+        zoomLabel.setText((int) Math.round(zoom * 100) + "%");
+
+        footer.getChildren().addAll(
+                pageFormatLabel,
+                coordStatusLabel,
+                spacer,
+                fitBtn,
+                zoomMinusBtn,
+                zoomSlider,
+                zoomPlusBtn,
+                zoomLabel
+        );
+
+        return footer;
+    }
+
+    private void updatePageFormatLabel() {
+        if (pageFormatLabel == null) return;
+        if (template != null && template.getPage() != null) {
+            PageConfig p = template.getPage();
+            String name = p.getSizeName() != null ? p.getSizeName().name() : "CUSTOM";
+            pageFormatLabel.setText(String.format(Locale.US, "%s (%d × %d mm)",
+                    name, (int) Math.round(p.getWidth()), (int) Math.round(p.getHeight())));
+        } else {
+            pageFormatLabel.setText("A4 (210 × 297 mm)");
+        }
+    }
+
+    private void updateStatusBarCoords() {
+        if (coordStatusLabel == null) return;
+        if (selectedElement != null) {
+            coordStatusLabel.setText(String.format(Locale.US,
+                    "X: %.1f mm   Y: %.1f mm   W: %.1f mm   H: %.1f mm   Rot: %.0f°",
+                    selectedElement.getX(),
+                    selectedElement.getY(),
+                    selectedElement.getW(),
+                    selectedElement.getH(),
+                    selectedElement.getRotation()));
+        } else if (currentCursorXMm >= 0 && currentCursorYMm >= 0) {
+            coordStatusLabel.setText(String.format(Locale.US,
+                    "X: %.1f mm   Y: %.1f mm",
+                    currentCursorXMm,
+                    currentCursorYMm));
+        } else {
+            coordStatusLabel.setText("X: -- mm   Y: -- mm");
+        }
     }
 
     private Node createCanvasArea() {
@@ -522,6 +618,20 @@ public class TemplateDesigner extends BorderPane {
         canvas.addEventFilter(MouseEvent.MOUSE_MOVED, e -> {
             if (isPenToolMode) {
                 handlePenCanvasMove(e);
+            }
+            Point2D pt = canvas.sceneToLocal(e.getSceneX(), e.getSceneY());
+            currentCursorXMm = Math.max(0, pt.getX() / MM_PX);
+            currentCursorYMm = Math.max(0, pt.getY() / MM_PX);
+            if (selectedElement == null) {
+                updateStatusBarCoords();
+            }
+        });
+
+        canvas.addEventFilter(MouseEvent.MOUSE_EXITED, e -> {
+            currentCursorXMm = -1;
+            currentCursorYMm = -1;
+            if (selectedElement == null) {
+                updateStatusBarCoords();
             }
         });
 
@@ -1191,9 +1301,11 @@ public class TemplateDesigner extends BorderPane {
             activeSelectionBox.setLayoutX(px);
             activeSelectionBox.setLayoutY(py);
         }
+        updateStatusBarCoords();
     }
 
     private void syncGeoSpinnersIfPresent() {
+        updateStatusBarCoords();
         if (selectedElement == null || geoXSpin == null || geoUnitBox == null) return;
         updatingProperties = true;
         try {
@@ -1301,6 +1413,7 @@ public class TemplateDesigner extends BorderPane {
                 break;
             }
         }
+        updateStatusBarCoords();
     }
 
     private void updateSelBoxGeometry(Pane selBox, Rectangle border, Rectangle moveHitArea,
@@ -1374,6 +1487,7 @@ public class TemplateDesigner extends BorderPane {
     private void updateSelectionOverlay() {
         selectionPane.getChildren().clear();
         activeSelectionBox = null;
+        updateStatusBarCoords();
 
         if (selectedElement == null || selectedElement.isHidden()) {
             return;
@@ -1461,6 +1575,7 @@ public class TemplateDesigner extends BorderPane {
 
             selBox.setLayoutX(el.getX() * MM_PX);
             selBox.setLayoutY(el.getY() * MM_PX);
+            updateStatusBarCoords();
             e.consume();
         });
 
@@ -1928,9 +2043,11 @@ public class TemplateDesigner extends BorderPane {
             geoUnitBox = null;
 
             if (selectedElement == null) {
+                updateStatusBarCoords();
                 buildPageAndMarginProperties();
                 return;
             }
+            updateStatusBarCoords();
 
             TemplateElement el = selectedElement;
 
@@ -5043,6 +5160,8 @@ public class TemplateDesigner extends BorderPane {
             mg = new PageConfig.Margins(8, 8, 8, 8);
             page.setMargin(mg);
         }
+        updatePageFormatLabel();
+        updateStatusBarCoords();
 
         // Header Title Card
         HBox headerRow = new HBox(8);

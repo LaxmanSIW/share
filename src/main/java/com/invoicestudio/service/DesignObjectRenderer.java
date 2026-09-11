@@ -171,10 +171,16 @@ public class DesignObjectRenderer {
         if (data != null && data.trim().toLowerCase(java.util.Locale.ROOT).contains("<svg")) {
             return SvgVectorParser.renderToJavaFx(el, w, h);
         }
-        if (data == null || data.isBlank()) data = "M 0 0 L " + w + " 0 L " + (w / 2.0) + " " + h + " Z";
+        if (!SvgVectorParser.isValidPathData(data)) {
+            data = "M 0 0 L " + w + " 0 L " + (w / 2.0) + " " + h + " Z";
+        }
 
         SVGPath path = new SVGPath();
-        path.setContent(data);
+        try {
+            path.setContent(data);
+        } catch (Exception e) {
+            path.setContent("M 0 0 L " + w + " 0 L " + (w / 2.0) + " " + h + " Z");
+        }
         path.setFill(buildPaint(el, w, h));
         applyStroke(path, el);
 

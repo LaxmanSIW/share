@@ -12,15 +12,18 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.chart.*;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.util.Duration;
 
 import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -337,6 +340,12 @@ public class Dashboard2View extends BorderPane {
         }
 
         lineChart.getData().addAll(salesSeries, paymentSeries);
+        for (XYChart.Data<String, Number> d : salesSeries.getData()) {
+            attachLineVertex(d, "Monthly Sales", "#F2CA6B", "Billed Sales Revenue");
+        }
+        for (XYChart.Data<String, Number> d : paymentSeries.getData()) {
+            attachLineVertex(d, "Payments Received", "#34D399", "Collections & Receipts");
+        }
         card1.getChildren().add(lineChart);
 
         // Chart 2: Monthly Trouser Movement (Pieces Sold)
@@ -380,6 +389,9 @@ public class Dashboard2View extends BorderPane {
         }
 
         barChart.getData().add(qtySeries);
+        for (XYChart.Data<String, Number> d : qtySeries.getData()) {
+            attachBarTooltip(d, "Trouser Movement", "#F2CA6B", "pcs", "Pieces Sold (Sales Volume)");
+        }
         card2.getChildren().add(barChart);
 
         row.getChildren().addAll(card1, card2);
@@ -495,9 +507,156 @@ public class Dashboard2View extends BorderPane {
         }
 
         parcelChart.getData().add(series);
+        for (XYChart.Data<String, Number> d : series.getData()) {
+            attachBarTooltip(d, "Parcel Dispatch", "#F2CA6B", "parcels", "Total Cargo Shipments");
+        }
         chartBox.getChildren().addAll(callout, parcelChart);
         card.getChildren().add(chartBox);
         return card;
+    }
+
+    private void attachLineVertex(XYChart.Data<String, Number> data, String seriesName, String colorHex, String detail) {
+        Consumer<Node> setup = node -> {
+            if (node == null) return;
+            node.setCursor(Cursor.HAND);
+            node.setStyle(
+                "-fx-background-color: #070B12, " + colorHex + "; " +
+                "-fx-background-insets: 0, 1.5; " +
+                "-fx-background-radius: 50%; " +
+                "-fx-pref-width: 9px; -fx-pref-height: 9px; " +
+                "-fx-cursor: hand;"
+            );
+
+            node.setOnMouseEntered(e -> {
+                node.setScaleX(1.45);
+                node.setScaleY(1.45);
+                node.setStyle(
+                    "-fx-background-color: " + colorHex + ", #FFFFFF; " +
+                    "-fx-background-insets: 0, 2; " +
+                    "-fx-background-radius: 50%; " +
+                    "-fx-pref-width: 9px; -fx-pref-height: 9px; " +
+                    "-fx-effect: dropshadow(gaussian, " + colorHex + ", 8, 0.6, 0, 0); " +
+                    "-fx-cursor: hand;"
+                );
+            });
+            node.setOnMouseExited(e -> {
+                node.setScaleX(1.0);
+                node.setScaleY(1.0);
+                node.setStyle(
+                    "-fx-background-color: #070B12, " + colorHex + "; " +
+                    "-fx-background-insets: 0, 1.5; " +
+                    "-fx-background-radius: 50%; " +
+                    "-fx-pref-width: 9px; -fx-pref-height: 9px; " +
+                    "-fx-cursor: hand;"
+                );
+            });
+
+            double val = data.getYValue() != null ? data.getYValue().doubleValue() : 0.0;
+            String valStr = "₹ " + currencyFmt.format(val);
+            installCustomTooltip(node, data.getXValue(), seriesName, valStr, colorHex, detail);
+        };
+
+        if (data.getNode() != null) {
+            setup.accept(data.getNode());
+        }
+        data.nodeProperty().addListener((obs, oldN, newN) -> {
+            if (newN != null) {
+                setup.accept(newN);
+            }
+        });
+    }
+
+    private void attachBarTooltip(XYChart.Data<String, Number> data, String metricTitle, String colorHex, String unit, String detail) {
+        Consumer<Node> setup = node -> {
+            if (node == null) return;
+            node.setCursor(Cursor.HAND);
+
+            node.setOnMouseEntered(e -> {
+                node.setStyle("-fx-opacity: 0.85; -fx-effect: dropshadow(gaussian, " + colorHex + ", 10, 0.45, 0, 0);");
+            });
+            node.setOnMouseExited(e -> {
+                node.setStyle(null);
+            });
+
+            int val = data.getYValue() != null ? data.getYValue().intValue() : 0;
+            String valStr = String.format(Locale.US, "%,d %s", val, unit);
+            installCustomTooltip(node, data.getXValue(), metricTitle, valStr, colorHex, detail);
+        };
+
+        if (data.getNode() != null) {
+            setup.accept(data.getNode());
+        }
+        data.nodeProperty().addListener((obs, oldN, newN) -> {
+            if (newN != null) {
+                setup.accept(newN);
+            }
+        });
+    }
+
+    private void installCustomTooltip(Node node, String badgeText, String titleText, String valueText, String accentColorHex, String detailText) {
+        Tooltip tooltip = new Tooltip();
+        tooltip.setShowDelay(Duration.millis(50));
+        tooltip.setHideDelay(Duration.millis(120));
+        tooltip.setShowDuration(Duration.seconds(20));
+        tooltip.setStyle(
+            "-fx-background-color: transparent; " +
+            "-fx-padding: 0; " +
+            "-fx-background-insets: 0; " +
+            "-fx-effect: null;"
+        );
+
+        VBox box = new VBox(6);
+        box.setStyle(
+            "-fx-background-color: #070B12; " +
+            "-fx-border-color: " + accentColorHex + "; " +
+            "-fx-border-width: 1.2px; " +
+            "-fx-border-radius: 8px; " +
+            "-fx-background-radius: 8px; " +
+            "-fx-padding: 10px 14px; " +
+            "-fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.85), 14, 0.35, 0, 3);"
+        );
+        box.setMinWidth(170);
+
+        HBox headerRow = new HBox(8);
+        headerRow.setAlignment(Pos.CENTER_LEFT);
+
+        Label badge = new Label(badgeText);
+        badge.setStyle(
+            "-fx-background-color: rgba(255, 255, 255, 0.08); " +
+            "-fx-text-fill: #94A3B8; " +
+            "-fx-font-size: 10.5px; " +
+            "-fx-font-weight: bold; " +
+            "-fx-padding: 2px 6px; " +
+            "-fx-background-radius: 4px;"
+        );
+
+        Label titleLbl = new Label(titleText);
+        titleLbl.setStyle(
+            "-fx-text-fill: #E2E8F0; " +
+            "-fx-font-size: 11.5px; " +
+            "-fx-font-weight: 600;"
+        );
+
+        headerRow.getChildren().addAll(badge, titleLbl);
+
+        Label valLbl = new Label(valueText);
+        valLbl.setStyle(
+            "-fx-text-fill: " + accentColorHex + "; " +
+            "-fx-font-size: 18px; " +
+            "-fx-font-weight: bold; " +
+            "-fx-font-family: 'Segoe UI', system-ui, sans-serif;"
+        );
+
+        Label detailLbl = new Label(detailText);
+        detailLbl.setStyle(
+            "-fx-text-fill: #64748B; " +
+            "-fx-font-size: 10.5px;"
+        );
+
+        box.getChildren().addAll(headerRow, valLbl, detailLbl);
+
+        tooltip.setGraphic(box);
+        Tooltip.install(node, tooltip);
     }
 
     private Node createTop5WidgetsRow(List<Transaction> txs) {
