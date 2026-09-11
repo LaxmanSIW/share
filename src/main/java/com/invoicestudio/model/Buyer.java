@@ -13,6 +13,12 @@ public class Buyer {
     private String phone = "";
     private String state = "";
     private String stateCode = "";
+    private String contactPerson = "";
+    private String city = "";
+    private double creditLimit = 100000.0;
+    private int riskScore = 8; // 1-10 risk scale (Low, Medium, High)
+    private String defaultTransportId = "";
+    private double openingBalance = 0.0;
     private Map<String, String> custom = new HashMap<>();
     private String createdAt;
     private String updatedAt;
@@ -43,6 +49,10 @@ public class Buyer {
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+
+    public String getDisplayName() {
+        return name != null && !name.isBlank() ? name : "Unnamed Buyer";
+    }
 
     public String getAddress() { return address; }
     public void setAddress(String address) { this.address = address; }
@@ -77,6 +87,30 @@ public class Buyer {
     public String getTradeName() {
         return custom != null ? custom.getOrDefault("trade_name", "") : "";
     }
+
+    public String getContactPerson() { return contactPerson != null ? contactPerson : ""; }
+    public void setContactPerson(String contactPerson) { this.contactPerson = contactPerson != null ? contactPerson : ""; }
+
+    public String getCity() { return city != null ? city : ""; }
+    public void setCity(String city) { this.city = city != null ? city : ""; }
+
+    public double getCreditLimit() { return creditLimit; }
+    public void setCreditLimit(double creditLimit) { this.creditLimit = creditLimit; }
+
+    public int getRiskScore() { return riskScore; }
+    public void setRiskScore(int riskScore) { this.riskScore = riskScore; }
+
+    public String getRiskLevel() {
+        if (riskScore <= 3) return "High";
+        if (riskScore <= 7) return "Medium";
+        return "Low";
+    }
+
+    public String getDefaultTransportId() { return defaultTransportId != null ? defaultTransportId : ""; }
+    public void setDefaultTransportId(String defaultTransportId) { this.defaultTransportId = defaultTransportId != null ? defaultTransportId : ""; }
+
+    public double getOpeningBalance() { return openingBalance; }
+    public void setOpeningBalance(double openingBalance) { this.openingBalance = openingBalance; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

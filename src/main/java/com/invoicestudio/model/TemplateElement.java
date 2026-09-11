@@ -42,6 +42,7 @@ public class TemplateElement {
     private int fontWeight = 400; // 400 or 700
     private boolean italic;
     private boolean underline;
+    private boolean strikethrough;
     private boolean uppercase;
     private String color = "#1a1a1a";
     private String align = "left"; // left, center, right
@@ -215,11 +216,17 @@ public class TemplateElement {
     public int getFontWeight() { return fontWeight; }
     public void setFontWeight(int fontWeight) { this.fontWeight = fontWeight; }
 
+    public boolean isBold() { return fontWeight >= 700; }
+    public void setBold(boolean bold) { this.fontWeight = bold ? 700 : 400; }
+
     public boolean isItalic() { return italic; }
     public void setItalic(boolean italic) { this.italic = italic; }
 
     public boolean isUnderline() { return underline; }
     public void setUnderline(boolean underline) { this.underline = underline; }
+
+    public boolean isStrikethrough() { return strikethrough; }
+    public void setStrikethrough(boolean strikethrough) { this.strikethrough = strikethrough; }
 
     public boolean isUppercase() { return uppercase; }
     public void setUppercase(boolean uppercase) { this.uppercase = uppercase; }

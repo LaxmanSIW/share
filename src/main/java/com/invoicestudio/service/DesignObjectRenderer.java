@@ -308,15 +308,15 @@ public class DesignObjectRenderer {
         String resolved = ctx != null ? ctx.resolveText(raw) : raw;
         resolved = applyTextTransform(resolved, el.getTextTransform(), el.isUppercase());
 
-        Label lbl = new Label(resolved);
+        String tracked = applyTypographyTracking(resolved, el.getLetterSpacing(), el.getWordSpacing());
+        Label lbl = new Label(tracked);
         lbl.setPrefSize(w, h);
         lbl.setMinSize(w, h);
         lbl.setWrapText(true);
 
-        if (el.getLineHeight() > 0) {
-            double lineSpacingPx = (el.getLineHeight() - 1.0) * (el.getFontSize() * 1.3);
-            lbl.setLineSpacing(Math.max(-5.0, lineSpacingPx));
-        }
+        double effectiveLineSpacing = (el.getLineSpacing() * 1.33)
+                + ((el.getLineHeight() > 0 ? el.getLineHeight() - 1.0 : 0) * el.getFontSize() * 1.33);
+        lbl.setLineSpacing(Math.max(-10.0, effectiveLineSpacing));
 
         String colorHex = el.getColor() != null && !el.getColor().isBlank() ? el.getColor() : "#1a1a1a";
         String bgStyle = "";
@@ -331,21 +331,17 @@ public class DesignObjectRenderer {
             borderStyle += "-fx-background-radius: " + (el.getBorderRadius() * MM_PX) + "; -fx-border-radius: " + (el.getBorderRadius() * MM_PX) + ";";
         }
 
-        String spacingStyle = "";
-        if (el.getLetterSpacing() != 0) {
-            spacingStyle += "-fx-letter-spacing: " + el.getLetterSpacing() + "px; ";
-        }
-        if (el.getWordSpacing() != 0) {
-            spacingStyle += "-fx-word-spacing: " + el.getWordSpacing() + "px; ";
-        }
-
-        String fw = el.getFontWeight() >= 700 ? "bold" : "normal";
+        int weight = el.getFontWeight() > 0 ? el.getFontWeight() : (el.isBold() ? 700 : 400);
+        if (el.isBold() && weight < 700) weight = 700;
+        String fw = String.valueOf(weight);
         String fs = el.isItalic() ? "italic" : "normal";
         String family = el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI";
 
         lbl.setStyle("-fx-text-fill: " + colorHex + "; -fx-fill: " + colorHex +
                 "; -fx-font-size: " + (el.getFontSize() * 1.3) + "px; -fx-font-family: '" + family +
-                "'; -fx-font-weight: " + fw + "; -fx-font-style: " + fs + "; " + bgStyle + " " + borderStyle + " " + spacingStyle);
+                "'; -fx-font-weight: " + fw + "; -fx-font-style: " + fs + "; " + bgStyle + " " + borderStyle);
+
+        lbl.setUnderline(el.isUnderline());
 
         Pos alignment = Pos.TOP_LEFT;
         if ("center".equalsIgnoreCase(el.getAlign())) alignment = Pos.TOP_CENTER;
@@ -361,7 +357,77 @@ public class DesignObjectRenderer {
             else alignment = Pos.BOTTOM_LEFT;
         }
         lbl.setAlignment(alignment);
+
+        if (el.isStrikethrough()) {
+            StackPane sp = new StackPane();
+            sp.setPrefSize(w, h);
+            sp.setMinSize(w, h);
+            sp.setMaxSize(w, h);
+            Line strikeLine = new Line(0, 0, Math.max(10, w - 8), 0);
+            strikeLine.setStroke(parseColorSafe(colorHex, Color.BLACK));
+            strikeLine.setStrokeWidth(Math.max(1.0, el.getFontSize() * 0.08));
+            sp.getChildren().addAll(lbl, strikeLine);
+            StackPane.setAlignment(strikeLine, Pos.CENTER);
+            return sp;
+        }
+
         return lbl;
+    }
+
+    public static String applyTypographyTracking(String text, double letterSpacing, double wordSpacing) {
+        if (text == null || text.isEmpty()) return "";
+        if (letterSpacing <= 0.05 && wordSpacing <= 0.05) return text;
+
+        String letterSpacer = "";
+        if (letterSpacing >= 16.0) {
+            letterSpacer = "\u2003"; // Em space
+        } else if (letterSpacing >= 10.0) {
+            letterSpacer = "\u2002"; // En space
+        } else if (letterSpacing >= 6.0) {
+            letterSpacer = "\u2004"; // 1/3 em
+        } else if (letterSpacing >= 3.5) {
+            letterSpacer = "\u2005"; // 1/4 em
+        } else if (letterSpacing >= 1.8) {
+            letterSpacer = "\u2009"; // Thin space
+        } else if (letterSpacing >= 0.4) {
+            letterSpacer = "\u200A"; // Hair space
+        }
+
+        String extraWordSpace = "";
+        if (wordSpacing >= 12.0) {
+            extraWordSpace = "   ";
+        } else if (wordSpacing >= 6.0) {
+            extraWordSpace = "  ";
+        } else if (wordSpacing >= 1.5) {
+            extraWordSpace = " ";
+        } else if (wordSpacing >= 0.5) {
+            extraWordSpace = "\u2009";
+        }
+
+        if (letterSpacer.isEmpty() && extraWordSpace.isEmpty()) {
+            return text;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        String[] lines = text.split("\n", -1);
+        for (int l = 0; l < lines.length; l++) {
+            if (l > 0) sb.append("\n");
+            String line = lines[l];
+            for (int i = 0; i < line.length(); i++) {
+                char ch = line.charAt(i);
+                sb.append(ch);
+                if (i < line.length() - 1) {
+                    if (ch == ' ') {
+                        if (!extraWordSpace.isEmpty()) {
+                            sb.append(extraWordSpace);
+                        }
+                    } else if (line.charAt(i + 1) != ' ' && !letterSpacer.isEmpty()) {
+                        sb.append(letterSpacer);
+                    }
+                }
+            }
+        }
+        return sb.toString();
     }
 
     public static String applyTextTransform(String text, String transform, boolean legacyUppercase) {

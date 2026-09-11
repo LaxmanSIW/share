@@ -33,11 +33,17 @@ public class BillItem {
     public String getDesc() { return desc; }
     public void setDesc(String desc) { this.desc = desc; }
 
+    public String getDescription() { return desc != null ? desc : ""; }
+    public void setDescription(String description) { this.desc = description; }
+
     public String getHsn() { return hsn; }
     public void setHsn(String hsn) { this.hsn = hsn; }
 
     public double getQty() { return qty; }
     public void setQty(double qty) { this.qty = qty; }
+
+    public double getQuantity() { return qty; }
+    public void setQuantity(double quantity) { this.qty = quantity; }
 
     public String getUnit() { return unit; }
     public void setUnit(String unit) { this.unit = unit; }

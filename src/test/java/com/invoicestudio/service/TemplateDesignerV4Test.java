@@ -502,4 +502,50 @@ class TemplateDesignerV4Test {
         assertEquals(45.0, el2.getX(), 0.001);
         assertEquals(35.0, el2.getY(), 0.001);
     }
+
+    @Test
+    void testV4TypographyTrackingAndWeights() {
+        TemplateElement el = new TemplateElement();
+        el.setText("INVOICE STUDIO");
+        el.setFontWeight(300);
+        assertFalse(el.isBold());
+        el.setBold(true);
+        assertEquals(700, el.getFontWeight());
+        assertTrue(el.isBold());
+
+        el.setUnderline(true);
+        assertTrue(el.isUnderline());
+
+        el.setStrikethrough(true);
+        assertTrue(el.isStrikethrough());
+
+        el.setLetterSpacing(4.0);
+        el.setWordSpacing(2.0);
+
+        String tracked = DesignObjectRenderer.applyTypographyTracking("INVOICE STUDIO", 4.0, 2.0);
+        assertNotNull(tracked);
+        assertTrue(tracked.length() > "INVOICE STUDIO".length(), "Tracked text should include micro-spaces");
+        assertTrue(tracked.contains("INVOICE") || tracked.startsWith("I"));
+
+        // No tracking when 0
+        assertEquals("TEST", DesignObjectRenderer.applyTypographyTracking("TEST", 0, 0));
+    }
+
+    @Test
+    void testV4RenderContextParcelAndLogisticsVariables() {
+        Bill bill = new Bill();
+        bill.setBillNo("INV-2026-009");
+        bill.setParcel(7);
+        bill.getVariables().put("transport_name", "SuperFast Express");
+        bill.getVariables().put("vehicle_no", "MH-12-AB-1234");
+        bill.getVariables().put("transport_phone", "+91 9876543210");
+
+        RenderContext ctx = new RenderContext(bill, new Settings(), 0, 1, 1);
+        assertEquals("7", ctx.resolveText("{{parcel}}"));
+        assertEquals("7", ctx.resolveText("{{parcels}}"));
+        assertEquals("SuperFast Express", ctx.resolveText("{{transport_name}}"));
+        assertEquals("MH-12-AB-1234", ctx.resolveText("{{vehicle_no}}"));
+        assertEquals("+91 9876543210", ctx.resolveText("{{transport_phone}}"));
+    }
 }
+

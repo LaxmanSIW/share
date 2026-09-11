@@ -1969,15 +1969,14 @@ public class TemplateDesigner extends BorderPane {
 
         fontRow.getChildren().addAll(new Label("Font:"), fontCombo, new Label("Size:"), fontSpin);
 
-        // Styling Buttons: Bold, Italic, Alignment
-        HBox styleRow = new HBox(8);
+        // Styling Buttons: Bold, Italic, Underline, Strikethrough, Weight, Alignment
+        HBox styleRow = new HBox(6);
         styleRow.setAlignment(Pos.CENTER_LEFT);
 
         ToggleButton boldBtn = new ToggleButton("B");
-        boldBtn.setSelected(el.getFontWeight() >= 700);
+        boldBtn.setSelected(el.getFontWeight() >= 700 || el.isBold());
         boldBtn.getStyleClass().add("text-bold");
-        boldBtn.setTooltip(new Tooltip("Bold font weight"));
-        boldBtn.setOnAction(e -> { el.setFontWeight(boldBtn.isSelected() ? 700 : 400); refreshCanvas(); });
+        boldBtn.setTooltip(new Tooltip("Bold font weight (700)"));
 
         ToggleButton italicBtn = new ToggleButton("I");
         italicBtn.setSelected(el.isItalic());
@@ -1985,11 +1984,51 @@ public class TemplateDesigner extends BorderPane {
         italicBtn.setTooltip(new Tooltip("Italic font style"));
         italicBtn.setOnAction(e -> { el.setItalic(italicBtn.isSelected()); refreshCanvas(); });
 
+        ToggleButton underlineBtn = new ToggleButton("U");
+        underlineBtn.setSelected(el.isUnderline());
+        underlineBtn.setStyle("-fx-underline: true; -fx-font-weight: bold;");
+        underlineBtn.setTooltip(new Tooltip("Underline text"));
+        underlineBtn.setOnAction(e -> { el.setUnderline(underlineBtn.isSelected()); refreshCanvas(); });
+
+        ToggleButton strikeBtn = new ToggleButton("S");
+        strikeBtn.setSelected(el.isStrikethrough());
+        strikeBtn.setStyle("-fx-strikethrough: true; -fx-font-weight: bold;");
+        strikeBtn.setTooltip(new Tooltip("Strikethrough text"));
+        strikeBtn.setOnAction(e -> { el.setStrikethrough(strikeBtn.isSelected()); refreshCanvas(); });
+
+        String[] weights = {"100 - Thin", "200 - Extra Light", "300 - Light", "400 - Regular", "500 - Medium", "600 - Semi Bold", "700 - Bold", "800 - Extra Bold", "900 - Black"};
+        ComboBox<String> weightCombo = new ComboBox<>(FXCollections.observableArrayList(weights));
+        int curW = el.getFontWeight() > 0 ? el.getFontWeight() : (el.isBold() ? 700 : 400);
+        int wIdx = Math.max(0, Math.min(8, (curW / 100) - 1));
+        weightCombo.setValue(weights[wIdx]);
+        weightCombo.setPrefWidth(125);
+        weightCombo.setTooltip(new Tooltip("Typographic font weight (100–900)"));
+
+        weightCombo.valueProperty().addListener((obs, o, v) -> {
+            if (v != null && v.length() >= 3) {
+                try {
+                    int num = Integer.parseInt(v.substring(0, 3));
+                    el.setFontWeight(num);
+                    el.setBold(num >= 700);
+                    boldBtn.setSelected(num >= 700);
+                    refreshCanvas();
+                } catch (Exception ignored) {}
+            }
+        });
+
+        boldBtn.setOnAction(e -> {
+            int newW = boldBtn.isSelected() ? 700 : 400;
+            el.setFontWeight(newW);
+            el.setBold(boldBtn.isSelected());
+            weightCombo.setValue(weights[Math.max(0, (newW / 100) - 1)]);
+            refreshCanvas();
+        });
+
         Button alignL = createToolbarBtn("⯇", "Align Left", () -> { el.setAlign("left"); refreshCanvas(); });
         Button alignC = createToolbarBtn("☰", "Align Center", () -> { el.setAlign("center"); refreshCanvas(); });
         Button alignR = createToolbarBtn("⯈", "Align Right", () -> { el.setAlign("right"); refreshCanvas(); });
 
-        styleRow.getChildren().addAll(boldBtn, italicBtn, new Separator(javafx.geometry.Orientation.VERTICAL), alignL, alignC, alignR);
+        styleRow.getChildren().addAll(boldBtn, italicBtn, underlineBtn, strikeBtn, weightCombo, new Separator(javafx.geometry.Orientation.VERTICAL), alignL, alignC, alignR);
 
         // Color controls with quick palette chips
         GridPane colorGrid = new GridPane();
@@ -2052,19 +2091,25 @@ public class TemplateDesigner extends BorderPane {
         spacingGrid.setHgap(8); spacingGrid.setVgap(8);
         spacingGrid.setPadding(new Insets(8));
 
+        Spinner<Double> lineHeightSpin = new Spinner<>(0.5, 3.5, el.getLineHeight() > 0 ? el.getLineHeight() : 1.25, 0.05);
+        lineHeightSpin.setPrefWidth(85);
+        configureNumberSpinner(lineHeightSpin);
+        lineHeightSpin.setTooltip(new Tooltip("Line height multiplier (e.g. 1.0, 1.25, 1.5)"));
+        lineHeightSpin.valueProperty().addListener((obs, o, v) -> { el.setLineHeight(v); refreshCanvas(); });
+
         Spinner<Double> lineSpacingSpin = new Spinner<>(-10.0, 50.0, el.getLineSpacing(), 1.0);
         lineSpacingSpin.setPrefWidth(85);
         configureNumberSpinner(lineSpacingSpin);
-        lineSpacingSpin.setTooltip(new Tooltip("Line height / vertical spacing between lines in points (pt)"));
+        lineSpacingSpin.setTooltip(new Tooltip("Line spacing offset in points (pt)"));
         lineSpacingSpin.valueProperty().addListener((obs, o, v) -> { el.setLineSpacing(v); refreshCanvas(); });
 
-        Spinner<Double> letterSpacingSpin = new Spinner<>(-5.0, 20.0, el.getLetterSpacing(), 0.5);
+        Spinner<Double> letterSpacingSpin = new Spinner<>(-2.0, 25.0, el.getLetterSpacing(), 0.5);
         letterSpacingSpin.setPrefWidth(85);
         configureNumberSpinner(letterSpacingSpin);
         letterSpacingSpin.setTooltip(new Tooltip("Letter / character tracking spacing in points (pt)"));
         letterSpacingSpin.valueProperty().addListener((obs, o, v) -> { el.setLetterSpacing(v); refreshCanvas(); });
 
-        Spinner<Double> wordSpacingSpin = new Spinner<>(-10.0, 50.0, el.getWordSpacing(), 1.0);
+        Spinner<Double> wordSpacingSpin = new Spinner<>(0.0, 30.0, el.getWordSpacing(), 1.0);
         wordSpacingSpin.setPrefWidth(85);
         configureNumberSpinner(wordSpacingSpin);
         wordSpacingSpin.setTooltip(new Tooltip("Spacing between words in points (pt)"));
@@ -2079,15 +2124,18 @@ public class TemplateDesigner extends BorderPane {
             refreshCanvas();
         });
 
-        spacingGrid.add(new Label("Line Spacing:"), 0, 0);
-        spacingGrid.add(lineSpacingSpin, 1, 0);
-        spacingGrid.add(new Label("Letter Spacing:"), 2, 0);
-        spacingGrid.add(letterSpacingSpin, 3, 0);
+        spacingGrid.add(new Label("Line Height:"), 0, 0);
+        spacingGrid.add(lineHeightSpin, 1, 0);
+        spacingGrid.add(new Label("Line Spacing:"), 2, 0);
+        spacingGrid.add(lineSpacingSpin, 3, 0);
 
-        spacingGrid.add(new Label("Word Spacing:"), 0, 1);
-        spacingGrid.add(wordSpacingSpin, 1, 1);
-        spacingGrid.add(new Label("Text Case:"), 2, 1);
-        spacingGrid.add(transformCombo, 3, 1);
+        spacingGrid.add(new Label("Letter Spacing:"), 0, 1);
+        spacingGrid.add(letterSpacingSpin, 1, 1);
+        spacingGrid.add(new Label("Word Spacing:"), 2, 1);
+        spacingGrid.add(wordSpacingSpin, 3, 1);
+
+        spacingGrid.add(new Label("Text Case:"), 0, 2);
+        spacingGrid.add(transformCombo, 1, 2);
 
         spacingPane.setContent(spacingGrid);
 
@@ -3814,6 +3862,9 @@ public class TemplateDesigner extends BorderPane {
         map.put("po_no", new VariableDef("po_no", "PO / Purchase Order No", "LOGISTICS", true));
         map.put("vehicle_no", new VariableDef("vehicle_no", "Vehicle Number", "LOGISTICS", true));
         map.put("transport_name", new VariableDef("transport_name", "Transporter Name", "LOGISTICS", true));
+        map.put("transport_phone", new VariableDef("transport_phone", "Transporter Phone", "LOGISTICS", true));
+        map.put("parcel", new VariableDef("parcel", "Parcel Count", "LOGISTICS", true));
+        map.put("parcels", new VariableDef("parcels", "Parcels / Packages", "LOGISTICS", true));
         map.put("e_way_bill", new VariableDef("e_way_bill", "E-Way Bill Number", "LOGISTICS", true));
 
         // User custom variables from DB

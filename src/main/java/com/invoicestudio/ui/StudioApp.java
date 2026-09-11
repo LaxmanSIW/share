@@ -185,17 +185,27 @@ public class StudioApp extends Application {
         Label sectionMain = new Label("WORKSPACE");
         sectionMain.getStyleClass().add("sidebar-section-label");
 
-        Label sectionManage = new Label("MANAGE");
+        Label sectionFinance = new Label("FINANCE & LEDGER");
+        sectionFinance.getStyleClass().add("sidebar-section-label");
+
+        Label sectionManage = new Label("DIRECTORY & CATALOG");
         sectionManage.getStyleClass().add("sidebar-section-label");
 
         nav.getChildren().add(sectionMain);
         addNavButton(nav, "dashboard", "Dashboard", IconHelper.ICON_DASHBOARD, this::showDashboard);
         addNavButton(nav, "new", "Create Bill", IconHelper.ICON_RECEIPT, this::showCreateBill);
         addNavButton(nav, "history", "History", IconHelper.ICON_HISTORY, this::showHistory);
+
+        nav.getChildren().add(sectionFinance);
+        addNavButton(nav, "transactions", "Transactions", IconHelper.ICON_TRANSACTIONS, this::showTransactions);
+        addNavButton(nav, "reports", "Reports & Ledger", IconHelper.ICON_REPORTS, this::showReports);
+
         nav.getChildren().add(sectionManage);
         addNavButton(nav, "templates", "Templates", IconHelper.ICON_TEMPLATES, this::showTemplates);
         addNavButton(nav, "buyers", "Buyers", IconHelper.ICON_USERS, this::showBuyers);
         addNavButton(nav, "items", "Items", IconHelper.ICON_PACKAGE, this::showItems);
+        addNavButton(nav, "categories", "Categories", IconHelper.ICON_CATEGORIES, this::showCategories);
+        addNavButton(nav, "transports", "Transports", IconHelper.ICON_TRANSPORT, this::showTransports);
         addNavButton(nav, "variables", "Variables", IconHelper.ICON_VARIABLE, this::showVariables);
         addNavButton(nav, "settings", "Settings", IconHelper.ICON_SETTINGS, this::showSettings);
 
@@ -234,7 +244,8 @@ public class StudioApp extends Application {
         for (Map.Entry<String, Button> entry : navButtons.entrySet()) {
             Button btn = entry.getValue();
             boolean isActive = entry.getKey().equalsIgnoreCase(activeId) ||
-                    ("designer".equalsIgnoreCase(activeId) && "templates".equalsIgnoreCase(entry.getKey()));
+                    ("designer".equalsIgnoreCase(activeId) && "templates".equalsIgnoreCase(entry.getKey())) ||
+                    ("dashboard2".equalsIgnoreCase(activeId) && "dashboard".equalsIgnoreCase(entry.getKey()));
             btn.getStyleClass().remove("active");
             if (isActive) {
                 btn.getStyleClass().add("active");
@@ -248,11 +259,16 @@ public class StudioApp extends Application {
     private String navIconFor(String id) {
         return switch (id) {
             case "dashboard" -> IconHelper.ICON_DASHBOARD;
+            case "dashboard2" -> IconHelper.ICON_DASHBOARD2;
             case "templates" -> IconHelper.ICON_TEMPLATES;
             case "new" -> IconHelper.ICON_RECEIPT;
             case "history" -> IconHelper.ICON_HISTORY;
+            case "transactions" -> IconHelper.ICON_TRANSACTIONS;
+            case "reports" -> IconHelper.ICON_REPORTS;
             case "buyers" -> IconHelper.ICON_USERS;
             case "items" -> IconHelper.ICON_PACKAGE;
+            case "categories" -> IconHelper.ICON_CATEGORIES;
+            case "transports" -> IconHelper.ICON_TRANSPORT;
             case "variables" -> IconHelper.ICON_VARIABLE;
             case "settings" -> IconHelper.ICON_SETTINGS;
             default -> IconHelper.ICON_RECEIPT;
@@ -328,6 +344,13 @@ public class StudioApp extends Application {
                 () -> ((DashboardView) viewCache.get("dashboard")).refresh()));
     }
 
+    public void showDashboard2() {
+        if (data == null) return;
+        setView("dashboard2", cached("dashboard2",
+                () -> new Dashboard2View(this),
+                () -> ((Dashboard2View) viewCache.get("dashboard2")).refresh()));
+    }
+
     private void showDashboardInternal() {
         setView("dashboard", cached("dashboard", () -> new DashboardView(this), null), false);
     }
@@ -378,6 +401,42 @@ public class StudioApp extends Application {
         setView("variables", cached("variables",
                 () -> new VariablesView(this),
                 () -> ((VariablesView) viewCache.get("variables")).reload()));
+    }
+
+    public void showTransactions() {
+        setView("transactions", cached("transactions",
+                () -> new TransactionsView(this),
+                () -> ((TransactionsView) viewCache.get("transactions")).refresh()));
+    }
+
+    public void showReports() {
+        showReportsForBuyer(null);
+    }
+
+    public void showReportsForBuyer(String buyerId) {
+        setView("reports", cached("reports",
+                () -> {
+                    ReportsView rv = new ReportsView(this);
+                    if (buyerId != null) rv.selectBuyerStatement(buyerId);
+                    return rv;
+                },
+                () -> {
+                    ReportsView rv = (ReportsView) viewCache.get("reports");
+                    rv.refresh();
+                    if (buyerId != null) rv.selectBuyerStatement(buyerId);
+                }));
+    }
+
+    public void showTransports() {
+        setView("transports", cached("transports",
+                () -> new TransportsView(this),
+                () -> ((TransportsView) viewCache.get("transports")).refresh()));
+    }
+
+    public void showCategories() {
+        setView("categories", cached("categories",
+                () -> new CategoriesView(this),
+                () -> ((CategoriesView) viewCache.get("categories")).refresh()));
     }
 
     public void showSettings() {
@@ -448,10 +507,15 @@ public class StudioApp extends Application {
         // Views refresh themselves on show now; just refresh the active one.
         switch (currentView) {
             case "dashboard" -> showDashboard();
+            case "dashboard2" -> showDashboard2();
             case "templates" -> showTemplates();
             case "history" -> showHistory();
+            case "transactions" -> showTransactions();
+            case "reports" -> showReports();
             case "buyers" -> showBuyers();
             case "items" -> showItems();
+            case "categories" -> showCategories();
+            case "transports" -> showTransports();
             case "variables" -> showVariables();
             case "settings" -> showSettings();
             default -> {}

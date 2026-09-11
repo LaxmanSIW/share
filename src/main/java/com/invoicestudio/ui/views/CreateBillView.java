@@ -62,6 +62,7 @@ public class CreateBillView extends BorderPane {
     private final TextField transportField = new TextField();
     private final TextField vehicleField = new TextField();
     private final TextField ewayField = new TextField();
+    private final TextField parcelField = new TextField("1");
     private final TextField refInvoiceField = new TextField();
     private final TextField creditReasonField = new TextField();
 
@@ -332,6 +333,19 @@ public class CreateBillView extends BorderPane {
                 buyerPhoneField.setText(b.getPhone() != null ? b.getPhone() : "");
                 buyerStateField.setText(b.getState() != null ? b.getState() : "");
                 buyerStateCodeField.setText(b.getEffectiveStateCode() != null ? b.getEffectiveStateCode() : "");
+
+                // Auto-fill default transport if assigned to buyer
+                if (b.getDefaultTransportId() != null && !b.getDefaultTransportId().isBlank()) {
+                    Transport tr = app.getData().getAllTransports().stream()
+                            .filter(t -> b.getDefaultTransportId().equalsIgnoreCase(t.getId()))
+                            .findFirst().orElse(null);
+                    if (tr != null) {
+                        transportField.setText(tr.getName() != null ? tr.getName() : "");
+                        if (tr.getVehicleNo() != null && !tr.getVehicleNo().isBlank() && vehicleField.getText().isBlank()) {
+                            vehicleField.setText(tr.getVehicleNo());
+                        }
+                    }
+                }
                 updateTotalsAndPreview();
             }
         });
@@ -465,14 +479,19 @@ public class CreateBillView extends BorderPane {
         ewayField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
         g.add(ewayField, 3, 1);
 
+        g.add(new Label("Parcels / Bales:"), 4, 0);
+        parcelField.setTooltip(new Tooltip("Total shipment cartons, bales, or parcels count"));
+        parcelField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+        g.add(parcelField, 4, 1);
+
         // Credit note extra fields
         g.add(new Label("Against Invoice #:"), 0, 2);
         refInvoiceField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
         g.add(refInvoiceField, 0, 3);
 
-        g.add(new Label("Adjustment Reason:"), 1, 2, 2, 1);
+        g.add(new Label("Adjustment Reason:"), 1, 2, 3, 1);
         creditReasonField.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
-        g.add(creditReasonField, 1, 3, 2, 1);
+        g.add(creditReasonField, 1, 3, 3, 1);
 
         return g;
     }
@@ -624,6 +643,7 @@ public class CreateBillView extends BorderPane {
             transportField.setText(editingBill.getVariables().getOrDefault("transport_name", ""));
             vehicleField.setText(editingBill.getVariables().getOrDefault("vehicle_no", ""));
             ewayField.setText(editingBill.getVariables().getOrDefault("e_way_bill", ""));
+            parcelField.setText(String.valueOf(editingBill.getParcel() > 0 ? editingBill.getParcel() : 1));
             refInvoiceField.setText(editingBill.getVariables().getOrDefault("ref_invoice_no", ""));
             creditReasonField.setText(editingBill.getVariables().getOrDefault("credit_reason", ""));
             discountPctField.setText(String.valueOf(editingBill.getDiscountPct()));
@@ -734,6 +754,16 @@ public class CreateBillView extends BorderPane {
         vars.put("transport_name", transportField.getText());
         vars.put("vehicle_no", vehicleField.getText());
         vars.put("e_way_bill", ewayField.getText());
+
+        int parcelCount = 1;
+        try {
+            parcelCount = Integer.parseInt(parcelField.getText().trim());
+            if (parcelCount <= 0) parcelCount = 1;
+        } catch (Exception ignored) {}
+        b.setParcel(parcelCount);
+        vars.put("parcel", String.valueOf(parcelCount));
+        vars.put("parcels", String.valueOf(parcelCount));
+
         vars.put("ref_invoice_no", refInvoiceField.getText());
         vars.put("credit_reason", creditReasonField.getText());
         b.setVariables(vars);

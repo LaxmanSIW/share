@@ -3,6 +3,7 @@ package com.invoicestudio.ui.views;
 import com.invoicestudio.model.Bill;
 import com.invoicestudio.model.BillItem;
 import com.invoicestudio.model.BillStatus;
+import com.invoicestudio.model.ItemCategory;
 import com.invoicestudio.model.ItemRecord;
 import com.invoicestudio.service.BillingService;
 import com.invoicestudio.ui.DialogHelper;
@@ -39,6 +40,7 @@ public class ItemsView extends VBox {
 
     // Controls
     private final TextField searchField = new TextField();
+    private final ComboBox<String> categoryFilterCombo = new ComboBox<>();
     private final VBox tableContainer = new VBox();
     private final VBox analyticsContainer = new VBox(16);
     private final VBox dynamicBody = new VBox(16);
@@ -195,7 +197,12 @@ public class ItemsView extends VBox {
         searchField.textProperty().addListener((obs, oldV, newV) -> renderCatalogList());
         HBox.setHgrow(searchField, Priority.ALWAYS);
 
-        toolbar.getChildren().addAll(sIcon, searchField);
+        updateCategoryFilterItems();
+        categoryFilterCombo.getStyleClass().add("filter-combo");
+        categoryFilterCombo.setPrefWidth(180);
+        categoryFilterCombo.valueProperty().addListener((obs, oldV, newV) -> renderCatalogList());
+
+        toolbar.getChildren().addAll(sIcon, searchField, categoryFilterCombo);
 
         // Table container
         tableContainer.setSpacing(8);
@@ -219,7 +226,8 @@ public class ItemsView extends VBox {
             toolbar.getStyleClass().add("card-pane");
             toolbar.setPadding(new Insets(12, 16, 12, 16));
             Label sIcon = new Label("🔍");
-            toolbar.getChildren().addAll(sIcon, searchField);
+            updateCategoryFilterItems();
+            toolbar.getChildren().addAll(sIcon, searchField, categoryFilterCombo);
             dynamicBody.getChildren().addAll(toolbar, tableContainer);
             renderCatalogList();
         } else {
@@ -307,15 +315,38 @@ public class ItemsView extends VBox {
         topSellerQtyVal.setText(topQty > 0 ? String.format("%,.0f units sold", topQty) : "No sales yet");
     }
 
+    private void updateCategoryFilterItems() {
+        String curr = categoryFilterCombo.getValue();
+        List<String> catNames = new ArrayList<>();
+        catNames.add("All Categories");
+        for (ItemCategory c : app.getData().getAllCategories()) {
+            catNames.add(c.getName());
+        }
+        categoryFilterCombo.setItems(FXCollections.observableArrayList(catNames));
+        if (curr != null && catNames.contains(curr)) {
+            categoryFilterCombo.setValue(curr);
+        } else {
+            categoryFilterCombo.setValue("All Categories");
+        }
+    }
+
     private void renderCatalogList() {
         tableContainer.getChildren().clear();
 
         String q = searchField.getText() != null ? searchField.getText().trim().toLowerCase() : "";
+        String selectedCat = categoryFilterCombo.getValue();
+
         List<ItemRecord> filtered = allItems.stream().filter(it -> {
+            if (selectedCat != null && !"All Categories".equals(selectedCat)) {
+                if (it.getCategoryName() == null || !selectedCat.equalsIgnoreCase(it.getCategoryName())) {
+                    return false;
+                }
+            }
             if (q.isEmpty()) return true;
             return (it.getName() != null && it.getName().toLowerCase().contains(q))
                     || (it.getHsn() != null && it.getHsn().toLowerCase().contains(q))
-                    || (it.getUnit() != null && it.getUnit().toLowerCase().contains(q));
+                    || (it.getUnit() != null && it.getUnit().toLowerCase().contains(q))
+                    || (it.getCategoryName() != null && it.getCategoryName().toLowerCase().contains(q));
         }).collect(Collectors.toList());
 
         if (filtered.isEmpty()) {
@@ -372,6 +403,11 @@ public class ItemsView extends VBox {
 
             HBox badgeRow = new HBox(6);
             badgeRow.setAlignment(Pos.CENTER_LEFT);
+            if (it.getCategoryName() != null && !it.getCategoryName().trim().isEmpty()) {
+                Label catBadge = new Label(it.getCategoryName());
+                catBadge.getStyleClass().addAll("badge", "badge-blue");
+                badgeRow.getChildren().add(catBadge);
+            }
             if (it.getHsn() != null && !it.getHsn().trim().isEmpty()) {
                 Label hsn = new Label("HSN: " + it.getHsn());
                 hsn.getStyleClass().add("badge-hsn");
@@ -574,9 +610,34 @@ public class ItemsView extends VBox {
         gstBox.setValue(editing != null ? (int) editing.getGst() : 18);
         gstBox.setMaxWidth(Double.MAX_VALUE);
 
+        ComboBox<ItemCategory> catBox = new ComboBox<>();
+        List<ItemCategory> allCats = app.getData().getAllCategories();
+        catBox.setItems(FXCollections.observableArrayList(allCats));
+        catBox.setPromptText("Select category (optional)...");
+        catBox.setMaxWidth(Double.MAX_VALUE);
+        catBox.setCellFactory(lv -> new ListCell<>() {
+            @Override protected void updateItem(ItemCategory item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item.getName());
+            }
+        });
+        catBox.setButtonCell(new ListCell<>() {
+            @Override protected void updateItem(ItemCategory item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item.getName());
+            }
+        });
+
+        if (editing != null && editing.getCategoryId() != null) {
+            allCats.stream()
+                .filter(c -> c.getId().equals(editing.getCategoryId()) || (editing.getCategoryName() != null && c.getName().equalsIgnoreCase(editing.getCategoryName())))
+                .findFirst().ifPresent(catBox::setValue);
+        }
+
         VBox form = new VBox(12);
         form.getChildren().addAll(
                 UiTheme.labeled("Item Name / Description *", nameField),
+                UiTheme.labeled("Product Category", catBox),
                 UiTheme.labeled("HSN / SAC Code", hsnField),
                 UiTheme.labeled("Unit of Measurement", unitBox),
                 UiTheme.labeled("Default Unit Rate (" + currency + ")", rateField),
@@ -606,9 +667,15 @@ public class ItemsView extends VBox {
             String hsn = hsnField.getText().trim();
 
             try {
+                ItemCategory selCat = catBox.getValue();
+                String catId = selCat != null ? selCat.getId() : null;
+                String catName = selCat != null ? selCat.getName() : null;
+
                 if (editing == null) {
                     ItemRecord it = new ItemRecord();
                     it.setName(name);
+                    it.setCategoryId(catId);
+                    it.setCategoryName(catName);
                     it.setHsn(hsn);
                     it.setUnit(unit);
                     it.setRate(rate);
@@ -617,6 +684,8 @@ public class ItemsView extends VBox {
                     Toast.show(this, "Item added: " + name, false);
                 } else {
                     editing.setName(name);
+                    editing.setCategoryId(catId);
+                    editing.setCategoryName(catName);
                     editing.setHsn(hsn);
                     editing.setUnit(unit);
                     editing.setRate(rate);

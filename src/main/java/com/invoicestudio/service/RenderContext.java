@@ -62,7 +62,14 @@ public class RenderContext {
                     values.put(e.getKey(), e.getValue());
                 }
             }
-        } else if (bill == null) {
+        }
+
+        // Parcels & logistics defaults
+        int parcelsCount = bill != null ? bill.getParcel() : 1;
+        values.put("parcel", String.valueOf(parcelsCount));
+        values.put("parcels", String.valueOf(parcelsCount));
+
+        if (bill == null) {
             // Sample values for Template Designer preview
             values.putIfAbsent("buyer_name", "Acme Enterprises Ltd");
             values.putIfAbsent("buyer_trade_name", "Acme Retail Store");
@@ -73,8 +80,14 @@ public class RenderContext {
             values.putIfAbsent("buyer_email", "billing@acme.com");
             values.putIfAbsent("buyer_state", "Maharashtra");
             values.putIfAbsent("buyer_state_code", "27");
+            values.putIfAbsent("buyer_city", "Pune");
+            values.putIfAbsent("buyer_contact_person", "Amit Verma");
             values.putIfAbsent("po_no", "PO-2026-892");
             values.putIfAbsent("vehicle_no", "MH-12-AB-1234");
+            values.putIfAbsent("transport_name", "V-Trans Roadlines");
+            values.putIfAbsent("transport_phone", "+91 98200 12345");
+            values.putIfAbsent("transport_contact", "Rajesh Sharma");
+            values.putIfAbsent("e_way_bill", "241019283746");
             values.putIfAbsent("due_date", BillingService.todayISO());
         }
 

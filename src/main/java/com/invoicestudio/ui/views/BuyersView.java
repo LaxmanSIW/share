@@ -6,6 +6,7 @@ import com.invoicestudio.model.BillStatus;
 import com.invoicestudio.model.Buyer;
 import com.invoicestudio.model.BuyerFieldDef;
 import com.invoicestudio.model.Settings;
+import com.invoicestudio.model.Transport;
 import com.invoicestudio.service.CsvService;
 import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.StudioApp;
@@ -217,10 +218,19 @@ public class BuyersView extends BorderPane {
                     Label nameLbl = new Label(b.getName());
                     nameLbl.getStyleClass().add("table-cell-title");
 
-                    String sub = b.getAddress() != null && !b.getAddress().isBlank()
-                            ? (b.getAddress().length() > 32 ? b.getAddress().substring(0, 30) + "…" : b.getAddress())
-                            : (b.getPhone() != null && !b.getPhone().isBlank() ? b.getPhone() : "No address specified");
-                    Label subLbl = new Label(sub);
+                    String subInfo = "";
+                    if (b.getContactPerson() != null && !b.getContactPerson().isBlank()) {
+                        subInfo = "Contact: " + b.getContactPerson();
+                    } else if (b.getCity() != null && !b.getCity().isBlank()) {
+                        subInfo = b.getCity();
+                    } else if (b.getAddress() != null && !b.getAddress().isBlank()) {
+                        subInfo = b.getAddress().length() > 32 ? b.getAddress().substring(0, 30) + "…" : b.getAddress();
+                    } else if (b.getPhone() != null && !b.getPhone().isBlank()) {
+                        subInfo = b.getPhone();
+                    } else {
+                        subInfo = "No address specified";
+                    }
+                    Label subLbl = new Label(subInfo);
                     subLbl.getStyleClass().add("kpi-subtext");
 
                     textBox.getChildren().addAll(nameLbl, subLbl);
@@ -352,10 +362,10 @@ public class BuyersView extends BorderPane {
                 });
 
                 stBtn.getStyleClass().addAll("button-sm", "button-secondary");
-                stBtn.setTooltip(new Tooltip("View billing statement & payment ledger"));
+                stBtn.setTooltip(new Tooltip("View billing statement & payment ledger in Reports"));
                 stBtn.setOnAction(e -> {
                     Buyer b = getTableRow().getItem();
-                    if (b != null) showStatementDialog(b);
+                    if (b != null) app.showReportsForBuyer(b.getId());
                 });
 
                 delBtn.getStyleClass().addAll("button-sm", "button-danger");
@@ -477,19 +487,56 @@ public class BuyersView extends BorderPane {
         scHint.getStyleClass().add("kpi-subtext");
         stateCodeBox.getChildren().addAll(stateCodeF, scHint);
 
+        TextField contactF = new TextField(existing != null && existing.getContactPerson() != null ? existing.getContactPerson() : "");
+        contactF.setPromptText("Manager / Owner contact person");
+
+        TextField cityF = new TextField(existing != null && existing.getCity() != null ? existing.getCity() : "");
+        cityF.setPromptText("City / Town");
+
+        TextField creditLimitF = new TextField(existing != null && existing.getCreditLimit() > 0 ? String.valueOf(existing.getCreditLimit()) : "");
+        creditLimitF.setPromptText("0.00 (optional credit limit)");
+
+        ComboBox<Transport> transportBox = new ComboBox<>();
+        List<Transport> allTransports = app.getData().getAllTransports();
+        transportBox.setItems(FXCollections.observableArrayList(allTransports));
+        transportBox.setPromptText("Select default carrier / transport...");
+        transportBox.setMaxWidth(Double.MAX_VALUE);
+        transportBox.setCellFactory(lv -> new ListCell<>() {
+            @Override protected void updateItem(Transport item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item.getName() + (!item.getVehicleNumber().isBlank() ? " (" + item.getVehicleNumber() + ")" : ""));
+            }
+        });
+        transportBox.setButtonCell(new ListCell<>() {
+            @Override protected void updateItem(Transport item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item.getName());
+            }
+        });
+
+        if (existing != null && existing.getDefaultTransportId() != null) {
+            allTransports.stream()
+                .filter(t -> t.getId().equalsIgnoreCase(existing.getDefaultTransportId()))
+                .findFirst().ifPresent(transportBox::setValue);
+        }
+
         g.add(new Label("Customer Name:"), 0, 0); g.add(nameF, 1, 0);
-        g.add(new Label("Billing Address:"), 0, 1); g.add(addrF, 1, 1);
-        g.add(new Label("GSTIN:"), 0, 2); g.add(gstF, 1, 2);
-        g.add(new Label("Phone:"), 0, 3); g.add(phoneF, 1, 3);
-        g.add(new Label("State Name:"), 0, 4); g.add(stateF, 1, 4);
-        g.add(new Label("State Code:"), 0, 5); g.add(stateCodeBox, 1, 5);
+        g.add(new Label("Contact Person:"), 0, 1); g.add(contactF, 1, 1);
+        g.add(new Label("City:"), 0, 2); g.add(cityF, 1, 2);
+        g.add(new Label("Billing Address:"), 0, 3); g.add(addrF, 1, 3);
+        g.add(new Label("GSTIN:"), 0, 4); g.add(gstF, 1, 4);
+        g.add(new Label("Phone:"), 0, 5); g.add(phoneF, 1, 5);
+        g.add(new Label("State Name:"), 0, 6); g.add(stateF, 1, 6);
+        g.add(new Label("State Code:"), 0, 7); g.add(stateCodeBox, 1, 7);
+        g.add(new Label("Credit Limit (₹):"), 0, 8); g.add(creditLimitF, 1, 8);
+        g.add(new Label("Default Transport:"), 0, 9); g.add(transportBox, 1, 9);
 
         // Query custom buyer fields defined under Settings
         Settings settings = app.getData().getSettings();
         List<BuyerFieldDef> defs = settings != null && settings.getBuyerFields() != null ? settings.getBuyerFields() : List.of();
         Map<String, TextField> customInputs = new LinkedHashMap<>();
 
-        int rowIdx = 6;
+        int rowIdx = 10;
         if (!defs.isEmpty()) {
             Separator sep = new Separator();
             sep.setPadding(new Insets(4, 0, 4, 0));
@@ -520,6 +567,18 @@ public class BuyersView extends BorderPane {
             if (btn == ButtonType.OK) {
                 String id = existing != null ? existing.getId() : "byr_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
                 Buyer b = new Buyer(id, nameF.getText().trim(), addrF.getText().trim(), gstF.getText().trim(), phoneF.getText().trim(), stateF.getText().trim(), stateCodeF.getText().trim());
+                b.setContactPerson(contactF.getText().trim());
+                b.setCity(cityF.getText().trim());
+
+                try {
+                    String clStr = creditLimitF.getText().trim();
+                    if (!clStr.isEmpty()) b.setCreditLimit(Double.parseDouble(clStr));
+                } catch (Exception ignored) {}
+
+                if (transportBox.getValue() != null) {
+                    b.setDefaultTransportId(transportBox.getValue().getId());
+                }
+
                 Map<String, String> customMap = new HashMap<>();
                 if (existing != null && existing.getCustom() != null) {
                     customMap.putAll(existing.getCustom());

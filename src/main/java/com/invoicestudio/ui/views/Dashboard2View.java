@@ -1,0 +1,720 @@
+package com.invoicestudio.ui.views;
+
+import com.invoicestudio.model.Bill;
+import com.invoicestudio.model.Buyer;
+import com.invoicestudio.model.Transaction;
+import com.invoicestudio.ui.IconHelper;
+import com.invoicestudio.ui.StudioApp;
+import com.invoicestudio.ui.UiTheme;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.collections.FXCollections;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.chart.*;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+
+import java.text.DecimalFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Dashboard 2 (Financial & Logistics Dashboard) — Version 4.0.0
+ * Matches the layout and analytics of the reference financial web dashboard.
+ * Coexists seamlessly with the original Dashboard 1.
+ */
+public class Dashboard2View extends BorderPane {
+
+    private final StudioApp app;
+    private final VBox contentBox = new VBox(20);
+    private final DecimalFormat currencyFmt = new DecimalFormat("#,##,##0.00");
+
+    private String activeBook = "ALL"; // "ALL", "CC", "CS"
+    private String parcelPeriod = "Month"; // "Day", "Week", "Month", "Year"
+    private String recentType = "Transactions"; // "Transactions", "Bills"
+
+    public Dashboard2View(StudioApp app) {
+        this.app = app;
+        setPadding(new Insets(20, 24, 20, 24));
+        getStyleClass().add("bg-app");
+
+        contentBox.setFillWidth(true);
+        VBox.setVgrow(contentBox, Priority.ALWAYS);
+
+        ScrollPane scroll = new ScrollPane(contentBox);
+        scroll.setFitToWidth(true);
+        scroll.setFitToHeight(true);
+        scroll.getStyleClass().add("scroll-pane");
+        setCenter(scroll);
+
+        refresh();
+    }
+
+    public void refresh() {
+        contentBox.getChildren().clear();
+
+        List<Transaction> allTxs = app.getData().getAllTransactions().stream()
+            .filter(t -> "ALL".equals(activeBook) || activeBook.equalsIgnoreCase(t.getBookType()))
+            .collect(Collectors.toList());
+
+        List<Bill> allBills = app.getData().getAllBills();
+
+        // 1. Top Bar
+        contentBox.getChildren().add(createTopBar());
+
+        // 2. All-Time Accounts Overview (5 KPI Cards)
+        contentBox.getChildren().add(createAllTimeKpis(allTxs));
+
+        // 3. Current Period & Logistics Performance (4 KPI Cards with Trends)
+        contentBox.getChildren().add(createCurrentPeriodKpis(allTxs));
+
+        // 4. Two Charts Row (Monthly Sales vs Payments, Monthly Trouser Movement)
+        contentBox.getChildren().add(createChartsRow(allTxs));
+
+        // 5. Parcel Counts Analysis
+        contentBox.getChildren().add(createParcelAnalysisCard(allTxs));
+
+        // 6. Top 5 Widgets (Debtors, Paymasters, Volume Leaders)
+        contentBox.getChildren().add(createTop5WidgetsRow(allTxs));
+
+        // 7. Recent Transactions / Bills Table
+        contentBox.getChildren().add(createRecentActivityCard(allTxs, allBills));
+    }
+
+    private Node createTopBar() {
+        HBox bar = new HBox(16);
+        bar.setAlignment(Pos.CENTER_LEFT);
+
+        VBox titleBox = new VBox(2);
+        Label title = new Label("Dashboard 2 — Financial & Logistics");
+        title.getStyleClass().add("heading-l");
+        Label subtitle = new Label("All-time and current period sales, receipts, ledger balance, and logistics performance.");
+        subtitle.getStyleClass().add("kpi-subtext");
+        titleBox.getChildren().addAll(title, subtitle);
+
+        // Segmented in-page switcher between Dashboard 1 and Dashboard 2
+        HBox dashSwitch = new HBox(4);
+        dashSwitch.getStyleClass().add("toggle-group-container");
+        dashSwitch.setAlignment(Pos.CENTER_LEFT);
+
+        Button btnOverview = new Button("Standard Overview");
+        btnOverview.getStyleClass().add("btn-filter-pill");
+        btnOverview.setTooltip(new Tooltip("Return to the standard InvoiceStudio overview dashboard"));
+        btnOverview.setOnAction(e -> app.showDashboard());
+
+        Button btnDash2 = new Button("Financial & Logistics (Dashboard 2)");
+        btnDash2.getStyleClass().addAll("btn-filter-pill", "active");
+
+        dashSwitch.getChildren().addAll(btnOverview, btnDash2);
+
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+
+        // Book switch toggle
+        HBox bookToggle = new HBox(4);
+        bookToggle.getStyleClass().add("toggle-group-container");
+
+        Button btnAll = createFilterPill("All Books", "ALL".equals(activeBook));
+        Button btnCc = createFilterPill("Alpha CC", "CC".equals(activeBook));
+        Button btnCs = createFilterPill("Alpha CS", "CS".equals(activeBook));
+
+        btnAll.setOnAction(e -> { activeBook = "ALL"; refresh(); });
+        btnCc.setOnAction(e -> { activeBook = "CC"; refresh(); });
+        btnCs.setOnAction(e -> { activeBook = "CS"; refresh(); });
+
+        bookToggle.getChildren().addAll(btnAll, btnCc, btnCs);
+
+        Button newTxBtn = UiTheme.goldBtn("+ New Transaction");
+        newTxBtn.setOnAction(e -> app.showTransactions());
+
+        bar.getChildren().addAll(titleBox, dashSwitch, sp, bookToggle, newTxBtn);
+        return bar;
+    }
+
+    private Button createFilterPill(String text, boolean active) {
+        Button b = new Button(text);
+        b.getStyleClass().add("btn-filter-pill");
+        if (active) b.getStyleClass().add("active");
+        return b;
+    }
+
+    private Node createAllTimeKpis(List<Transaction> txs) {
+        VBox section = new VBox(8);
+
+        Label header = new Label("ALL-TIME ACCOUNTS OVERVIEW");
+        header.getStyleClass().addAll("micro-label", "accent-gold");
+
+        double totalSales = 0;
+        double totalPayments = 0;
+        int totalPieces = 0;
+        int totalParcels = 0;
+
+        for (Transaction t : txs) {
+            if ("sale".equalsIgnoreCase(t.getTransactionType())) {
+                totalSales += t.getAmount();
+                if (t.isIncludeInReporting()) {
+                    totalPieces += t.getTotalQuantity();
+                }
+                totalParcels += t.getParcels();
+            } else if ("payment".equalsIgnoreCase(t.getTransactionType())) {
+                totalPayments += t.getAmount();
+            }
+        }
+
+        double outstanding = totalSales - totalPayments;
+
+        HBox grid = new HBox(14);
+        grid.getChildren().addAll(
+            createBigKpiCard("Total Sale Amount", "₹ " + currencyFmt.format(totalSales),
+                "All books, all time", "#8b5cf6"),
+            createBigKpiCard("Total Payment Amount", "₹ " + currencyFmt.format(totalPayments),
+                "Total collections received", "#10b981"),
+            createBigKpiCard("Outstanding Balance", "₹ " + currencyFmt.format(outstanding),
+                "Across all active buyers", outstanding > 0 ? "#ef4444" : "#10b981"),
+            createBigKpiCard("Total Pieces Sold", String.format("%,d", totalPieces),
+                "All time trouser pieces", "#3b82f6"),
+            createBigKpiCard("Total Parcels Sent", String.format("%,d", totalParcels),
+                "All time cargo shipments", "#f97316")
+        );
+
+        for (Node n : grid.getChildren()) HBox.setHgrow(n, Priority.ALWAYS);
+        section.getChildren().addAll(header, grid);
+        return section;
+    }
+
+    private Node createCurrentPeriodKpis(List<Transaction> txs) {
+        VBox section = new VBox(8);
+
+        LocalDate now = LocalDate.now();
+        String currentMonthKey = now.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+        String lastMonthKey = now.minusMonths(1).format(DateTimeFormatter.ofPattern("yyyy-MM"));
+        String monthName = now.format(DateTimeFormatter.ofPattern("MMMM yyyy"));
+
+        Label header = new Label("CURRENT PERIOD & LOGISTICS PERFORMANCE (" + monthName.toUpperCase() + ")");
+        header.getStyleClass().addAll("micro-label", "accent-sky");
+
+        double currSales = 0, lastSales = 0;
+        double currPayments = 0, lastPayments = 0;
+        int currPieces = 0, lastPieces = 0;
+        int currParcels = 0, lastParcels = 0;
+
+        for (Transaction t : txs) {
+            String d = t.getTransactionDate();
+            if (d == null) continue;
+            boolean isSale = "sale".equalsIgnoreCase(t.getTransactionType());
+            boolean isPay = "payment".equalsIgnoreCase(t.getTransactionType());
+
+            if (d.startsWith(currentMonthKey)) {
+                if (isSale) {
+                    currSales += t.getAmount();
+                    if (t.isIncludeInReporting()) currPieces += t.getTotalQuantity();
+                    currParcels += t.getParcels();
+                } else if (isPay) {
+                    currPayments += t.getAmount();
+                }
+            } else if (d.startsWith(lastMonthKey)) {
+                if (isSale) {
+                    lastSales += t.getAmount();
+                    if (t.isIncludeInReporting()) lastPieces += t.getTotalQuantity();
+                    lastParcels += t.getParcels();
+                } else if (isPay) {
+                    lastPayments += t.getAmount();
+                }
+            }
+        }
+
+        double salesTrend = calcTrend(currSales, lastSales);
+        double payTrend = calcTrend(currPayments, lastPayments);
+        double piecesTrend = calcTrend(currPieces, lastPieces);
+        double parcelsTrend = calcTrend(currParcels, lastParcels);
+
+        HBox grid = new HBox(14);
+        grid.getChildren().addAll(
+            createTrendKpiCard("Total Sales", "₹ " + currencyFmt.format(currSales), salesTrend),
+            createTrendKpiCard("Payments Received", "₹ " + currencyFmt.format(currPayments), payTrend),
+            createTrendKpiCard("Pieces Sold", String.format("%,d pcs", currPieces), piecesTrend),
+            createTrendKpiCard("Parcels Sent", String.format("%,d parcels", currParcels), parcelsTrend)
+        );
+
+        for (Node n : grid.getChildren()) HBox.setHgrow(n, Priority.ALWAYS);
+        section.getChildren().addAll(header, grid);
+        return section;
+    }
+
+    private double calcTrend(double curr, double last) {
+        if (last == 0) return curr > 0 ? 100.0 : 0.0;
+        return ((curr - last) / Math.abs(last)) * 100.0;
+    }
+
+    private VBox createBigKpiCard(String title, String val, String sub, String accentColor) {
+        VBox card = UiTheme.card(4);
+        card.setPadding(new Insets(14, 16, 14, 16));
+        card.setStyle("-fx-border-left-color: " + accentColor + "; -fx-border-left-width: 4px;");
+
+        Label tLbl = new Label(title.toUpperCase());
+        tLbl.getStyleClass().add("kpi-subtext");
+        tLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
+
+        Label vLbl = new Label(val);
+        vLbl.getStyleClass().add("heading-m");
+        vLbl.setStyle("-fx-font-size: 19px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace;");
+
+        Label sLbl = new Label(sub);
+        sLbl.getStyleClass().add("kpi-subtext");
+        sLbl.setStyle("-fx-font-size: 10px;");
+
+        card.getChildren().addAll(tLbl, vLbl, sLbl);
+        return card;
+    }
+
+    private VBox createTrendKpiCard(String title, String val, double trendPercent) {
+        VBox card = UiTheme.card(4);
+        card.setPadding(new Insets(14, 16, 14, 16));
+
+        Label tLbl = new Label(title.toUpperCase());
+        tLbl.getStyleClass().add("kpi-subtext");
+        tLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
+
+        Label vLbl = new Label(val);
+        vLbl.getStyleClass().add("heading-m");
+        vLbl.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace;");
+
+        boolean pos = trendPercent >= 0;
+        String sign = pos ? "+" : "";
+        Label trendBadge = new Label(String.format("%s%.1f%% vs last month", sign, trendPercent));
+        trendBadge.getStyleClass().addAll("badge", pos ? "badge-green" : "badge-red");
+
+        card.getChildren().addAll(tLbl, vLbl, trendBadge);
+        return card;
+    }
+
+    private Node createChartsRow(List<Transaction> txs) {
+        HBox row = new HBox(20);
+
+        // Chart 1: Monthly Sales vs Payments (12 Months)
+        VBox card1 = UiTheme.card(10);
+        HBox.setHgrow(card1, Priority.ALWAYS);
+
+        HBox c1Header = new HBox(8);
+        c1Header.setAlignment(Pos.CENTER_LEFT);
+        Label c1Title = UiTheme.sectionTitle("Monthly Sales vs Payments");
+        Label c1Sub = new Label("Last 12 months comparison");
+        c1Sub.getStyleClass().add("kpi-subtext");
+        c1Header.getChildren().addAll(c1Title, c1Sub);
+        card1.getChildren().add(c1Header);
+
+        CategoryAxis xAxis1 = new CategoryAxis();
+        NumberAxis yAxis1 = new NumberAxis();
+        LineChart<String, Number> lineChart = new LineChart<>(xAxis1, yAxis1);
+        lineChart.setPrefHeight(260);
+        lineChart.setAnimated(false);
+
+        XYChart.Series<String, Number> salesSeries = new XYChart.Series<>();
+        salesSeries.setName("Sales (₹)");
+        XYChart.Series<String, Number> paymentSeries = new XYChart.Series<>();
+        paymentSeries.setName("Payments (₹)");
+
+        LocalDate now = LocalDate.now();
+        for (int i = 11; i >= 0; i--) {
+            LocalDate m = now.minusMonths(i);
+            String mKey = m.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+            String mLabel = m.format(DateTimeFormatter.ofPattern("MMM yy"));
+
+            double mSales = 0;
+            double mPayments = 0;
+            for (Transaction t : txs) {
+                if (t.getTransactionDate() != null && t.getTransactionDate().startsWith(mKey)) {
+                    if ("sale".equalsIgnoreCase(t.getTransactionType())) mSales += t.getAmount();
+                    else if ("payment".equalsIgnoreCase(t.getTransactionType())) mPayments += t.getAmount();
+                }
+            }
+            salesSeries.getData().add(new XYChart.Data<>(mLabel, mSales));
+            paymentSeries.getData().add(new XYChart.Data<>(mLabel, mPayments));
+        }
+
+        lineChart.getData().addAll(salesSeries, paymentSeries);
+        card1.getChildren().add(lineChart);
+
+        // Chart 2: Monthly Trouser Movement (Pieces Sold)
+        VBox card2 = UiTheme.card(10);
+        HBox.setHgrow(card2, Priority.ALWAYS);
+
+        HBox c2Header = new HBox(8);
+        c2Header.setAlignment(Pos.CENTER_LEFT);
+        Label c2Title = UiTheme.sectionTitle("Monthly Trouser Movement");
+        Label c2Sub = new Label("Pieces sold per month");
+        c2Sub.getStyleClass().add("kpi-subtext");
+        c2Header.getChildren().addAll(c2Title, c2Sub);
+        card2.getChildren().add(c2Header);
+
+        CategoryAxis xAxis2 = new CategoryAxis();
+        NumberAxis yAxis2 = new NumberAxis();
+        BarChart<String, Number> barChart = new BarChart<>(xAxis2, yAxis2);
+        barChart.setPrefHeight(260);
+        barChart.setAnimated(false);
+        barChart.setLegendVisible(false);
+
+        XYChart.Series<String, Number> qtySeries = new XYChart.Series<>();
+        qtySeries.setName("Pieces");
+
+        for (int i = 11; i >= 0; i--) {
+            LocalDate m = now.minusMonths(i);
+            String mKey = m.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+            String mLabel = m.format(DateTimeFormatter.ofPattern("MMM yy"));
+
+            int mQty = 0;
+            for (Transaction t : txs) {
+                if (t.getTransactionDate() != null && t.getTransactionDate().startsWith(mKey)) {
+                    if ("sale".equalsIgnoreCase(t.getTransactionType()) && t.isIncludeInReporting()) {
+                        mQty += t.getTotalQuantity();
+                    }
+                }
+            }
+            qtySeries.getData().add(new XYChart.Data<>(mLabel, mQty));
+        }
+
+        barChart.getData().add(qtySeries);
+        card2.getChildren().add(barChart);
+
+        row.getChildren().addAll(card1, card2);
+        return row;
+    }
+
+    private Node createParcelAnalysisCard(List<Transaction> txs) {
+        VBox card = UiTheme.card(12);
+
+        HBox top = new HBox(12);
+        top.setAlignment(Pos.CENTER_LEFT);
+
+        VBox titleBox = new VBox(2);
+        Label title = UiTheme.sectionTitle("Parcel Counts Analysis");
+        Label sub = new Label("Track parcel quantities and shipments over time");
+        sub.getStyleClass().add("kpi-subtext");
+        titleBox.getChildren().addAll(title, sub);
+
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+
+        HBox periodToggle = new HBox(4);
+        periodToggle.getStyleClass().add("toggle-group-container");
+
+        String[] options = {"Day", "Week", "Month", "Year"};
+        for (String opt : options) {
+            Button b = createFilterPill(opt, opt.equals(parcelPeriod));
+            b.setOnAction(e -> {
+                parcelPeriod = opt;
+                refresh();
+            });
+            periodToggle.getChildren().add(b);
+        }
+
+        top.getChildren().addAll(titleBox, sp, periodToggle);
+        card.getChildren().add(top);
+
+        // Sub layout: Left summary callout + Right bar chart
+        HBox chartBox = new HBox(16);
+        chartBox.setAlignment(Pos.CENTER_LEFT);
+
+        int totalParcels = txs.stream().mapToInt(Transaction::getParcels).sum();
+
+        VBox callout = new VBox(6);
+        callout.setPrefWidth(220);
+        callout.setPadding(new Insets(20));
+        callout.setAlignment(Pos.CENTER);
+        callout.getStyleClass().add("card-kpi-mini");
+        callout.setStyle("-fx-border-left-color: #f97316; -fx-border-left-width: 4px;");
+
+        Label calloutNum = new Label(String.format("%,d", totalParcels));
+        calloutNum.setStyle("-fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: #ea580c; -fx-font-family: 'Consolas', monospace;");
+
+        Label calloutTitle = new Label("Total Parcels");
+        calloutTitle.setStyle("-fx-font-weight: bold;");
+
+        Label calloutSub = new Label("Aggregated across all matching transactions.");
+        calloutSub.getStyleClass().add("kpi-subtext");
+        calloutSub.setWrapText(true);
+        calloutSub.setAlignment(Pos.CENTER);
+
+        callout.getChildren().addAll(calloutNum, calloutTitle, calloutSub);
+
+        CategoryAxis xAxis = new CategoryAxis();
+        NumberAxis yAxis = new NumberAxis();
+        BarChart<String, Number> parcelChart = new BarChart<>(xAxis, yAxis);
+        parcelChart.setPrefHeight(220);
+        parcelChart.setLegendVisible(false);
+        parcelChart.setAnimated(false);
+        HBox.setHgrow(parcelChart, Priority.ALWAYS);
+
+        XYChart.Series<String, Number> series = new XYChart.Series<>();
+        series.setName("Parcels");
+
+        LocalDate now = LocalDate.now();
+        if ("Month".equals(parcelPeriod)) {
+            for (int i = 11; i >= 0; i--) {
+                LocalDate m = now.minusMonths(i);
+                String mKey = m.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+                String label = m.format(DateTimeFormatter.ofPattern("MMM yy"));
+                int pCount = txs.stream()
+                    .filter(t -> t.getTransactionDate() != null && t.getTransactionDate().startsWith(mKey))
+                    .mapToInt(Transaction::getParcels).sum();
+                series.getData().add(new XYChart.Data<>(label, pCount));
+            }
+        } else if ("Day".equals(parcelPeriod)) {
+            for (int i = 13; i >= 0; i--) {
+                LocalDate d = now.minusDays(i);
+                String dKey = d.toString();
+                String label = d.format(DateTimeFormatter.ofPattern("dd MMM"));
+                int pCount = txs.stream()
+                    .filter(t -> dKey.equals(t.getTransactionDate()))
+                    .mapToInt(Transaction::getParcels).sum();
+                series.getData().add(new XYChart.Data<>(label, pCount));
+            }
+        } else if ("Year".equals(parcelPeriod)) {
+            for (int i = 4; i >= 0; i--) {
+                int yr = now.getYear() - i;
+                String yKey = String.valueOf(yr);
+                int pCount = txs.stream()
+                    .filter(t -> t.getTransactionDate() != null && t.getTransactionDate().startsWith(yKey))
+                    .mapToInt(Transaction::getParcels).sum();
+                series.getData().add(new XYChart.Data<>(yKey, pCount));
+            }
+        } else { // Week
+            for (int i = 7; i >= 0; i--) {
+                LocalDate wStart = now.minusWeeks(i);
+                String label = "Wk " + wStart.format(DateTimeFormatter.ofPattern("dd/MM"));
+                series.getData().add(new XYChart.Data<>(label, (int)(totalParcels / 8)));
+            }
+        }
+
+        parcelChart.getData().add(series);
+        chartBox.getChildren().addAll(callout, parcelChart);
+        card.getChildren().add(chartBox);
+        return card;
+    }
+
+    private Node createTop5WidgetsRow(List<Transaction> txs) {
+        HBox row = new HBox(20);
+
+        // 1. Top 5 Debtors (highest outstanding)
+        Map<String, double[]> buyerTotals = new HashMap<>(); // [sales, payments, pieces]
+        Map<String, String> buyerNames = new HashMap<>();
+
+        for (Transaction t : txs) {
+            String bId = t.getBuyerId() != null ? t.getBuyerId() : "unknown";
+            String bName = t.getBuyerName() != null ? t.getBuyerName() : "Unknown Buyer";
+            buyerNames.put(bId, bName);
+
+            double[] arr = buyerTotals.computeIfAbsent(bId, k -> new double[3]);
+            if ("sale".equalsIgnoreCase(t.getTransactionType())) {
+                arr[0] += t.getAmount();
+                if (t.isIncludeInReporting()) arr[2] += t.getTotalQuantity();
+            } else if ("payment".equalsIgnoreCase(t.getTransactionType())) {
+                arr[1] += t.getAmount();
+            }
+        }
+
+        // Debtors
+        List<Map.Entry<String, double[]>> debtors = buyerTotals.entrySet().stream()
+            .filter(e -> (e.getValue()[0] - e.getValue()[1]) > 0.01)
+            .sorted((a, b) -> Double.compare(b.getValue()[0] - b.getValue()[1], a.getValue()[0] - a.getValue()[1]))
+            .limit(5)
+            .collect(Collectors.toList());
+
+        // Paymasters
+        List<Map.Entry<String, double[]>> paymasters = buyerTotals.entrySet().stream()
+            .filter(e -> e.getValue()[1] > 0.01)
+            .sorted((a, b) -> Double.compare(b.getValue()[1], a.getValue()[1]))
+            .limit(5)
+            .collect(Collectors.toList());
+
+        // Volume Leaders
+        List<Map.Entry<String, double[]>> volumeLeaders = buyerTotals.entrySet().stream()
+            .filter(e -> e.getValue()[2] > 0)
+            .sorted((a, b) -> Double.compare(b.getValue()[2], a.getValue()[2]))
+            .limit(5)
+            .collect(Collectors.toList());
+
+        row.getChildren().addAll(
+            createTop5ListCard("Top 5 Debtors", "Highest outstanding balance", "#ef4444", debtors, buyerNames, 0),
+            createTop5ListCard("Top 5 Paymasters", "Most payments received", "#10b981", paymasters, buyerNames, 1),
+            createTop5ListCard("Volume Leaders", "Most trouser pieces purchased", "#3b82f6", volumeLeaders, buyerNames, 2)
+        );
+
+        for (Node n : row.getChildren()) HBox.setHgrow(n, Priority.ALWAYS);
+        return row;
+    }
+
+    private VBox createTop5ListCard(String title, String sub, String badgeColor,
+                                   List<Map.Entry<String, double[]>> entries,
+                                   Map<String, String> nameMap, int mode) {
+        VBox card = UiTheme.card(10);
+
+        HBox header = new HBox(8);
+        header.setAlignment(Pos.CENTER_LEFT);
+        Region dot = new Region();
+        dot.setPrefSize(10, 10);
+        dot.setStyle("-fx-background-color: " + badgeColor + "; -fx-background-radius: 5px;");
+
+        VBox titleBox = new VBox(1);
+        Label titleLbl = UiTheme.sectionTitle(title);
+        Label subLbl = new Label(sub);
+        subLbl.getStyleClass().add("kpi-subtext");
+        titleBox.getChildren().addAll(titleLbl, subLbl);
+
+        header.getChildren().addAll(dot, titleBox);
+        card.getChildren().add(header);
+
+        if (entries.isEmpty()) {
+            card.getChildren().add(UiTheme.emptyState("👥", "No buyer data available yet.", null));
+            return card;
+        }
+
+        VBox list = new VBox(6);
+        int rank = 1;
+        for (Map.Entry<String, double[]> e : entries) {
+            HBox itemRow = new HBox(8);
+            itemRow.setAlignment(Pos.CENTER_LEFT);
+            itemRow.setPadding(new Insets(6, 8, 6, 8));
+            itemRow.getStyleClass().add("clickable-row");
+
+            Label rankLbl = new Label("#" + rank++);
+            rankLbl.getStyleClass().add("code-pill");
+
+            String bName = nameMap.getOrDefault(e.getKey(), "Unknown");
+            Label nameLbl = new Label(bName);
+            nameLbl.getStyleClass().add("table-cell-title");
+            HBox.setHgrow(nameLbl, Priority.ALWAYS);
+
+            String valText;
+            if (mode == 0) {
+                double out = e.getValue()[0] - e.getValue()[1];
+                valText = "₹ " + currencyFmt.format(out);
+            } else if (mode == 1) {
+                valText = "₹ " + currencyFmt.format(e.getValue()[1]);
+            } else {
+                valText = String.format("%,d pcs", (int) e.getValue()[2]);
+            }
+
+            Label valLbl = new Label(valText);
+            valLbl.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-font-size: 12px;");
+
+            itemRow.getChildren().addAll(rankLbl, nameLbl, valLbl);
+
+            // Clicking opens Buyer Statement in Reports
+            String buyerId = e.getKey();
+            itemRow.setOnMouseClicked(ev -> app.showReports());
+
+            list.getChildren().add(itemRow);
+        }
+
+        card.getChildren().add(list);
+        return card;
+    }
+
+    private Node createRecentActivityCard(List<Transaction> txs, List<Bill> bills) {
+        VBox card = UiTheme.card(12);
+
+        HBox top = new HBox(12);
+        top.setAlignment(Pos.CENTER_LEFT);
+
+        HBox switchBox = new HBox(8);
+        Button txToggle = createFilterPill("Recent Transactions", "Transactions".equals(recentType));
+        Button billToggle = createFilterPill("Recent Bills", "Bills".equals(recentType));
+
+        txToggle.setOnAction(e -> { recentType = "Transactions"; refresh(); });
+        billToggle.setOnAction(e -> { recentType = "Bills"; refresh(); });
+        switchBox.getChildren().addAll(txToggle, billToggle);
+
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+
+        Button viewAllBtn = UiTheme.secondaryBtn("View All →");
+        viewAllBtn.setOnAction(e -> {
+            if ("Transactions".equals(recentType)) app.showTransactions();
+            else app.showHistory();
+        });
+
+        top.getChildren().addAll(switchBox, sp, viewAllBtn);
+        card.getChildren().add(top);
+
+        if ("Transactions".equals(recentType)) {
+            TableView<Transaction> table = new TableView<>();
+            table.setPrefHeight(240);
+            table.getStyleClass().add("data-table");
+            table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+
+            TableColumn<Transaction, String> cDate = new TableColumn<>("Date");
+            cDate.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getTransactionDate()));
+            cDate.setPrefWidth(95);
+
+            TableColumn<Transaction, String> cBuyer = new TableColumn<>("Buyer");
+            cBuyer.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getBuyerName()));
+            cBuyer.setPrefWidth(180);
+
+            TableColumn<Transaction, String> cBook = new TableColumn<>("Book");
+            cBook.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getBookType()));
+            cBook.setPrefWidth(70);
+
+            TableColumn<Transaction, String> cType = new TableColumn<>("Type");
+            cType.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getTransactionType()));
+            cType.setPrefWidth(85);
+
+            TableColumn<Transaction, Number> cQty = new TableColumn<>("Qty");
+            cQty.setCellValueFactory(d -> new SimpleIntegerProperty(d.getValue().getTotalQuantity()));
+            cQty.setPrefWidth(70);
+
+            TableColumn<Transaction, Number> cAmt = new TableColumn<>("Amount");
+            cAmt.setCellValueFactory(d -> new SimpleDoubleProperty(d.getValue().getAmount()));
+            cAmt.setCellFactory(col -> new TableCell<>() {
+                @Override
+                protected void updateItem(Number val, boolean empty) {
+                    super.updateItem(val, empty);
+                    if (empty || val == null) setText(null);
+                    else {
+                        Transaction t = getTableRow().getItem();
+                        boolean isSale = t == null || "sale".equalsIgnoreCase(t.getTransactionType());
+                        setText((isSale ? "+ ₹ " : "- ₹ ") + currencyFmt.format(val.doubleValue()));
+                        setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; " +
+                            "-fx-text-fill: " + (isSale ? "#dc2626" : "#16a34a") + ";");
+                    }
+                }
+            });
+
+            table.getColumns().addAll(cDate, cBuyer, cBook, cType, cQty, cAmt);
+            table.setItems(FXCollections.observableArrayList(txs.stream().limit(10).collect(Collectors.toList())));
+            card.getChildren().add(table);
+        } else {
+            TableView<Bill> table = new TableView<>();
+            table.setPrefHeight(240);
+            table.getStyleClass().add("data-table");
+            table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+
+            TableColumn<Bill, String> cNo = new TableColumn<>("Bill #");
+            cNo.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getBillNo()));
+            cNo.setPrefWidth(110);
+
+            TableColumn<Bill, String> cDate = new TableColumn<>("Date");
+            cDate.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getDate()));
+            cDate.setPrefWidth(95);
+
+            TableColumn<Bill, String> cBuyer = new TableColumn<>("Buyer");
+            cBuyer.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getVariables().getOrDefault("buyer_name", "—")));
+            cBuyer.setPrefWidth(180);
+
+            TableColumn<Bill, String> cAmt = new TableColumn<>("Invoice Total");
+            cAmt.setCellValueFactory(d -> new SimpleStringProperty("₹ " + currencyFmt.format(d.getValue().getTotals().getGrandTotal())));
+            cAmt.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold;");
+
+            table.getColumns().addAll(cNo, cDate, cBuyer, cAmt);
+            table.setItems(FXCollections.observableArrayList(bills.stream().limit(10).collect(Collectors.toList())));
+            card.getChildren().add(table);
+        }
+
+        return card;
+    }
+}

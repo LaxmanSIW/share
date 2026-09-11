@@ -196,6 +196,15 @@ public final class UiTheme {
         return b;
     }
 
+    public static Button iconBtn(String glyph, String tooltip) {
+        Button b = new Button(glyph);
+        b.getStyleClass().addAll("button-icon-subtle");
+        if (tooltip != null && !tooltip.isBlank()) {
+            b.setTooltip(new javafx.scene.control.Tooltip(tooltip));
+        }
+        return b;
+    }
+
     // ---------- Data rows ----------
 
     /** Label — spacer — value row used across stats and totals. */

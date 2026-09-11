@@ -109,8 +109,25 @@ public class DashboardView extends BorderPane {
         HBox bar = new HBox(16);
         bar.setAlignment(Pos.CENTER_LEFT);
 
-        Label title = new Label("Financial Dashboard");
+        VBox titleBox = new VBox(2);
+        Label title = new Label("Dashboard");
         title.getStyleClass().add("heading-l");
+        titleBox.getChildren().add(title);
+
+        // Segmented in-page switcher between Dashboard 1 and Dashboard 2
+        HBox dashSwitch = new HBox(4);
+        dashSwitch.getStyleClass().add("toggle-group-container");
+        dashSwitch.setAlignment(Pos.CENTER_LEFT);
+
+        Button btnOverview = new Button("Standard Overview");
+        btnOverview.getStyleClass().addAll("btn-filter-pill", "active");
+
+        Button btnDash2 = new Button("Financial & Logistics (Dashboard 2) ↗");
+        btnDash2.getStyleClass().add("btn-filter-pill");
+        btnDash2.setTooltip(new Tooltip("Switch to Alpha CC/CS Financial & Logistics Dashboard"));
+        btnDash2.setOnAction(e -> app.showDashboard2());
+
+        dashSwitch.getChildren().addAll(btnOverview, btnDash2);
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -149,7 +166,7 @@ public class DashboardView extends BorderPane {
         newBillBtn.setTooltip(new Tooltip("Create New Invoice or Bill"));
         newBillBtn.setOnAction(e -> app.showCreateBill(null, null));
 
-        bar.getChildren().addAll(title, spacer, monthCtrl, newBillBtn);
+        bar.getChildren().addAll(titleBox, dashSwitch, spacer, monthCtrl, newBillBtn);
         return bar;
     }
 

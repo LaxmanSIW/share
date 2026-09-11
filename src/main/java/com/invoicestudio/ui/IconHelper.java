@@ -27,6 +27,11 @@ public class IconHelper {
     public static final String ICON_UPLOAD = "upload";
     public static final String ICON_DOWNLOAD = "download";
     public static final String ICON_CROSSHAIR = "crosshair";
+    public static final String ICON_REPORTS = "reports";
+    public static final String ICON_TRANSACTIONS = "transactions";
+    public static final String ICON_TRANSPORT = "transport";
+    public static final String ICON_CATEGORIES = "categories";
+    public static final String ICON_DASHBOARD2 = "dashboard2";
 
     public static Node getIcon(String name, double size, String colorHex) {
         String path = getSvgPath(name);
@@ -82,6 +87,11 @@ public class IconHelper {
             case "upload": return "⬆";
             case "download": return "⬇";
             case "crosshair": return "⌖";
+            case "reports": return "📊";
+            case "transactions": return "💳";
+            case "transport": return "🚚";
+            case "categories": return "🗂";
+            case "dashboard2": return "📈";
             default: return "•";
         }
     }
@@ -91,6 +101,8 @@ public class IconHelper {
         switch (name.toLowerCase()) {
             case "dashboard":
                 return "M3 3h7v7H3V3zm11 0h7v7h-7V3zm0 11h7v7h-7v-7zM3 14h7v7H3v-7z";
+            case "dashboard2":
+                return "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z";
             case "templates":
                 return "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H6v-4h6v4zm0-6H6V7h6v4zm6 6h-4v-4h4v4zm0-6h-4V7h4v4z";
             case "new":
@@ -106,6 +118,14 @@ public class IconHelper {
                 return "M4 7h4v2H4V7zm0 4h10v2H4v-2zm0 4h7v2H4v-2zm12-4l3 3 3-3-1.4-1.4-1.6 1.6-1.6-1.6L16 11z";
             case "settings":
                 return "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z";
+            case "reports":
+                return "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-9h2v9zm4 0h-2v-4h2v4z";
+            case "transactions":
+                return "M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z";
+            case "transport":
+                return "M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z";
+            case "categories":
+                return "M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z";
             case "plus":
                 return "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z";
             case "search":

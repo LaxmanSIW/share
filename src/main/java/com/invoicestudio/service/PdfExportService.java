@@ -479,21 +479,44 @@ public class PdfExportService {
                 text = DesignObjectRenderer.applyTextTransform(text, el.getTextTransform(), el.isUppercase());
 
                 int fontStyle = Font.PLAIN;
-                if (el.getFontWeight() >= 700) fontStyle |= Font.BOLD;
+                if (el.getFontWeight() >= 700 || el.isBold()) fontStyle |= Font.BOLD;
                 if (el.isItalic()) fontStyle |= Font.ITALIC;
 
                 String fontName = el.getFontFamily() != null ? el.getFontFamily() : "SansSerif";
                 int fontSizePx = (int) Math.max(8, Math.round(el.getFontSize() * (DPI / 72.0)));
                 Font font = new Font(fontName, fontStyle, fontSizePx);
+                Map<java.awt.font.TextAttribute, Object> attr = new HashMap<>();
                 if (el.getLetterSpacing() != 0) {
-                    Map<java.awt.font.TextAttribute, Object> attr = new HashMap<>();
                     attr.put(java.awt.font.TextAttribute.TRACKING, el.getLetterSpacing() / 10.0);
+                }
+                if (el.isUnderline()) {
+                    attr.put(java.awt.font.TextAttribute.UNDERLINE, java.awt.font.TextAttribute.UNDERLINE_ON);
+                }
+                if (el.isStrikethrough()) {
+                    attr.put(java.awt.font.TextAttribute.STRIKETHROUGH, java.awt.font.TextAttribute.STRIKETHROUGH_ON);
+                }
+                if (el.getFontWeight() > 0) {
+                    float awtWeight = switch (Math.min(9, Math.max(1, el.getFontWeight() / 100))) {
+                        case 1 -> java.awt.font.TextAttribute.WEIGHT_EXTRA_LIGHT;
+                        case 2 -> java.awt.font.TextAttribute.WEIGHT_LIGHT;
+                        case 3 -> java.awt.font.TextAttribute.WEIGHT_DEMILIGHT;
+                        case 4 -> java.awt.font.TextAttribute.WEIGHT_REGULAR;
+                        case 5 -> java.awt.font.TextAttribute.WEIGHT_MEDIUM;
+                        case 6 -> java.awt.font.TextAttribute.WEIGHT_SEMIBOLD;
+                        case 7 -> java.awt.font.TextAttribute.WEIGHT_BOLD;
+                        case 8 -> java.awt.font.TextAttribute.WEIGHT_EXTRABOLD;
+                        case 9 -> java.awt.font.TextAttribute.WEIGHT_ULTRABOLD;
+                        default -> java.awt.font.TextAttribute.WEIGHT_REGULAR;
+                    };
+                    attr.put(java.awt.font.TextAttribute.WEIGHT, awtWeight);
+                }
+                if (!attr.isEmpty()) {
                     font = font.deriveFont(attr);
                 }
                 g2.setFont(font);
                 g2.setColor(parseColor(el.getColor(), Color.BLACK));
 
-                drawWrappedText(g2, text, x, y, w, h, el.getAlign(), el.getVAlign(), el.getLineHeight());
+                drawWrappedText(g2, text, x, y, w, h, el.getAlign(), el.getVAlign(), el.getLineHeight(), el.getLineSpacing(), el.getWordSpacing());
             }
             case IMAGE -> {
                 BufferedImage img = null;
@@ -943,9 +966,17 @@ public class PdfExportService {
 
     private static void drawWrappedText(Graphics2D g2, String text, double x, double y, double w, double h,
                                         String align, String vAlign, double lineHeightMult) {
+        drawWrappedText(g2, text, x, y, w, h, align, vAlign, lineHeightMult, 0, 0);
+    }
+
+    private static void drawWrappedText(Graphics2D g2, String text, double x, double y, double w, double h,
+                                        String align, String vAlign, double lineHeightMult, double lineSpacingPt, double wordSpacingPt) {
         if (text == null || text.isEmpty()) return;
         FontMetrics fm = g2.getFontMetrics();
-        double lineSpacing = Math.max(fm.getHeight(), fm.getHeight() * (lineHeightMult > 0 ? lineHeightMult : 1.25));
+        double multSpacing = fm.getHeight() * (lineHeightMult > 0 ? lineHeightMult : 1.25);
+        double ptSpacingPx = lineSpacingPt * (DPI / 72.0);
+        double lineSpacing = Math.max(fm.getHeight() * 0.75, multSpacing + ptSpacingPx);
+        double wordSpacingPx = wordSpacingPt > 0 ? wordSpacingPt * (DPI / 72.0) : 0;
 
         String[] rawLines = text.split("\n");
         List<String> lines = new ArrayList<>();
@@ -956,7 +987,7 @@ public class PdfExportService {
             for (String word : words) {
                 if (sb.length() == 0) {
                     sb.append(word);
-                } else if (fm.stringWidth(sb + " " + word) <= w) {
+                } else if (fm.stringWidth(sb + " " + word) + (wordSpacingPx > 0 ? wordSpacingPx : 0) <= w) {
                     sb.append(" ").append(word);
                 } else {
                     lines.add(sb.toString());
@@ -977,14 +1008,31 @@ public class PdfExportService {
 
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
-            int strW = fm.stringWidth(line);
-            double lineX = x;
-            if ("right".equalsIgnoreCase(align)) {
-                lineX = x + w - strW;
-            } else if ("center".equalsIgnoreCase(align)) {
-                lineX = x + (w - strW) / 2.0;
+            if (wordSpacingPx <= 0) {
+                int strW = fm.stringWidth(line);
+                double lineX = x;
+                if ("right".equalsIgnoreCase(align)) {
+                    lineX = x + w - strW;
+                } else if ("center".equalsIgnoreCase(align)) {
+                    lineX = x + (w - strW) / 2.0;
+                }
+                g2.drawString(line, (int) Math.round(lineX), (int) Math.round(startY + (i * lineSpacing)));
+            } else {
+                String[] words = line.split(" ");
+                int baseW = fm.stringWidth(line);
+                double totalW = baseW + ((words.length - 1) * wordSpacingPx);
+                double curX = x;
+                if ("right".equalsIgnoreCase(align)) {
+                    curX = x + w - totalW;
+                } else if ("center".equalsIgnoreCase(align)) {
+                    curX = x + (w - totalW) / 2.0;
+                }
+                double currentY = startY + (i * lineSpacing);
+                for (int wi = 0; wi < words.length; wi++) {
+                    g2.drawString(words[wi], (int) Math.round(curX), (int) Math.round(currentY));
+                    curX += fm.stringWidth(words[wi] + " ") + wordSpacingPx;
+                }
             }
-            g2.drawString(line, (int) Math.round(lineX), (int) Math.round(startY + (i * lineSpacing)));
         }
     }
 

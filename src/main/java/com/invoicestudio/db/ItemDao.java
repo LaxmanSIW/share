@@ -30,6 +30,10 @@ public class ItemDao {
                     rs.getDouble("rate"),
                     rs.getDouble("gst")
                 );
+                try {
+                    it.setCategoryId(rs.getString("category_id"));
+                    it.setCategoryName(rs.getString("category_name"));
+                } catch (Exception ignored) {}
                 it.setCreatedAt(rs.getString("created_at"));
                 it.setUpdatedAt(rs.getString("updated_at"));
                 list.add(it);
@@ -54,6 +58,10 @@ public class ItemDao {
                         rs.getDouble("rate"),
                         rs.getDouble("gst")
                     );
+                    try {
+                        it.setCategoryId(rs.getString("category_id"));
+                        it.setCategoryName(rs.getString("category_name"));
+                    } catch (Exception ignored) {}
                     it.setCreatedAt(rs.getString("created_at"));
                     it.setUpdatedAt(rs.getString("updated_at"));
                     return it;
@@ -67,7 +75,12 @@ public class ItemDao {
 
     public void saveItem(ItemRecord item) {
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("INSERT INTO items (id, name, hsn, unit, rate, gst, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, hsn = excluded.hsn, unit = excluded.unit, rate = excluded.rate, gst = excluded.gst, updated_at = excluded.updated_at")) {
+             PreparedStatement ps = conn.prepareStatement(
+                 "INSERT INTO items (id, name, hsn, unit, rate, gst, category_id, category_name, created_at, updated_at) " +
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                 "ON CONFLICT(id) DO UPDATE SET name = excluded.name, hsn = excluded.hsn, unit = excluded.unit, " +
+                 "rate = excluded.rate, gst = excluded.gst, category_id = excluded.category_id, " +
+                 "category_name = excluded.category_name, updated_at = excluded.updated_at")) {
             String now = Instant.now().toString();
             if (item.getCreatedAt() == null) item.setCreatedAt(now);
             item.setUpdatedAt(now);
@@ -78,8 +91,10 @@ public class ItemDao {
             ps.setString(4, item.getUnit());
             ps.setDouble(5, item.getRate());
             ps.setDouble(6, item.getGst());
-            ps.setString(7, item.getCreatedAt());
-            ps.setString(8, item.getUpdatedAt());
+            ps.setString(7, item.getCategoryId());
+            ps.setString(8, item.getCategoryName());
+            ps.setString(9, item.getCreatedAt());
+            ps.setString(10, item.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();

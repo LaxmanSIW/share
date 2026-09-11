@@ -28,6 +28,8 @@ public class Bill {
     private RepeatCadence repeat = RepeatCadence.NONE;
     private String repeatEndDate;
     private boolean repeatSkipNext;
+    private int parcel = 1;
+    private String transactionId = "";
     private String createdAt;
     private String updatedAt;
 
@@ -103,4 +105,16 @@ public class Bill {
         if (variables == null) variables = new HashMap<>();
         variables.put("buyer_name", buyerName);
     }
+
+    public int getParcel() { return parcel > 0 ? parcel : 1; }
+    public int getParcels() { return getParcel(); }
+    public void setParcel(int parcel) {
+        this.parcel = parcel > 0 ? parcel : 1;
+        if (variables == null) variables = new HashMap<>();
+        variables.put("parcel", String.valueOf(this.parcel));
+        variables.put("parcels", String.valueOf(this.parcel));
+    }
+
+    public String getTransactionId() { return transactionId != null ? transactionId : ""; }
+    public void setTransactionId(String transactionId) { this.transactionId = transactionId; }
 }
