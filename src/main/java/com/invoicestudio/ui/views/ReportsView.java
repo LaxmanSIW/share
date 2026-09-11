@@ -120,8 +120,7 @@ public class ReportsView extends BorderPane {
         tabPane.getTabs().add(new Tab("Buyer Statement & Ledger", buildBuyerStatementReport()));
         tabPane.getTabs().add(new Tab("Trouser Movement", buildTrouserMovementReport()));
         tabPane.getTabs().add(new Tab("Sales Trends", buildSalesTrendsReport()));
-        tabPane.getTabs().add(new Tab("Item Movement", buildItemMovementReport()));
-        tabPane.getTabs().add(new Tab("Item Performance", buildItemPerformanceReport()));
+        tabPane.getTabs().add(new Tab("Item Sales & Movement", buildItemMovementReport()));
         tabPane.getTabs().add(new Tab("Category Breakdown", buildCategoryBreakdownReport()));
         tabPane.getTabs().add(new Tab("GST / Tax Summary", buildGstTaxReport()));
         tabPane.getTabs().add(new Tab("Transport Performance", buildTransportPerformanceReport()));
@@ -144,7 +143,7 @@ public class ReportsView extends BorderPane {
         lblVal.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 19px; -fx-font-weight: bold; -fx-font-family: 'Segoe UI', sans-serif;");
 
         Label lblSub = new Label(subtext);
-        lblSub.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
+        lblSub.setStyle("-fx-text-fill: " + accentColor + "; -fx-opacity: 0.88; -fx-font-size: 11px;");
 
         card.getChildren().addAll(lblTitle, lblVal, lblSub);
         return card;
@@ -379,10 +378,10 @@ public class ReportsView extends BorderPane {
             }
         });
 
-        DatePicker startPicker = new DatePicker();
-        startPicker.setPromptText("From Date");
-        DatePicker endPicker = new DatePicker();
-        endPicker.setPromptText("To Date");
+        DatePicker startPicker = UiTheme.datePicker("From Date");
+        startPicker.setPrefWidth(140);
+        DatePicker endPicker = UiTheme.datePicker("To Date");
+        endPicker.setPrefWidth(140);
 
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
@@ -481,7 +480,8 @@ public class ReportsView extends BorderPane {
 
             List<Transaction> bTxs = app.getData().getAllTransactions().stream()
                 .filter(t -> sel.getId().equals(t.getBuyerId()) || (t.getBuyerName() != null && t.getBuyerName().equalsIgnoreCase(sel.getName())))
-                .sorted(Comparator.comparing(Transaction::getTransactionDate, Comparator.nullsLast(String::compareTo)))
+                .sorted(Comparator.comparing(Transaction::getTransactionDate, Comparator.nullsLast(String::compareTo))
+                        .thenComparing(t -> "sale".equalsIgnoreCase(t.getTransactionType()) ? 0 : 1))
                 .collect(Collectors.toList());
 
             LocalDate sDate = startPicker.getValue();
@@ -513,12 +513,12 @@ public class ReportsView extends BorderPane {
                     } catch (Exception ignored) {}
                 }
 
+                boolean isSale = "sale".equalsIgnoreCase(t.getTransactionType());
                 LedgerRow r = new LedgerRow();
                 r.date = t.getTransactionDate();
                 r.book = t.getBookType();
-                r.checkNo = t.getCheckNumber();
+                r.checkNo = isSale ? "—" : (t.getCheckNumber() != null && !t.getCheckNumber().isBlank() ? t.getCheckNumber() : "—");
 
-                boolean isSale = "sale".equalsIgnoreCase(t.getTransactionType());
                 if (isSale) {
                     r.description = (t.getBillNumber() != null && !t.getBillNumber().isBlank())
                         ? "Tax Invoice #" + t.getBillNumber() : "Sales Invoice (" + t.getBookType() + ")";
@@ -526,7 +526,7 @@ public class ReportsView extends BorderPane {
                     runningBal += t.getAmount();
                     totalDeb += t.getAmount();
                 } else {
-                    r.description = "Payment Received / Credit (" + (t.getCheckNumber() != null ? t.getCheckNumber() : t.getBookType()) + ")";
+                    r.description = "Payment Received / Credit (" + (t.getCheckNumber() != null && !t.getCheckNumber().isBlank() ? t.getCheckNumber() : t.getBookType()) + ")";
                     r.credit = t.getAmount();
                     runningBal -= t.getAmount();
                     totalCred += t.getAmount();
@@ -614,6 +614,7 @@ public class ReportsView extends BorderPane {
         chart.setPrefHeight(260);
         chart.setTitle("Monthly Trouser Sales Velocity (CC vs CS)");
         chart.setAnimated(false);
+        chart.setCategoryGap(24);
 
         XYChart.Series<String, Number> ccSeries = new XYChart.Series<>();
         ccSeries.setName("CC Book (Pieces)");
@@ -824,7 +825,19 @@ public class ReportsView extends BorderPane {
             map.put(it.getName().trim().toLowerCase(), r);
         }
 
+        // Ensure default PENT item exists in map
+        ItemStatsRow pentRow = map.computeIfAbsent("pent", k -> {
+            ItemStatsRow r = new ItemStatsRow();
+            r.name = "PENT";
+            r.category = "Trouser";
+            r.hsn = "6203";
+            r.rate = 550.0;
+            return r;
+        });
+
+        Set<String> processedBillIds = new HashSet<>();
         for (Bill b : bills) {
+            if (b.getId() != null) processedBillIds.add(b.getId());
             if (b.getItems() == null) continue;
             for (var bi : b.getItems()) {
                 String key = bi.getDescription() != null ? bi.getDescription().trim().toLowerCase() : "";
@@ -839,6 +852,18 @@ public class ReportsView extends BorderPane {
                 }
                 r.unitsSold += (int) bi.getQty();
                 r.revenue += bi.getAmount();
+            }
+        }
+
+        // Aggregate financial sales transactions marked with includeInReporting not from itemized bills
+        List<Transaction> txs = app.getData().getAllTransactions();
+        for (Transaction t : txs) {
+            if ("sale".equalsIgnoreCase(t.getTransactionType()) && t.isIncludeInReporting()) {
+                boolean hasBillItems = t.getBillId() != null && processedBillIds.contains(t.getBillId());
+                if (!hasBillItems) {
+                    pentRow.unitsSold += t.getTotalQuantity();
+                    pentRow.revenue += t.getAmount();
+                }
             }
         }
 
@@ -918,8 +943,16 @@ public class ReportsView extends BorderPane {
         for (ItemCategory c : categories) {
             catStats.put(c.getName(), new double[2]);
         }
+        // Ensure Trouser category exists in breakdown
+        String trouserCatName = categories.stream()
+                .map(ItemCategory::getName)
+                .filter(n -> "Trouser".equalsIgnoreCase(n) || "Trousers".equalsIgnoreCase(n))
+                .findFirst().orElse("Trouser");
+        catStats.computeIfAbsent(trouserCatName, k -> new double[2]);
 
+        Set<String> processedBillIds = new HashSet<>();
         for (Bill b : bills) {
+            if (b.getId() != null) processedBillIds.add(b.getId());
             if (b.getItems() == null) continue;
             for (var bi : b.getItems()) {
                 String cat = itemToCat.getOrDefault(
@@ -932,11 +965,26 @@ public class ReportsView extends BorderPane {
             }
         }
 
+        // Aggregate financial sales transactions marked with includeInReporting not from itemized bills into Trouser
+        List<Transaction> txs = app.getData().getAllTransactions();
+        for (Transaction t : txs) {
+            if ("sale".equalsIgnoreCase(t.getTransactionType()) && t.isIncludeInReporting()) {
+                boolean hasBillItems = t.getBillId() != null && processedBillIds.contains(t.getBillId());
+                if (!hasBillItems) {
+                    double[] arr = catStats.computeIfAbsent(trouserCatName, k -> new double[2]);
+                    arr[0] += t.getTotalQuantity();
+                    arr[1] += t.getAmount();
+                }
+            }
+        }
+
         double totalCatRev = catStats.values().stream().mapToDouble(a -> a[1]).sum();
+        int totalCatUnits = (int) Math.round(catStats.values().stream().mapToDouble(a -> a[0]).sum());
 
         HBox kpiRow = new HBox(12);
         kpiRow.getChildren().addAll(
             createKpiCard("Active Categories", catStats.size() + " Groups", "Catalog groups tracked", "#F2CA6B"),
+            createKpiCard("Total Units Sold", totalCatUnits + " Pieces", "Dispatched category volume", "#38BDF8"),
             createKpiCard("Category Sales Revenue", "₹ " + currencyFmt.format(totalCatRev), "All categorized billing", "#34D399")
         );
 
@@ -950,7 +998,66 @@ public class ReportsView extends BorderPane {
             }
         }
 
-        root.getChildren().addAll(kpiRow, pie);
+        class CategoryRow {
+            String category;
+            int units;
+            double revenue;
+            double sharePct;
+        }
+
+        List<CategoryRow> catRows = new ArrayList<>();
+        for (Map.Entry<String, double[]> e : catStats.entrySet()) {
+            if (e.getValue()[0] > 0 || e.getValue()[1] > 0) {
+                CategoryRow r = new CategoryRow();
+                r.category = e.getKey();
+                r.units = (int) Math.round(e.getValue()[0]);
+                r.revenue = e.getValue()[1];
+                r.sharePct = totalCatRev > 0 ? (r.revenue / totalCatRev) * 100.0 : 0.0;
+                catRows.add(r);
+            }
+        }
+        catRows.sort((a, b) -> Double.compare(b.revenue, a.revenue));
+
+        TableView<CategoryRow> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        TableColumn<CategoryRow, String> cCat = new TableColumn<>("Category Name");
+        cCat.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().category));
+        cCat.setPrefWidth(220);
+
+        TableColumn<CategoryRow, Number> cQty = new TableColumn<>("Units Sold");
+        cQty.setCellValueFactory(d -> new SimpleIntegerProperty(d.getValue().units));
+        cQty.setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace;");
+
+        TableColumn<CategoryRow, Number> cRev = new TableColumn<>("Total Revenue (₹)");
+        cRev.setCellValueFactory(d -> new SimpleDoubleProperty(d.getValue().revenue));
+        cRev.setCellFactory(col -> new TableCell<>() {
+            @Override protected void updateItem(Number v, boolean emp) {
+                super.updateItem(v, emp);
+                setText(emp || v == null ? null : "₹ " + currencyFmt.format(v.doubleValue()));
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #34D399;");
+            }
+        });
+
+        TableColumn<CategoryRow, Number> cShare = new TableColumn<>("Share (%)");
+        cShare.setCellValueFactory(d -> new SimpleDoubleProperty(d.getValue().sharePct));
+        cShare.setCellFactory(col -> new TableCell<>() {
+            @Override protected void updateItem(Number v, boolean emp) {
+                super.updateItem(v, emp);
+                if (emp || v == null) setText(null);
+                else {
+                    setText(String.format("%.1f%%", v.doubleValue()));
+                    setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #F2CA6B;");
+                }
+            }
+        });
+
+        table.getColumns().addAll(cCat, cQty, cRev, cShare);
+        table.setItems(FXCollections.observableArrayList(catRows));
+
+        root.getChildren().addAll(kpiRow, pie, table);
         return root;
     }
 

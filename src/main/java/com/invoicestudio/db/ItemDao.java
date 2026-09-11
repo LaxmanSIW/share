@@ -102,6 +102,8 @@ public class ItemDao {
     }
 
     public void deleteItem(String id) {
+        if (id == null || id.isBlank()) return;
+        if ("item_pent".equalsIgnoreCase(id)) return; // Protected default item
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement("DELETE FROM items WHERE id = ?")) {
             ps.setString(1, id);

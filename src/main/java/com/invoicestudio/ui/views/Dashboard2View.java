@@ -252,37 +252,35 @@ public class Dashboard2View extends BorderPane {
     }
 
     private VBox createBigKpiCard(String title, String val, String sub, String accentColor) {
-        VBox card = UiTheme.card(4);
-        card.setPadding(new Insets(14, 16, 14, 16));
-        card.setStyle("-fx-border-left-color: " + accentColor + "; -fx-border-left-width: 4px;");
+        VBox card = new VBox(6);
+        card.getStyleClass().add("kpi-card");
+        card.setStyle("-fx-border-top-color: " + accentColor + "; -fx-border-top-width: 3px;");
 
         Label tLbl = new Label(title.toUpperCase());
         tLbl.getStyleClass().add("kpi-subtext");
-        tLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
+        tLbl.setStyle("-fx-font-size: 10.5px; -fx-font-weight: bold;");
 
         Label vLbl = new Label(val);
-        vLbl.getStyleClass().add("heading-m");
-        vLbl.setStyle("-fx-font-size: 19px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace;");
+        vLbl.getStyleClass().add("kpi-value");
 
         Label sLbl = new Label(sub);
-        sLbl.getStyleClass().add("kpi-subtext");
-        sLbl.setStyle("-fx-font-size: 10px;");
+        sLbl.setStyle("-fx-text-fill: " + accentColor + "; -fx-opacity: 0.85; -fx-font-size: 11px;");
 
         card.getChildren().addAll(tLbl, vLbl, sLbl);
         return card;
     }
 
     private VBox createTrendKpiCard(String title, String val, double trendPercent) {
-        VBox card = UiTheme.card(4);
+        VBox card = new VBox(6);
+        card.getStyleClass().add("kpi-card");
         card.setPadding(new Insets(14, 16, 14, 16));
 
         Label tLbl = new Label(title.toUpperCase());
         tLbl.getStyleClass().add("kpi-subtext");
-        tLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
+        tLbl.setStyle("-fx-font-size: 10.5px; -fx-font-weight: bold;");
 
         Label vLbl = new Label(val);
-        vLbl.getStyleClass().add("heading-m");
-        vLbl.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace;");
+        vLbl.getStyleClass().add("kpi-value");
 
         boolean pos = trendPercent >= 0;
         String sign = pos ? "+" : "";
@@ -313,6 +311,7 @@ public class Dashboard2View extends BorderPane {
         LineChart<String, Number> lineChart = new LineChart<>(xAxis1, yAxis1);
         lineChart.setPrefHeight(260);
         lineChart.setAnimated(false);
+        lineChart.setCreateSymbols(true);
 
         XYChart.Series<String, Number> salesSeries = new XYChart.Series<>();
         salesSeries.setName("Sales (₹)");
@@ -358,6 +357,8 @@ public class Dashboard2View extends BorderPane {
         barChart.setPrefHeight(260);
         barChart.setAnimated(false);
         barChart.setLegendVisible(false);
+        barChart.setCategoryGap(24);
+        barChart.setBarGap(6);
 
         XYChart.Series<String, Number> qtySeries = new XYChart.Series<>();
         qtySeries.setName("Pieces");
@@ -393,7 +394,7 @@ public class Dashboard2View extends BorderPane {
 
         VBox titleBox = new VBox(2);
         Label title = UiTheme.sectionTitle("Parcel Counts Analysis");
-        Label sub = new Label("Track parcel quantities and shipments over time");
+        Label sub = new Label("Dispatch velocity & parcel shipments");
         sub.getStyleClass().add("kpi-subtext");
         titleBox.getChildren().addAll(title, sub);
 
@@ -427,10 +428,10 @@ public class Dashboard2View extends BorderPane {
         callout.setPadding(new Insets(20));
         callout.setAlignment(Pos.CENTER);
         callout.getStyleClass().add("card-kpi-mini");
-        callout.setStyle("-fx-border-left-color: #f97316; -fx-border-left-width: 4px;");
+        callout.setStyle("-fx-border-left-color: #F2CA6B; -fx-border-left-width: 4px;");
 
         Label calloutNum = new Label(String.format("%,d", totalParcels));
-        calloutNum.setStyle("-fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: #ea580c; -fx-font-family: 'Consolas', monospace;");
+        calloutNum.setStyle("-fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: #F2CA6B; -fx-font-family: 'Consolas', monospace;");
 
         Label calloutTitle = new Label("Total Parcels");
         calloutTitle.setStyle("-fx-font-weight: bold;");
@@ -448,6 +449,8 @@ public class Dashboard2View extends BorderPane {
         parcelChart.setPrefHeight(220);
         parcelChart.setLegendVisible(false);
         parcelChart.setAnimated(false);
+        parcelChart.setCategoryGap(20);
+        parcelChart.setBarGap(6);
         HBox.setHgrow(parcelChart, Priority.ALWAYS);
 
         XYChart.Series<String, Number> series = new XYChart.Series<>();
@@ -539,13 +542,15 @@ public class Dashboard2View extends BorderPane {
             .limit(5)
             .collect(Collectors.toList());
 
-        row.getChildren().addAll(
-            createTop5ListCard("Top 5 Debtors", "Highest outstanding balance", "#ef4444", debtors, buyerNames, 0),
-            createTop5ListCard("Top 5 Paymasters", "Most payments received", "#10b981", paymasters, buyerNames, 1),
-            createTop5ListCard("Volume Leaders", "Most trouser pieces purchased", "#3b82f6", volumeLeaders, buyerNames, 2)
-        );
+        VBox dCard = createTop5ListCard("Top 5 Debtors", "Highest unpaid balances", "#ef4444", debtors, buyerNames, 0);
+        VBox pCard = createTop5ListCard("Top 5 Paymasters", "Largest collection sources", "#10b981", paymasters, buyerNames, 1);
+        VBox vCard = createTop5ListCard("Volume Leaders", "Most pieces purchased", "#3b82f6", volumeLeaders, buyerNames, 2);
 
-        for (Node n : row.getChildren()) HBox.setHgrow(n, Priority.ALWAYS);
+        HBox.setHgrow(dCard, Priority.ALWAYS);
+        HBox.setHgrow(pCard, Priority.ALWAYS);
+        HBox.setHgrow(vCard, Priority.ALWAYS);
+
+        row.getChildren().addAll(dCard, pCard, vCard);
         return row;
     }
 
@@ -606,7 +611,6 @@ public class Dashboard2View extends BorderPane {
             itemRow.getChildren().addAll(rankLbl, nameLbl, valLbl);
 
             // Clicking opens Buyer Statement in Reports
-            String buyerId = e.getKey();
             itemRow.setOnMouseClicked(ev -> app.showReports());
 
             list.getChildren().add(itemRow);
@@ -622,9 +626,16 @@ public class Dashboard2View extends BorderPane {
         HBox top = new HBox(12);
         top.setAlignment(Pos.CENTER_LEFT);
 
-        HBox switchBox = new HBox(8);
-        Button txToggle = createFilterPill("Recent Transactions", "Transactions".equals(recentType));
-        Button billToggle = createFilterPill("Recent Bills", "Bills".equals(recentType));
+        HBox switchBox = new HBox(4);
+        switchBox.getStyleClass().add("toggle-group-container");
+
+        Button txToggle = new Button("Recent Transactions");
+        txToggle.getStyleClass().add("btn-filter-pill");
+        if ("Transactions".equals(recentType)) txToggle.getStyleClass().add("active");
+
+        Button billToggle = new Button("Recent Bills");
+        billToggle.getStyleClass().add("btn-filter-pill");
+        if ("Bills".equals(recentType)) billToggle.getStyleClass().add("active");
 
         txToggle.setOnAction(e -> { recentType = "Transactions"; refresh(); });
         billToggle.setOnAction(e -> { recentType = "Bills"; refresh(); });
@@ -644,8 +655,10 @@ public class Dashboard2View extends BorderPane {
 
         if ("Transactions".equals(recentType)) {
             TableView<Transaction> table = new TableView<>();
-            table.setPrefHeight(240);
+            table.setMinHeight(260);
+            table.setPrefHeight(260);
             table.getStyleClass().add("data-table");
+            table.setPlaceholder(new Label("No recent transactions found."));
             table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
             TableColumn<Transaction, String> cDate = new TableColumn<>("Date");
@@ -666,32 +679,42 @@ public class Dashboard2View extends BorderPane {
 
             TableColumn<Transaction, Number> cQty = new TableColumn<>("Qty");
             cQty.setCellValueFactory(d -> new SimpleIntegerProperty(d.getValue().getTotalQuantity()));
+            cQty.setStyle("-fx-alignment: CENTER-RIGHT;");
             cQty.setPrefWidth(70);
 
             TableColumn<Transaction, Number> cAmt = new TableColumn<>("Amount");
             cAmt.setCellValueFactory(d -> new SimpleDoubleProperty(d.getValue().getAmount()));
+            cAmt.setStyle("-fx-alignment: CENTER-RIGHT;");
             cAmt.setCellFactory(col -> new TableCell<>() {
                 @Override
                 protected void updateItem(Number val, boolean empty) {
                     super.updateItem(val, empty);
-                    if (empty || val == null) setText(null);
-                    else {
+                    if (empty || val == null) {
+                        setText(null);
+                        setStyle(null);
+                    } else {
                         Transaction t = getTableRow().getItem();
                         boolean isSale = t == null || "sale".equalsIgnoreCase(t.getTransactionType());
                         setText((isSale ? "+ ₹ " : "- ₹ ") + currencyFmt.format(val.doubleValue()));
-                        setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; " +
+                        setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-alignment: CENTER-RIGHT; " +
                             "-fx-text-fill: " + (isSale ? "#dc2626" : "#16a34a") + ";");
                     }
                 }
             });
 
             table.getColumns().addAll(cDate, cBuyer, cBook, cType, cQty, cAmt);
-            table.setItems(FXCollections.observableArrayList(txs.stream().limit(10).collect(Collectors.toList())));
+            List<Transaction> sortedTxs = txs.stream()
+                .sorted(Comparator.comparing(Transaction::getTransactionDate, Comparator.nullsLast(Comparator.reverseOrder())))
+                .limit(15)
+                .collect(Collectors.toList());
+            table.setItems(FXCollections.observableArrayList(sortedTxs));
             card.getChildren().add(table);
         } else {
             TableView<Bill> table = new TableView<>();
-            table.setPrefHeight(240);
+            table.setMinHeight(260);
+            table.setPrefHeight(260);
             table.getStyleClass().add("data-table");
+            table.setPlaceholder(new Label("No recent bills found."));
             table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
             TableColumn<Bill, String> cNo = new TableColumn<>("Bill #");
@@ -703,15 +726,21 @@ public class Dashboard2View extends BorderPane {
             cDate.setPrefWidth(95);
 
             TableColumn<Bill, String> cBuyer = new TableColumn<>("Buyer");
-            cBuyer.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getVariables().getOrDefault("buyer_name", "—")));
+            cBuyer.setCellValueFactory(d -> new SimpleStringProperty(
+                d.getValue().getVariables() != null ? d.getValue().getVariables().getOrDefault("buyer_name", "—") : "—"));
             cBuyer.setPrefWidth(180);
 
             TableColumn<Bill, String> cAmt = new TableColumn<>("Invoice Total");
-            cAmt.setCellValueFactory(d -> new SimpleStringProperty("₹ " + currencyFmt.format(d.getValue().getTotals().getGrandTotal())));
-            cAmt.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold;");
+            cAmt.setCellValueFactory(d -> new SimpleStringProperty(
+                d.getValue().getTotals() != null ? "₹ " + currencyFmt.format(d.getValue().getTotals().getGrandTotal()) : "₹ 0.00"));
+            cAmt.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-alignment: CENTER-RIGHT;");
 
             table.getColumns().addAll(cNo, cDate, cBuyer, cAmt);
-            table.setItems(FXCollections.observableArrayList(bills.stream().limit(10).collect(Collectors.toList())));
+            List<Bill> sortedBills = bills.stream()
+                .sorted(Comparator.comparing(Bill::getDate, Comparator.nullsLast(Comparator.reverseOrder())))
+                .limit(15)
+                .collect(Collectors.toList());
+            table.setItems(FXCollections.observableArrayList(sortedBills));
             card.getChildren().add(table);
         }
 

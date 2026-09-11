@@ -215,6 +215,27 @@ public class PdfExportService {
 
     private static void renderSingleElement(Graphics2D g2, TemplateElement el, RenderContext ctx,
                                              Bill bill, Settings settings, double x, double y, double w, double h) {
+        boolean isMono = settings != null && settings.isMonochromePrint();
+        if (isMono) {
+            TemplateElement mono = el.copy();
+            if (mono.getType() == ElementType.TEXT || mono.getType() == ElementType.PAGENO) {
+                mono.setColor("#000000");
+                if (mono.getBg() != null && !mono.getBg().isBlank() && !"transparent".equalsIgnoreCase(mono.getBg())) {
+                    mono.setBg("#ffffff");
+                }
+            } else if (mono.getType() == ElementType.RECT) {
+                if (mono.getBg() != null && !mono.getBg().isBlank() && !"transparent".equalsIgnoreCase(mono.getBg())) {
+                    mono.setBg("#ffffff");
+                }
+                mono.setBorderColor("#000000");
+                if (mono.getBorderWidth() <= 0) mono.setBorderWidth(0.5);
+            } else if (mono.getType() == ElementType.LINE || mono.getType() == ElementType.DIVIDER) {
+                mono.setColor("#000000");
+                mono.setBorderColor("#000000");
+            }
+            el = mono;
+        }
+
         AffineTransform origTx = g2.getTransform();
         Composite origComp = g2.getComposite();
 
@@ -813,12 +834,13 @@ public class PdfExportService {
         List<TableColumn> cols = el.getColumns();
         if (cols == null || cols.isEmpty()) cols = PresetTemplates.defaultItemColumns();
 
-        Color headerBg = parseColor(el.getHeaderBg(), new Color(239, 233, 219));
-        Color headerColor = parseColor(el.getHeaderColor(), Color.BLACK);
-        Color borderColor = parseColor(el.getTableBorderColor(), new Color(200, 200, 200));
-        Color rowBgColor = parseColor(el.getRowBg(), Color.WHITE);
-        Color rowTextColor = parseColor(el.getRowColor(), new Color(26, 26, 26));
-        Color zebraBgColor = parseColor(el.getZebraColor(), new Color(248, 248, 248));
+        boolean isMono = settings != null && settings.isMonochromePrint();
+        Color headerBg = isMono ? Color.WHITE : parseColor(el.getHeaderBg(), new Color(239, 233, 219));
+        Color headerColor = isMono ? Color.BLACK : parseColor(el.getHeaderColor(), Color.BLACK);
+        Color borderColor = isMono ? Color.BLACK : parseColor(el.getTableBorderColor(), new Color(200, 200, 200));
+        Color rowBgColor = isMono ? Color.WHITE : parseColor(el.getRowBg(), Color.WHITE);
+        Color rowTextColor = isMono ? Color.BLACK : parseColor(el.getRowColor(), new Color(26, 26, 26));
+        Color zebraBgColor = isMono ? Color.WHITE : parseColor(el.getZebraColor(), new Color(248, 248, 248));
 
         // Border skin: grid = all cell lines, rows = horizontal only,
         // outline = outer frame only, none = no borders at all

@@ -314,9 +314,12 @@ public class DesignObjectRenderer {
         lbl.setMinSize(w, h);
         lbl.setWrapText(true);
 
-        double effectiveLineSpacing = (el.getLineSpacing() * 1.33)
-                + ((el.getLineHeight() > 0 ? el.getLineHeight() - 1.0 : 0) * el.getFontSize() * 1.33);
-        lbl.setLineSpacing(Math.max(-10.0, effectiveLineSpacing));
+        double fontSizePx = el.getFontSize() * 1.333;
+        double lhMult = el.getLineHeight() > 0 ? el.getLineHeight() : 1.25;
+        // JavaFX default line spacing is 0 (which corresponds to ~1.20x native font leading).
+        // Extra spacing in px: (lhMult - 1.20) * fontSizePx + (el.getLineSpacing() * 1.333)
+        double effectiveLineSpacing = (lhMult - 1.20) * fontSizePx + (el.getLineSpacing() * 1.333);
+        lbl.setLineSpacing(Math.max(-fontSizePx * 0.4, effectiveLineSpacing));
 
         String colorHex = el.getColor() != null && !el.getColor().isBlank() ? el.getColor() : "#1a1a1a";
         String bgStyle = "";

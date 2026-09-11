@@ -11,6 +11,8 @@ public class Settings {
     private boolean interState; // true -> IGST, false -> CGST+SGST
     private String billNoPrefix = "INV-";
     private int billNoNext = 1;
+    private int billNoDigits = 4; // 0/1: no padding, 3: 001, 4: 0001
+    private boolean monochromePrint = false; // B&W Xerox Print Mode
     private double printOffsetX; // mm
     private double printOffsetY; // mm
     private boolean statusStamp = true;
@@ -29,11 +31,17 @@ public class Settings {
     public boolean isInterState() { return interState; }
     public void setInterState(boolean interState) { this.interState = interState; }
 
-    public String getBillNoPrefix() { return billNoPrefix != null ? billNoPrefix : "INV-"; }
-    public void setBillNoPrefix(String billNoPrefix) { this.billNoPrefix = billNoPrefix; }
+    public String getBillNoPrefix() { return billNoPrefix != null ? billNoPrefix : ""; }
+    public void setBillNoPrefix(String billNoPrefix) { this.billNoPrefix = billNoPrefix != null ? billNoPrefix : ""; }
 
     public int getBillNoNext() { return billNoNext; }
     public void setBillNoNext(int billNoNext) { this.billNoNext = billNoNext; }
+
+    public int getBillNoDigits() { return billNoDigits > 0 ? billNoDigits : 1; }
+    public void setBillNoDigits(int billNoDigits) { this.billNoDigits = Math.max(0, billNoDigits); }
+
+    public boolean isMonochromePrint() { return monochromePrint; }
+    public void setMonochromePrint(boolean monochromePrint) { this.monochromePrint = monochromePrint; }
 
     public double getPrintOffsetX() { return printOffsetX; }
     public void setPrintOffsetX(double printOffsetX) { this.printOffsetX = printOffsetX; }

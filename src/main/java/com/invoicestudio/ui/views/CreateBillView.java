@@ -11,6 +11,7 @@ import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
+import com.invoicestudio.ui.UiTheme;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
@@ -45,7 +46,7 @@ public class CreateBillView extends BorderPane {
     private DocType selectedDocType = DocType.INVOICE;
     private final ComboBox<Template> templateCombo = new ComboBox<>();
     private final TextField billNoField = new TextField();
-    private final DatePicker datePicker = new DatePicker(LocalDate.now());
+    private final DatePicker datePicker = UiTheme.datePicker(LocalDate.now(), "dd/mm/yyyy");
 
     // Buyer
     private final ComboBox<Buyer> buyerCombo = new ComboBox<>();
@@ -76,7 +77,7 @@ public class CreateBillView extends BorderPane {
     private final TextArea notesField = new TextArea();
     private final ComboBox<BillStatus> statusCombo = new ComboBox<>();
     private final ComboBox<RepeatCadence> repeatCombo = new ComboBox<>();
-    private final DatePicker repeatEndPicker = new DatePicker();
+    private final DatePicker repeatEndPicker = UiTheme.datePicker("dd/mm/yyyy");
 
     // Totals labels
     private final Label subtotalLbl = new Label("₹0.00");
@@ -237,6 +238,7 @@ public class CreateBillView extends BorderPane {
         metaGrid.add(billNoField, 1, 1);
 
         metaGrid.add(new Label("Bill Date:"), 2, 0);
+        datePicker.setMaxWidth(Double.MAX_VALUE);
         datePicker.setOnAction(e -> updateTotalsAndPreview());
         metaGrid.add(datePicker, 2, 1);
 

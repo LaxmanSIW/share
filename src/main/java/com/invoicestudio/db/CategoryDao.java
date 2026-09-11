@@ -80,6 +80,7 @@ public class CategoryDao {
 
     public void deleteCategory(String id) {
         if (id == null || id.isBlank()) return;
+        if ("cat_trouser".equalsIgnoreCase(id) || "cat_trousers".equalsIgnoreCase(id)) return; // Protected default category
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement("DELETE FROM categories WHERE id = ?")) {
             ps.setString(1, id);

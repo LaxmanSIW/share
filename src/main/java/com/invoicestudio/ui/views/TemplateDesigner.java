@@ -2091,17 +2091,39 @@ public class TemplateDesigner extends BorderPane {
         spacingGrid.setHgap(8); spacingGrid.setVgap(8);
         spacingGrid.setPadding(new Insets(8));
 
-        Spinner<Double> lineHeightSpin = new Spinner<>(0.5, 3.5, el.getLineHeight() > 0 ? el.getLineHeight() : 1.25, 0.05);
+        double curLh = el.getLineHeight() > 0 ? el.getLineHeight() : 1.25;
+        Spinner<Double> lineHeightSpin = new Spinner<>(0.8, 3.5, curLh, 0.05);
         lineHeightSpin.setPrefWidth(85);
         configureNumberSpinner(lineHeightSpin);
-        lineHeightSpin.setTooltip(new Tooltip("Line height multiplier (e.g. 1.0, 1.25, 1.5)"));
-        lineHeightSpin.valueProperty().addListener((obs, o, v) -> { el.setLineHeight(v); refreshCanvas(); });
+        lineHeightSpin.setTooltip(new Tooltip("Line height multiplier (e.g. 1.0x, 1.25x, 1.5x) - scales automatically with font size"));
 
-        Spinner<Double> lineSpacingSpin = new Spinner<>(-10.0, 50.0, el.getLineSpacing(), 1.0);
-        lineSpacingSpin.setPrefWidth(85);
-        configureNumberSpinner(lineSpacingSpin);
-        lineSpacingSpin.setTooltip(new Tooltip("Line spacing offset in points (pt)"));
-        lineSpacingSpin.valueProperty().addListener((obs, o, v) -> { el.setLineSpacing(v); refreshCanvas(); });
+        ComboBox<String> lhPresetCombo = new ComboBox<>(FXCollections.observableArrayList(
+            "Auto (1.2x)", "Tight (1.0x)", "Normal (1.25x)", "Relaxed (1.5x)", "Double (2.0x)", "Custom"
+        ));
+        if (Math.abs(curLh - 1.2) < 0.02) lhPresetCombo.setValue("Auto (1.2x)");
+        else if (Math.abs(curLh - 1.0) < 0.02) lhPresetCombo.setValue("Tight (1.0x)");
+        else if (Math.abs(curLh - 1.25) < 0.02) lhPresetCombo.setValue("Normal (1.25x)");
+        else if (Math.abs(curLh - 1.5) < 0.02) lhPresetCombo.setValue("Relaxed (1.5x)");
+        else if (Math.abs(curLh - 2.0) < 0.02) lhPresetCombo.setValue("Double (2.0x)");
+        else lhPresetCombo.setValue("Custom");
+        lhPresetCombo.setPrefWidth(115);
+        lhPresetCombo.getStyleClass().add("designer-combo");
+
+        lhPresetCombo.valueProperty().addListener((obs, o, v) -> {
+            if ("Auto (1.2x)".equals(v)) lineHeightSpin.getValueFactory().setValue(1.2);
+            else if ("Tight (1.0x)".equals(v)) lineHeightSpin.getValueFactory().setValue(1.0);
+            else if ("Normal (1.25x)".equals(v)) lineHeightSpin.getValueFactory().setValue(1.25);
+            else if ("Relaxed (1.5x)".equals(v)) lineHeightSpin.getValueFactory().setValue(1.5);
+            else if ("Double (2.0x)".equals(v)) lineHeightSpin.getValueFactory().setValue(2.0);
+        });
+
+        lineHeightSpin.valueProperty().addListener((obs, o, v) -> {
+            el.setLineHeight(v);
+            refreshCanvas();
+        });
+
+        HBox lhBox = new HBox(6, lhPresetCombo, lineHeightSpin);
+        lhBox.setAlignment(Pos.CENTER_LEFT);
 
         Spinner<Double> letterSpacingSpin = new Spinner<>(-2.0, 25.0, el.getLetterSpacing(), 0.5);
         letterSpacingSpin.setPrefWidth(85);
@@ -2125,9 +2147,7 @@ public class TemplateDesigner extends BorderPane {
         });
 
         spacingGrid.add(new Label("Line Height:"), 0, 0);
-        spacingGrid.add(lineHeightSpin, 1, 0);
-        spacingGrid.add(new Label("Line Spacing:"), 2, 0);
-        spacingGrid.add(lineSpacingSpin, 3, 0);
+        spacingGrid.add(lhBox, 1, 0, 3, 1);
 
         spacingGrid.add(new Label("Letter Spacing:"), 0, 1);
         spacingGrid.add(letterSpacingSpin, 1, 1);

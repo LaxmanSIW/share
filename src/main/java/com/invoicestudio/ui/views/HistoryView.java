@@ -46,8 +46,8 @@ public class HistoryView extends BorderPane {
     private final TextField searchField = new TextField();
     private final ComboBox<String> statusFilter = new ComboBox<>();
     private final ComboBox<String> docTypeFilter = new ComboBox<>();
-    private final DatePicker fromPicker = new DatePicker();
-    private final DatePicker toPicker = new DatePicker();
+    private final DatePicker fromPicker = UiTheme.datePicker("From Date");
+    private final DatePicker toPicker = UiTheme.datePicker("To Date");
 
     public HistoryView(StudioApp app) {
         this.app = app;
@@ -108,10 +108,10 @@ public class HistoryView extends BorderPane {
         docTypeFilter.setValue("All Types");
         docTypeFilter.setOnAction(e -> applyFilter());
 
-        fromPicker.setPromptText("From Date");
+        fromPicker.setPrefWidth(130);
         fromPicker.setOnAction(e -> applyFilter());
 
-        toPicker.setPromptText("To Date");
+        toPicker.setPrefWidth(130);
         toPicker.setOnAction(e -> applyFilter());
 
         Button clearFilter = UiTheme.smallBtn("Clear");
@@ -553,7 +553,7 @@ public class HistoryView extends BorderPane {
         double remainingDue = Math.max(0, bill.getTotals().getGrandTotal() - paidSoFar);
 
         TextField amtField = new TextField(String.format("%.2f", remainingDue));
-        DatePicker pDatePicker = new DatePicker(LocalDate.now());
+        DatePicker pDatePicker = UiTheme.datePicker(LocalDate.now(), "dd/mm/yyyy");
         ComboBox<PaymentMethod> methodCombo = new ComboBox<>(FXCollections.observableArrayList(PaymentMethod.values()));
         methodCombo.setValue(PaymentMethod.UPI);
         TextField refField = new TextField();

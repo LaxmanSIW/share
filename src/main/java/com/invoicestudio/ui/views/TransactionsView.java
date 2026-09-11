@@ -140,24 +140,36 @@ public class TransactionsView extends BorderPane {
         });
         bookToggle.getChildren().addAll(btnAllBooks, btnCcBook, btnCsBook);
 
-        // Type filter ComboBox
-        ComboBox<String> typeCombo = new ComboBox<>();
-        typeCombo.getItems().addAll("All Types", "Sales Only", "Payments Only");
-        typeCombo.setValue("All Types");
-        typeCombo.getStyleClass().add("filter-combo");
-        typeCombo.valueProperty().addListener((obs, o, v) -> {
-            if ("Sales Only".equals(v)) typeFilter = "sale";
-            else if ("Payments Only".equals(v)) typeFilter = "payment";
-            else typeFilter = "ALL";
+        // Type filter toggle buttons
+        HBox typeToggle = new HBox(4);
+        typeToggle.getStyleClass().add("toggle-group-container");
+        Button btnAllTypes = createFilterBtn("All Types", true);
+        Button btnSales = createFilterBtn("Sales", false);
+        Button btnPayments = createFilterBtn("Payments", false);
+
+        btnAllTypes.setOnAction(e -> {
+            typeFilter = "ALL";
+            updateToggleStyles(typeToggle, btnAllTypes);
             applyFilter();
         });
+        btnSales.setOnAction(e -> {
+            typeFilter = "sale";
+            updateToggleStyles(typeToggle, btnSales);
+            applyFilter();
+        });
+        btnPayments.setOnAction(e -> {
+            typeFilter = "payment";
+            updateToggleStyles(typeToggle, btnPayments);
+            applyFilter();
+        });
+        typeToggle.getChildren().addAll(btnAllTypes, btnSales, btnPayments);
 
         countBadge.getStyleClass().addAll("badge", "badge-gray");
 
         Region sp2 = new Region();
         HBox.setHgrow(sp2, Priority.ALWAYS);
 
-        filterBar.getChildren().addAll(searchField, bookToggle, typeCombo, sp2, countBadge);
+        filterBar.getChildren().addAll(searchField, bookToggle, typeToggle, sp2, countBadge);
 
         rootBox.getChildren().addAll(topRow, kpiRow, filterBar);
         return rootBox;
@@ -331,9 +343,15 @@ public class TransactionsView extends BorderPane {
 
         TableColumn<Transaction, String> colCheck = new TableColumn<>("Check No.");
         colCheck.setPrefWidth(100);
-        colCheck.setCellValueFactory(d -> new SimpleStringProperty(
-            d.getValue().getCheckNumber() != null && !d.getValue().getCheckNumber().isBlank()
-                ? d.getValue().getCheckNumber() : "—"));
+        colCheck.setCellValueFactory(d -> {
+            Transaction tx = d.getValue();
+            if (tx == null || "sale".equalsIgnoreCase(tx.getTransactionType())) {
+                return new SimpleStringProperty("—");
+            }
+            return new SimpleStringProperty(
+                tx.getCheckNumber() != null && !tx.getCheckNumber().isBlank()
+                    ? tx.getCheckNumber() : "—");
+        });
         colCheck.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(String val, boolean empty) {
@@ -534,7 +552,7 @@ public class TransactionsView extends BorderPane {
         grid.add(typeBox, 1, row++);
 
         // Date Pickers
-        DatePicker txDatePicker = new DatePicker();
+        DatePicker txDatePicker = UiTheme.datePicker("dd/mm/yyyy");
         txDatePicker.setPrefWidth(280);
         if (isEdit && existing.getTransactionDate() != null) {
             try {
@@ -548,7 +566,7 @@ public class TransactionsView extends BorderPane {
         grid.add(new Label("Tx Date: *"), 0, row);
         grid.add(txDatePicker, 1, row++);
 
-        DatePicker dueDatePicker = new DatePicker();
+        DatePicker dueDatePicker = UiTheme.datePicker("dd/mm/yyyy (Optional)");
         dueDatePicker.setPrefWidth(280);
         if (isEdit && existing.getDueDate() != null && !existing.getDueDate().isBlank()) {
             try {
@@ -577,8 +595,8 @@ public class TransactionsView extends BorderPane {
         grid.add(parcelsField, 1, row++);
 
         // Check Number
-        TextField checkField = new TextField(isEdit && existing.getCheckNumber() != null ? existing.getCheckNumber() : "");
-        checkField.setPromptText("Enter check number");
+        TextField checkField = new TextField(isEdit && existing.getCheckNumber() != null && !"sale".equalsIgnoreCase(existing.getTransactionType()) ? existing.getCheckNumber() : "");
+        checkField.setPromptText("Enter check number (CC Payments only)");
         grid.add(new Label("Check Number:"), 0, row);
         grid.add(checkField, 1, row++);
 
@@ -599,7 +617,7 @@ public class TransactionsView extends BorderPane {
         grid.add(notesField, 1, row++);
 
         // Dynamic State Listeners (enforcing exact web logic):
-        // 1. Check Number is ONLY enabled for: Payment + CC
+        // 1. Check Number is ONLY enabled for: Payment + CC (Sales NEVER have check number)
         // 2. Reporting is disabled for: Any Payment OR Sale + CC
         // 3. Trouser Quantity is disabled for Payment
         Runnable updateFieldsState = () -> {
@@ -610,10 +628,10 @@ public class TransactionsView extends BorderPane {
             qtyField.setDisable(isPayment);
             if (isPayment) qtyField.setText("0");
 
-            // Check number rule
+            // Check number rule: ONLY enabled for Payment + CC
             boolean checkEnabled = isPayment && isCc;
             checkField.setDisable(!checkEnabled);
-            if (!checkEnabled && !isEdit) {
+            if (!checkEnabled) {
                 checkField.setText("");
             }
 
@@ -670,7 +688,7 @@ public class TransactionsView extends BorderPane {
                 String tType = rbSale.isSelected() ? "sale" : "payment";
                 String txDate = txDatePicker.getValue() != null ? txDatePicker.getValue().toString() : LocalDate.now().toString();
                 String dueDate = dueDatePicker.getValue() != null ? dueDatePicker.getValue().toString() : null;
-                String checkNo = checkField.isDisable() ? null : checkField.getText().trim();
+                String checkNo = (rbPayment.isSelected() && rbCc.isSelected() && !checkField.isDisable()) ? checkField.getText().trim() : null;
                 boolean incRep = reportingCheck.isSelected();
                 String notes = notesField.getText().trim();
 

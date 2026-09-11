@@ -33,6 +33,7 @@ public class DatabaseManager {
         this.dbUrl = dbUrl;
         initSchema();
         seedIfEmpty();
+        ensureDefaults();
     }
 
     public Connection getConnection() throws SQLException {
@@ -385,6 +386,29 @@ public class DatabaseManager {
                         ps.executeUpdate();
                     }
                 }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void ensureDefaults() {
+        try (Connection conn = getConnection()) {
+            String now = java.time.Instant.now().toString();
+            // Ensure default category 'Trouser' exists
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT OR IGNORE INTO categories (id, name, created_at, updated_at) VALUES ('cat_trouser', 'Trouser', ?, ?)")) {
+                ps.setString(1, now);
+                ps.setString(2, now);
+                ps.executeUpdate();
+            }
+            // Ensure default item 'PENT' exists
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT OR IGNORE INTO items (id, name, hsn, unit, rate, gst, category_id, category_name, created_at, updated_at) " +
+                    "VALUES ('item_pent', 'PENT', '6203', 'PCS', 550.0, 5.0, 'cat_trouser', 'Trouser', ?, ?)")) {
+                ps.setString(1, now);
+                ps.setString(2, now);
+                ps.executeUpdate();
             }
         } catch (Exception e) {
             e.printStackTrace();

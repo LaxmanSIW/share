@@ -196,7 +196,7 @@ public final class DataManager {
                 t.setId("tx_" + bill.getId());
                 t.setBillId(bill.getId());
                 t.setBillNo(bill.getBillNo());
-                t.setCheckNumber("INV-" + bill.getBillNo());
+                t.setCheckNumber("");
                 t.setBuyerId(buyerId);
                 t.setBuyerName(buyerName != null && !buyerName.isBlank() ? buyerName : "Walk-in Customer");
                 t.setBookType("CC");
@@ -213,7 +213,7 @@ public final class DataManager {
             } else {
                 existing.setBillId(bill.getId());
                 existing.setBillNo(bill.getBillNo());
-                existing.setCheckNumber("INV-" + bill.getBillNo());
+                existing.setCheckNumber("");
                 if (!buyerId.isBlank()) existing.setBuyerId(buyerId);
                 if (buyerName != null && !buyerName.isBlank()) existing.setBuyerName(buyerName);
                 if (bill.getDate() != null && !bill.getDate().isBlank()) existing.setTransactionDate(bill.getDate());

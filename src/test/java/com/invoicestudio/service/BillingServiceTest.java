@@ -79,4 +79,25 @@ class BillingServiceTest {
         assertTrue(formatted.contains("₹") && formatted.contains("15,00,000.50"),
                 "Expected Indian numbering format ₹15,00,000.50, got: " + formatted);
     }
+
+    @Test
+    void testNextBillNoWithZeroPaddingAndEmptyPrefix() {
+        com.invoicestudio.model.Settings s1 = new com.invoicestudio.model.Settings();
+        s1.setBillNoPrefix("INV-");
+        s1.setBillNoDigits(4);
+        s1.setBillNoNext(5);
+        assertEquals("INV-0005", BillingService.nextBillNo(s1));
+
+        com.invoicestudio.model.Settings s2 = new com.invoicestudio.model.Settings();
+        s2.setBillNoPrefix("");
+        s2.setBillNoDigits(1);
+        s2.setBillNoNext(1);
+        assertEquals("1", BillingService.nextBillNo(s2));
+
+        com.invoicestudio.model.Settings s3 = new com.invoicestudio.model.Settings();
+        s3.setBillNoPrefix("BILL/");
+        s3.setBillNoDigits(3);
+        s3.setBillNoNext(42);
+        assertEquals("BILL/042", BillingService.nextBillNo(s3));
+    }
 }

@@ -235,39 +235,44 @@ public class DashboardView extends BorderPane {
         double momDelta = prevRevenue > 0 ? ((monthRevenue - prevRevenue) / prevRevenue) * 100 : (monthRevenue > 0 ? 100 : 0);
 
         double totalCollected = invoices.stream().mapToDouble(b -> {
-            double p = b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
-            if (p == 0 && b.getStatus() == BillStatus.PAID) p = b.getTotals().getGrandTotal();
+            double p = b.getPayments() != null ? b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum() : 0;
+            if (p == 0 && b.getStatus() == BillStatus.PAID && b.getTotals() != null) p = b.getTotals().getGrandTotal();
             return p;
         }).sum();
 
         double monthCollected = invoices.stream().mapToDouble(b -> {
             double sum = 0;
-            for (BillPayment p : b.getPayments()) {
-                if (p.getDate() != null && p.getDate().startsWith(monthKey)) sum += p.getAmount();
+            if (b.getPayments() != null) {
+                for (BillPayment p : b.getPayments()) {
+                    if (p.getDate() != null && p.getDate().startsWith(monthKey)) sum += p.getAmount();
+                }
             }
-            if (b.getPayments().isEmpty() && b.getStatus() == BillStatus.PAID && b.getDate() != null && b.getDate().startsWith(monthKey)) {
+            if (sum == 0 && b.getStatus() == BillStatus.PAID && b.getDate() != null && b.getDate().startsWith(monthKey) && b.getTotals() != null) {
                 sum += b.getTotals().getGrandTotal();
             }
             return sum;
         }).sum();
 
         List<Bill> unpaidList = invoices.stream().filter(b -> {
-            double paid = b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
+            double paid = b.getPayments() != null ? b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum() : 0;
             if (paid == 0 && b.getStatus() == BillStatus.PAID) return false;
-            return b.getTotals().getGrandTotal() - paid > 0.01;
+            double grand = b.getTotals() != null ? b.getTotals().getGrandTotal() : 0;
+            return (grand - paid) > 0.01;
         }).collect(Collectors.toList());
+
         double totalDue = unpaidList.stream().mapToDouble(b -> {
-            double paid = b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
-            return Math.max(0, b.getTotals().getGrandTotal() - paid);
+            double paid = b.getPayments() != null ? b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum() : 0;
+            double grand = b.getTotals() != null ? b.getTotals().getGrandTotal() : 0;
+            return Math.max(0, grand - paid);
         }).sum();
 
-        double totalSales = invoices.stream().mapToDouble(b -> b.getTotals().getGrandTotal()).sum();
+        double totalSales = invoices.stream().mapToDouble(b -> b.getTotals() != null ? b.getTotals().getGrandTotal() : 0).sum();
         double avgTicket = invoices.isEmpty() ? 0 : totalSales / invoices.size();
 
-        Label revenueVal = UiTheme.kpiValue(cur + "0.00");
-        Label collectedVal = UiTheme.kpiValue(cur + "0.00");
-        Label dueVal = UiTheme.kpiValue(cur + "0.00");
-        Label lifetimeVal = UiTheme.kpiValue(cur + "0.00");
+        Label revenueVal = UiTheme.kpiValue(cur + String.format("%.2f", monthRevenue));
+        Label collectedVal = UiTheme.kpiValue(cur + String.format("%.2f", totalCollected));
+        Label dueVal = UiTheme.kpiValue(cur + String.format("%.2f", totalDue));
+        Label lifetimeVal = UiTheme.kpiValue(cur + String.format("%.2f", totalSales));
 
         HBox grid = new HBox(16);
         grid.getChildren().addAll(
@@ -283,36 +288,41 @@ public class DashboardView extends BorderPane {
 
         for (Node c : grid.getChildren()) HBox.setHgrow(c, Priority.ALWAYS);
 
-        // Animate the numbers counting up — subtle, 550ms, eases out.
-        animateValue(revenueVal, cur, monthRevenue);
-        animateValue(collectedVal, cur, totalCollected);
-        animateValue(dueVal, cur, totalDue);
-        animateValue(lifetimeVal, cur, totalSales);
+        // Animate all 4 numbers simultaneously
+        Map<Label, Double> targets = new LinkedHashMap<>();
+        targets.put(revenueVal, monthRevenue);
+        targets.put(collectedVal, totalCollected);
+        targets.put(dueVal, totalDue);
+        targets.put(lifetimeVal, totalSales);
+        animateCounters(targets, cur);
 
         return grid;
     }
 
-    private void animateValue(Label label, String currency, double target) {
+    private void animateCounters(Map<Label, Double> targets, String currency) {
+        counterTimeline.stop();
+        counterTimeline.getKeyFrames().clear();
         final int steps = 18;
         final long durationMs = 550;
-        counterTimeline.getKeyFrames().clear();
 
         for (int i = 1; i <= steps; i++) {
             final double frac = i / (double) steps;
-            // ease-out cubic
             final double eased = 1 - Math.pow(1 - frac, 3);
             counterTimeline.getKeyFrames().add(new KeyFrame(
                     Duration.millis(durationMs * i / steps),
                     e -> {
-                        double v = target * eased;
-                        label.setText(String.format("%s%.2f", currency, v));
-                    },
-                    new KeyValue[0]
+                        for (Map.Entry<Label, Double> entry : targets.entrySet()) {
+                            double v = entry.getValue() * eased;
+                            entry.getKey().setText(String.format("%s%.2f", currency, v));
+                        }
+                    }
             ));
         }
-        counterTimeline.setCycleCount(1);
-        counterTimeline.setAutoReverse(false);
-        counterTimeline.setOnFinished(e -> label.setText(String.format("%s%.2f", currency, target)));
+        counterTimeline.setOnFinished(e -> {
+            for (Map.Entry<Label, Double> entry : targets.entrySet()) {
+                entry.getKey().setText(String.format("%s%.2f", currency, entry.getValue()));
+            }
+        });
         counterTimeline.play();
     }
 

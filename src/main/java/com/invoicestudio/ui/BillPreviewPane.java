@@ -227,13 +227,38 @@ public class BillPreviewPane extends StackPane {
         if (el.getType() == ElementType.TABLE) {
             return createTableNode(el, w, h);
         }
+        boolean isMono = currentSettings != null && currentSettings.isMonochromePrint();
+        if (isMono) {
+            TemplateElement monoEl = el.copy();
+            if (monoEl.getType() == ElementType.TEXT || monoEl.getType() == ElementType.PAGENO) {
+                monoEl.setColor("#000000");
+                if (monoEl.getBg() != null && !monoEl.getBg().isBlank() && !"transparent".equalsIgnoreCase(monoEl.getBg())) {
+                    monoEl.setBg("#ffffff");
+                }
+            } else if (monoEl.getType() == ElementType.RECT) {
+                if (monoEl.getBg() != null && !monoEl.getBg().isBlank() && !"transparent".equalsIgnoreCase(monoEl.getBg())) {
+                    monoEl.setBg("#ffffff");
+                }
+                if (monoEl.getBorderColor() == null || monoEl.getBorderColor().isBlank() || "transparent".equalsIgnoreCase(monoEl.getBorderColor())) {
+                    monoEl.setBorderColor("#000000");
+                    if (monoEl.getBorderWidth() <= 0) monoEl.setBorderWidth(0.5);
+                } else {
+                    monoEl.setBorderColor("#000000");
+                }
+            } else if (monoEl.getType() == ElementType.LINE || monoEl.getType() == ElementType.DIVIDER) {
+                monoEl.setColor("#000000");
+                monoEl.setBorderColor("#000000");
+            }
+            return com.invoicestudio.service.DesignObjectRenderer.render(monoEl, ctx, w, h);
+        }
         return com.invoicestudio.service.DesignObjectRenderer.render(el, ctx, w, h);
     }
 
     private Node createTableNode(TemplateElement el, double w, double h) {
         // Shared table skin values (kept identical to designer canvas + PdfExportService)
-        String bc = el.getTableBorderColor();
-        double bwPx = Math.max(0.5, el.getTableBorderWidth() > 0 ? el.getTableBorderWidth() * MM_PX : 1.0);
+        boolean isMono = currentSettings != null && currentSettings.isMonochromePrint();
+        String bc = isMono ? "#000000" : el.getTableBorderColor();
+        double bwPx = Math.max(0.75, el.getTableBorderWidth() > 0 ? el.getTableBorderWidth() * MM_PX : 1.0);
         String bw = String.format(java.util.Locale.US, "%.2f", bwPx);
         String bStyle = el.getBorderStyle(); // grid, rows, outline, none
         boolean drawOuter = !"none".equals(bStyle);
@@ -261,8 +286,8 @@ public class BillPreviewPane extends StackPane {
         hRow.setPrefHeight(headerHeightPx);
         String fontPx = String.format(java.util.Locale.US, "%.1f", 10.0 * el.tableFontScale());
 
-        String hBg = el.getHeaderBg() != null && !el.getHeaderBg().isBlank() ? el.getHeaderBg() : "#efe9db";
-        String hCol = el.getHeaderColor() != null && !el.getHeaderColor().isBlank() ? el.getHeaderColor() : "#1a1a1a";
+        String hBg = isMono ? "#ffffff" : (el.getHeaderBg() != null && !el.getHeaderBg().isBlank() ? el.getHeaderBg() : "#efe9db");
+        String hCol = isMono ? "#000000" : (el.getHeaderColor() != null && !el.getHeaderColor().isBlank() ? el.getHeaderColor() : "#1a1a1a");
         hRow.setStyle("-fx-background-color: " + hBg + ";"
                 + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
 
@@ -291,9 +316,9 @@ public class BillPreviewPane extends StackPane {
         }
 
         String cur = currentSettings != null ? currentSettings.getCurrency() : "₹";
-        String rowBgCol = el.getRowBg();
-        String rowTextCol = el.getRowColor();
-        String zebraCol = el.getZebraColor();
+        String rowBgCol = isMono ? "#ffffff" : el.getRowBg();
+        String rowTextCol = isMono ? "#000000" : el.getRowColor();
+        String zebraCol = isMono ? "#ffffff" : el.getZebraColor();
 
         for (int i = 0; i < items.size(); i++) {
             BillItem item = items.get(i);

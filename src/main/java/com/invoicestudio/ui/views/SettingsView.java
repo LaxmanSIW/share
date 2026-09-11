@@ -65,8 +65,10 @@ public class SettingsView extends VBox {
     private final TextField currencyField = new TextField();
     private final TextField prefixField = new TextField();
     private final TextField nextNoField = new TextField();
+    private final Spinner<Integer> digitsSpinner = new Spinner<>(1, 8, 4);
     private final CheckBox interStateBox = new CheckBox("Inter-state supplies (IGST default)");
     private final CheckBox autoRecurringBox = new CheckBox("Auto-create recurring invoices on startup");
+    private final CheckBox monochromePrintBox = new CheckBox("Monochrome / B&W Xerox Print Mode (Optimized for photocopiers & laser printers)");
 
     // Print calibration
     private final TextField offsetXField = new TextField();
@@ -237,31 +239,116 @@ public class SettingsView extends VBox {
     private void buildBillingPrefsSection() {
         VBox card = UiTheme.card(14);
 
-        Label secTitle = new Label("BILLING PREFERENCES");
+        HBox secTitleRow = new HBox(8);
+        secTitleRow.setAlignment(Pos.CENTER_LEFT);
+        Label secTitle = new Label("BILLING PREFERENCES & NUMBERING");
         secTitle.getStyleClass().add("card-title");
+        secTitleRow.getChildren().add(secTitle);
 
         GridPane grid = new GridPane();
         grid.setHgap(16);
         grid.setVgap(12);
 
         ColumnConstraints col1 = new ColumnConstraints();
-        col1.setPercentWidth(33.3);
+        col1.setPercentWidth(25);
         ColumnConstraints col2 = new ColumnConstraints();
-        col2.setPercentWidth(33.3);
+        col2.setPercentWidth(25);
         ColumnConstraints col3 = new ColumnConstraints();
-        col3.setPercentWidth(33.3);
-        grid.getColumnConstraints().addAll(col1, col2, col3);
+        col3.setPercentWidth(25);
+        ColumnConstraints col4 = new ColumnConstraints();
+        col4.setPercentWidth(25);
+        grid.getColumnConstraints().addAll(col1, col2, col3, col4);
+
+        prefixField.setPromptText("e.g. INV- or leave empty");
+        digitsSpinner.setPrefWidth(120);
+
+        Button helpBtn = new Button("?");
+        helpBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        helpBtn.setTooltip(new Tooltip("How Bill Prefix and Zero-Padding Digits work"));
+        helpBtn.setOnAction(e -> showBillNumberingHelp());
+
+        HBox digitsLabelBox = new HBox(6);
+        digitsLabelBox.setAlignment(Pos.CENTER_LEFT);
+        Label lblDigits = new Label("Padding Digits");
+        lblDigits.getStyleClass().add("field-label");
+        digitsLabelBox.getChildren().addAll(lblDigits, helpBtn);
+
+        VBox digitsBox = new VBox(4);
+        digitsBox.getChildren().addAll(digitsLabelBox, digitsSpinner);
 
         grid.add(UiTheme.labeled("Currency Symbol", currencyField), 0, 0);
         grid.add(UiTheme.labeled("Bill No Prefix", prefixField), 1, 0);
         grid.add(UiTheme.labeled("Next Bill Number", nextNoField), 2, 0);
+        grid.add(digitsBox, 3, 0);
+
+        // Live Preview Row
+        HBox previewRow = new HBox(10);
+        previewRow.setAlignment(Pos.CENTER_LEFT);
+        previewRow.getStyleClass().add("card-pane-subtle");
+        previewRow.setPadding(new Insets(8, 12, 8, 12));
+
+        Label previewTitle = new Label("Live Bill # Format Preview:");
+        previewTitle.setStyle("-fx-font-weight: bold; -fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+        Label previewBadge = new Label();
+        previewBadge.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #F2CA6B;");
+
+        Runnable updateLivePreview = () -> {
+            String p = prefixField.getText() != null ? prefixField.getText().trim() : "";
+            int num = 1;
+            try { num = Integer.parseInt(nextNoField.getText().trim()); } catch (Exception ignored) {}
+            int dig = digitsSpinner.getValue() != null ? digitsSpinner.getValue() : 4;
+            String f = dig <= 1 ? p + num : String.format("%s%0" + dig + "d", p, num);
+            previewBadge.setText(f);
+        };
+        prefixField.textProperty().addListener((o, ov, nv) -> updateLivePreview.run());
+        nextNoField.textProperty().addListener((o, ov, nv) -> updateLivePreview.run());
+        digitsSpinner.valueProperty().addListener((o, ov, nv) -> updateLivePreview.run());
+        updateLivePreview.run();
+
+        previewRow.getChildren().addAll(previewTitle, previewBadge);
 
         HBox toggles = new HBox(24);
         toggles.setAlignment(Pos.CENTER_LEFT);
-        toggles.getChildren().addAll(interStateBox, autoRecurringBox);
+        toggles.getChildren().addAll(interStateBox, autoRecurringBox, monochromePrintBox);
 
-        card.getChildren().addAll(secTitle, grid, toggles);
+        card.getChildren().addAll(secTitleRow, grid, previewRow, toggles);
         getChildren().add(card);
+    }
+
+    private void showBillNumberingHelp() {
+        Dialog<Void> dlg = new Dialog<>();
+        dlg.setTitle("Invoice Numbering & Zero-Padding Help");
+        dlg.setHeaderText("Configuring Bill Prefix and Leading Zeros");
+
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+        content.setPrefWidth(460);
+
+        Label desc = new Label(
+            "InvoiceStudio generates invoice numbers by combining the Prefix with the formatted Next Number.\n\n" +
+            "• Prefix: Text placed before the number. Leave completely empty for raw numbers (e.g. 101), or use custom codes like 'INV-', 'BILL/', 'GST/26/'.\n\n" +
+            "• Next Number: The starting or sequential counter for your next invoice.\n\n" +
+            "• Padding Digits: Minimum number of digits for the numeric portion:\n" +
+            "   - 1 digit (no padding): 1, 2, ..., 15, 100\n" +
+            "   - 3 digits: 001, 002, ..., 015, 100\n" +
+            "   - 4 digits: 0001, 0002, ..., 0015, 0100"
+        );
+        desc.setWrapText(true);
+
+        String p = prefixField.getText() != null ? prefixField.getText().trim() : "";
+        int num = 1;
+        try { num = Integer.parseInt(nextNoField.getText().trim()); } catch (Exception ignored) {}
+        int dig = digitsSpinner.getValue() != null ? digitsSpinner.getValue() : 4;
+        String formatted = dig <= 1 ? p + num : String.format("%s%0" + dig + "d", p, num);
+
+        Label previewLbl = new Label("Current Configuration Preview: " + formatted);
+        previewLbl.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #F2CA6B; -fx-background-color: #151B26; -fx-padding: 8 12; -fx-background-radius: 6; -fx-border-color: #222F3E; -fx-border-radius: 6;");
+
+        content.getChildren().addAll(desc, previewLbl);
+        dlg.getDialogPane().setContent(content);
+        dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        DialogHelper.styleDialog(dlg);
+        dlg.showAndWait();
     }
 
     private void buildBuyerFieldsSection() {
@@ -735,10 +822,12 @@ public class SettingsView extends VBox {
             bankUpi.setText(b.getUpi() != null ? b.getUpi() : "");
 
             currencyField.setText(currentSettings.getCurrency() != null ? currentSettings.getCurrency() : "₹");
-            prefixField.setText(currentSettings.getBillNoPrefix() != null ? currentSettings.getBillNoPrefix() : "INV-");
+            prefixField.setText(currentSettings.getBillNoPrefix() != null ? currentSettings.getBillNoPrefix() : "");
             nextNoField.setText(String.valueOf(currentSettings.getBillNoNext()));
+            digitsSpinner.getValueFactory().setValue(currentSettings.getBillNoDigits());
             interStateBox.setSelected(currentSettings.isInterState());
             autoRecurringBox.setSelected(currentSettings.isAutoRecurring());
+            monochromePrintBox.setSelected(currentSettings.isMonochromePrint());
 
             offsetXField.setText(String.valueOf(currentSettings.getPrintOffsetX()));
             offsetYField.setText(String.valueOf(currentSettings.getPrintOffsetY()));
@@ -850,12 +939,14 @@ public class SettingsView extends VBox {
             b.setUpi(bankUpi.getText().trim());
 
             currentSettings.setCurrency(currencyField.getText().trim().isEmpty() ? "₹" : currencyField.getText().trim());
-            currentSettings.setBillNoPrefix(prefixField.getText().trim().isEmpty() ? "INV-" : prefixField.getText().trim());
+            currentSettings.setBillNoPrefix(prefixField.getText() != null ? prefixField.getText().trim() : "");
             try {
                 currentSettings.setBillNoNext(Math.max(1, Integer.parseInt(nextNoField.getText().trim())));
             } catch (Exception ignore) {}
+            currentSettings.setBillNoDigits(digitsSpinner.getValue() != null ? digitsSpinner.getValue() : 4);
             currentSettings.setInterState(interStateBox.isSelected());
             currentSettings.setAutoRecurring(autoRecurringBox.isSelected());
+            currentSettings.setMonochromePrint(monochromePrintBox.isSelected());
 
             try {
                 currentSettings.setPrintOffsetX(Double.parseDouble(offsetXField.getText().trim()));

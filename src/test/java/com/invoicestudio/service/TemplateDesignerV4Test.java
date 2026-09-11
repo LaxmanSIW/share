@@ -547,5 +547,39 @@ class TemplateDesignerV4Test {
         assertEquals("MH-12-AB-1234", ctx.resolveText("{{vehicle_no}}"));
         assertEquals("+91 9876543210", ctx.resolveText("{{transport_phone}}"));
     }
+
+    @Test
+    void testTemplateElementDeepCopy() {
+        TemplateElement el = new TemplateElement();
+        el.setId("el_test_123");
+        el.setType(ElementType.TEXT);
+        el.setX(15.5);
+        el.setY(25.0);
+        el.setW(60.0);
+        el.setH(12.0);
+        el.setText("Hello World");
+        el.setColor("#333333");
+        el.setBg("#fafafa");
+        el.setLineHeight(1.5);
+        el.setLineSpacing(0.8);
+        el.setQrSource("upi_amount");
+        el.setBarcodeData("{{bill_no}}");
+
+        TemplateElement copy = el.copy();
+        assertNotSame(el, copy);
+        assertEquals("el_test_123", copy.getId());
+        assertEquals(ElementType.TEXT, copy.getType());
+        assertEquals(15.5, copy.getX());
+        assertEquals(25.0, copy.getY());
+        assertEquals(60.0, copy.getW());
+        assertEquals(12.0, copy.getH());
+        assertEquals("Hello World", copy.getText());
+        assertEquals("#333333", copy.getColor());
+        assertEquals("#fafafa", copy.getBg());
+        assertEquals(1.5, copy.getLineHeight());
+        assertEquals(0.8, copy.getLineSpacing());
+        assertEquals("upi_amount", copy.getQrSource());
+        assertEquals("{{bill_no}}", copy.getBarcodeData());
+    }
 }
 

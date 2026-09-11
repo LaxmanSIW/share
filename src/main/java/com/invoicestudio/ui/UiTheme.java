@@ -4,12 +4,16 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.util.StringConverter;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 
 /**
  * UI factory helpers — the SINGLE source of reusable visual building blocks.
@@ -203,6 +207,51 @@ public final class UiTheme {
             b.setTooltip(new javafx.scene.control.Tooltip(tooltip));
         }
         return b;
+    }
+
+    // ---------- Date Pickers ----------
+
+    private static final DateTimeFormatter DISPLAY_DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    /** Configures a DatePicker with executive styling, standard display format, and resilient parsing. */
+    public static DatePicker configureDatePicker(DatePicker picker, String prompt) {
+        if (picker == null) return null;
+        if (prompt != null && !prompt.isBlank()) {
+            picker.setPromptText(prompt);
+        }
+        picker.setConverter(new StringConverter<LocalDate>() {
+            @Override
+            public String toString(LocalDate date) {
+                return date != null ? date.format(DISPLAY_DATE_FORMAT) : "";
+            }
+
+            @Override
+            public LocalDate fromString(String string) {
+                if (string == null || string.trim().isEmpty()) {
+                    return null;
+                }
+                String s = string.trim();
+                for (String pattern : new String[]{"dd/MM/yyyy", "dd-MM-yyyy", "yyyy-MM-dd", "d/M/yyyy", "d-M-yyyy"}) {
+                    try {
+                        return LocalDate.parse(s, DateTimeFormatter.ofPattern(pattern));
+                    } catch (Exception ignored) {}
+                }
+                try {
+                    return LocalDate.parse(s);
+                } catch (Exception ignored) {}
+                return null;
+            }
+        });
+        return picker;
+    }
+
+    public static DatePicker datePicker(LocalDate initialDate, String prompt) {
+        DatePicker p = new DatePicker(initialDate);
+        return configureDatePicker(p, prompt);
+    }
+
+    public static DatePicker datePicker(String prompt) {
+        return datePicker(null, prompt);
     }
 
     // ---------- Data rows ----------

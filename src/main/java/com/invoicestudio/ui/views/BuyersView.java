@@ -493,6 +493,9 @@ public class BuyersView extends BorderPane {
         TextField cityF = new TextField(existing != null && existing.getCity() != null ? existing.getCity() : "");
         cityF.setPromptText("City / Town");
 
+        TextField openingBalF = new TextField(existing != null && existing.getOpeningBalance() != 0 ? String.valueOf(existing.getOpeningBalance()) : "");
+        openingBalF.setPromptText("0.00 (starting balance)");
+
         TextField creditLimitF = new TextField(existing != null && existing.getCreditLimit() > 0 ? String.valueOf(existing.getCreditLimit()) : "");
         creditLimitF.setPromptText("0.00 (optional credit limit)");
 
@@ -528,15 +531,16 @@ public class BuyersView extends BorderPane {
         g.add(new Label("Phone:"), 0, 5); g.add(phoneF, 1, 5);
         g.add(new Label("State Name:"), 0, 6); g.add(stateF, 1, 6);
         g.add(new Label("State Code:"), 0, 7); g.add(stateCodeBox, 1, 7);
-        g.add(new Label("Credit Limit (₹):"), 0, 8); g.add(creditLimitF, 1, 8);
-        g.add(new Label("Default Transport:"), 0, 9); g.add(transportBox, 1, 9);
+        g.add(new Label("Opening Balance (₹):"), 0, 8); g.add(openingBalF, 1, 8);
+        g.add(new Label("Credit Limit (₹):"), 0, 9); g.add(creditLimitF, 1, 9);
+        g.add(new Label("Default Transport:"), 0, 10); g.add(transportBox, 1, 10);
 
         // Query custom buyer fields defined under Settings
         Settings settings = app.getData().getSettings();
         List<BuyerFieldDef> defs = settings != null && settings.getBuyerFields() != null ? settings.getBuyerFields() : List.of();
         Map<String, TextField> customInputs = new LinkedHashMap<>();
 
-        int rowIdx = 10;
+        int rowIdx = 11;
         if (!defs.isEmpty()) {
             Separator sep = new Separator();
             sep.setPadding(new Insets(4, 0, 4, 0));
@@ -569,6 +573,11 @@ public class BuyersView extends BorderPane {
                 Buyer b = new Buyer(id, nameF.getText().trim(), addrF.getText().trim(), gstF.getText().trim(), phoneF.getText().trim(), stateF.getText().trim(), stateCodeF.getText().trim());
                 b.setContactPerson(contactF.getText().trim());
                 b.setCity(cityF.getText().trim());
+
+                try {
+                    String obStr = openingBalF.getText().trim();
+                    if (!obStr.isEmpty()) b.setOpeningBalance(Double.parseDouble(obStr));
+                } catch (Exception ignored) {}
 
                 try {
                     String clStr = creditLimitF.getText().trim();

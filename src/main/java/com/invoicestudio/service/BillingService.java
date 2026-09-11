@@ -82,9 +82,13 @@ public class BillingService {
     }
 
     public static String nextBillNo(Settings settings) {
-        String prefix = settings != null && settings.getBillNoPrefix() != null ? settings.getBillNoPrefix() : "INV-";
+        String prefix = settings != null && settings.getBillNoPrefix() != null ? settings.getBillNoPrefix() : "";
         int next = settings != null ? settings.getBillNoNext() : 1;
-        return String.format("%s%04d", prefix, next);
+        int digits = settings != null ? settings.getBillNoDigits() : 4;
+        if (digits <= 1) {
+            return prefix + next;
+        }
+        return String.format("%s%0" + digits + "d", prefix, next);
     }
 
     public static String todayISO() {

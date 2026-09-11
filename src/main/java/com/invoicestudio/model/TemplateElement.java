@@ -679,4 +679,133 @@ public class TemplateElement {
 
     public String getComponentType() { return componentType != null ? componentType : ""; }
     public void setComponentType(String componentType) { this.componentType = componentType; }
+
+    public TemplateElement copy() {
+        TemplateElement c = new TemplateElement();
+        c.id = this.id;
+        c.name = this.name;
+        c.type = this.type;
+        c.x = this.x;
+        c.y = this.y;
+        c.w = this.w;
+        c.h = this.h;
+        c.zIndex = this.zIndex;
+        c.locked = this.locked;
+        c.hidden = this.hidden;
+        c.repeatOnPages = this.repeatOnPages;
+        c.rotation = this.rotation;
+        c.hideWhenBlank = this.hideWhenBlank;
+
+        c.individualBorders = this.individualBorders;
+        c.borderTopWidth = this.borderTopWidth;
+        c.borderBottomWidth = this.borderBottomWidth;
+        c.borderLeftWidth = this.borderLeftWidth;
+        c.borderRightWidth = this.borderRightWidth;
+        c.borderTopColor = this.borderTopColor;
+        c.borderBottomColor = this.borderBottomColor;
+        c.borderLeftColor = this.borderLeftColor;
+        c.borderRightColor = this.borderRightColor;
+        c.borderTopStyle = this.borderTopStyle;
+        c.borderBottomStyle = this.borderBottomStyle;
+        c.borderLeftStyle = this.borderLeftStyle;
+        c.borderRightStyle = this.borderRightStyle;
+
+        c.text = this.text;
+        c.fontFamily = this.fontFamily;
+        c.fontSize = this.fontSize;
+        c.fontWeight = this.fontWeight;
+        c.italic = this.italic;
+        c.underline = this.underline;
+        c.strikethrough = this.strikethrough;
+        c.uppercase = this.uppercase;
+        c.color = this.color;
+        c.align = this.align;
+        c.vAlign = this.vAlign;
+        c.lineHeight = this.lineHeight;
+        c.lineSpacing = this.lineSpacing;
+        c.letterSpacing = this.letterSpacing;
+        c.wordSpacing = this.wordSpacing;
+        c.textTransform = this.textTransform;
+        c.groupName = this.groupName;
+
+        c.bg = this.bg;
+        c.borderWidth = this.borderWidth;
+        c.borderColor = this.borderColor;
+        c.borderRadius = this.borderRadius;
+        c.borderStyle = this.borderStyle;
+        c.opacity = this.opacity;
+
+        c.src = this.src;
+        c.objectFit = this.objectFit;
+        c.useBusinessLogo = this.useBusinessLogo;
+
+        c.qrSource = this.qrSource;
+        c.qrCustom = this.qrCustom;
+        c.qrColor = this.qrColor;
+        c.barcodeData = this.barcodeData;
+        c.barcodeColor = this.barcodeColor;
+        c.barcodeShowText = this.barcodeShowText;
+
+        if (this.columns != null) {
+            c.columns = new ArrayList<>(this.columns);
+        }
+        c.headerBg = this.headerBg;
+        c.headerColor = this.headerColor;
+        c.tableBorderColor = this.tableBorderColor;
+        c.rowHeight = this.rowHeight;
+        c.showZebra = this.showZebra;
+        c.zebraColor = this.zebraColor;
+        c.rowBg = this.rowBg;
+        c.rowColor = this.rowColor;
+        c.tableBorderWidth = this.tableBorderWidth;
+
+        c.fillType = this.fillType;
+        c.gradientStartColor = this.gradientStartColor;
+        c.gradientEndColor = this.gradientEndColor;
+        c.gradientAngle = this.gradientAngle;
+        c.gradientCenterX = this.gradientCenterX;
+        c.gradientCenterY = this.gradientCenterY;
+        c.gradientRadius = this.gradientRadius;
+
+        c.strokeEnabled = this.strokeEnabled;
+        c.strokeType = this.strokeType;
+        c.lineCap = this.lineCap;
+        c.lineJoin = this.lineJoin;
+        c.dashPattern = this.dashPattern;
+        c.dashOffset = this.dashOffset;
+
+        c.topLeftRadius = this.topLeftRadius;
+        c.topRightRadius = this.topRightRadius;
+        c.bottomRightRadius = this.bottomRightRadius;
+        c.bottomLeftRadius = this.bottomLeftRadius;
+
+        c.radius = this.radius;
+        c.radiusX = this.radiusX;
+        c.radiusY = this.radiusY;
+        c.points = this.points;
+        c.startAngle = this.startAngle;
+        c.arcLength = this.arcLength;
+        c.arcType = this.arcType;
+        c.pathData = this.pathData;
+        c.starPoints = this.starPoints;
+        c.innerRadius = this.innerRadius;
+        c.outerRadius = this.outerRadius;
+        c.arrowShaftWidth = this.arrowShaftWidth;
+        c.arrowHeadLength = this.arrowHeadLength;
+        c.arrowHeadWidth = this.arrowHeadWidth;
+        c.arrowHeadStyle = this.arrowHeadStyle;
+        c.dividerOrientation = this.dividerOrientation;
+        c.dividerStyle = this.dividerStyle;
+
+        c.clipShape = this.clipShape;
+        c.groupId = this.groupId;
+        c.componentType = this.componentType;
+
+        c.scaleX = this.scaleX;
+        c.scaleY = this.scaleY;
+        c.flipHorizontal = this.flipHorizontal;
+        c.flipVertical = this.flipVertical;
+
+        return c;
+    }
 }
