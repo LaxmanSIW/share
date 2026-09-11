@@ -11,6 +11,8 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Path2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
@@ -230,26 +232,110 @@ public class PdfExportService {
                         g2.fill(new Rectangle2D.Double(x, y, w, h));
                     }
                 }
-                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                if (el.hasPerSideStroke()) {
+                    // 4 independent edges honouring per-side enabled/color/width
+                    if (el.isBorderTop()) {
+                        drawStrokeSide(g2, el, 'T', x, y, x + w, y);
+                    }
+                    if (el.isBorderRight()) {
+                        drawStrokeSide(g2, el, 'R', x + w, y, x + w, y + h);
+                    }
+                    if (el.isBorderBottom()) {
+                        drawStrokeSide(g2, el, 'B', x, y + h, x + w, y + h);
+                    }
+                    if (el.isBorderLeft()) {
+                        drawStrokeSide(g2, el, 'L', x, y, x, y + h);
+                    }
+                } else if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
                     g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
                     float bw = (float) Math.max(1, el.getBorderWidth() * PX_PER_MM);
-                    g2.setStroke(new BasicStroke(bw));
+                    applyStrokeStyle(g2, el.getStrokeStyle(), bw);
                     if (el.getBorderRadius() > 0) {
                         double r = el.getBorderRadius() * PX_PER_MM;
                         g2.draw(new RoundRectangle2D.Double(x, y, w, h, r * 2, r * 2));
+                        if ("double".equals(el.getStrokeStyle())) {
+                            drawInnerDoubleStroke(g2, el, bw, x, y, w, h, r);
+                        }
                     } else {
                         g2.draw(new Rectangle2D.Double(x, y, w, h));
+                        if ("double".equals(el.getStrokeStyle())) {
+                            drawInnerDoubleStroke(g2, el, bw, x, y, w, h, 0);
+                        }
                     }
                 }
+            }
+            case ELLIPSE -> {
+                Ellipse2D.Double ell = new Ellipse2D.Double(x, y, w, h);
+                if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
+                    g2.setColor(parseColor(el.getBg(), Color.WHITE));
+                    g2.fill(ell);
+                }
+                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                    float bw = (float) Math.max(1, el.getBorderWidth() * PX_PER_MM);
+                    applyStrokeStyle(g2, el.getStrokeStyle(), bw);
+                    g2.draw(ell);
+                }
+            }
+            case STAR -> {
+                int n = Math.max(3, el.getStarPoints());
+                double cx = x + w / 2.0, cy = y + h / 2.0;
+                double roX = w / 2.0, roY = h / 2.0;
+                double riX = roX * el.getStarInnerRatio(), riY = roY * el.getStarInnerRatio();
+                Path2D.Double star = new Path2D.Double();
+                for (int i = 0; i < n * 2; i++) {
+                    double ang = Math.PI * i / n - Math.PI / 2.0;
+                    boolean outer = i % 2 == 0;
+                    double px = cx + (outer ? roX : riX) * Math.cos(ang);
+                    double py = cy + (outer ? roY : riY) * Math.sin(ang);
+                    if (i == 0) star.moveTo(px, py); else star.lineTo(px, py);
+                }
+                star.closePath();
+                if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
+                    g2.setColor(parseColor(el.getBg(), Color.WHITE));
+                    g2.fill(star);
+                }
+                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                    g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                    float bw = (float) Math.max(1, el.getBorderWidth() * PX_PER_MM);
+                    applyStrokeStyle(g2, el.getStrokeStyle(), bw);
+                    g2.draw(star);
+                }
+            }
+            case ARROW -> {
+                double shaftY = y + h / 2.0;
+                double headLen = Math.min(w * 0.4, h * 0.9);
+                double headW = Math.min(h, Math.max(2, w * 0.5));
+                g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
+                float bw = (float) Math.max(1, Math.max(0.4, el.getBorderWidth()) * PX_PER_MM);
+                applyStrokeStyle(g2, el.getStrokeStyle(), bw);
+                g2.draw(new Line2D.Double(x, shaftY, x + Math.max(0.1, w - headLen), shaftY));
+                Path2D.Double head = new Path2D.Double();
+                head.moveTo(x + w, shaftY);
+                head.lineTo(x + w - headLen, shaftY - headW / 2.0);
+                head.lineTo(x + w - headLen, shaftY + headW / 2.0);
+                head.closePath();
+                g2.fill(head);
             }
             case LINE -> {
                 g2.setColor(parseColor(el.getBorderColor(), Color.BLACK));
                 float bw = (float) Math.max(1, (el.getBorderWidth() > 0 ? el.getBorderWidth() : 0.4) * PX_PER_MM);
-                g2.setStroke(new BasicStroke(bw));
-                if ("v".equalsIgnoreCase(el.getDirection())) {
+                applyStrokeStyle(g2, el.getStrokeStyle(), bw);
+                boolean vertical = "v".equalsIgnoreCase(el.getDirection());
+                if (vertical) {
                     g2.draw(new Line2D.Double(x + w / 2.0, y, x + w / 2.0, y + h));
                 } else {
                     g2.draw(new Line2D.Double(x, y + h / 2.0, x + w, y + h / 2.0));
+                }
+                if ("double".equals(el.getStrokeStyle())) {
+                    float bw2 = Math.max(0.75f, bw * 0.6f);
+                    g2.setStroke(new BasicStroke(bw2));
+                    double off = bw * 1.4;
+                    if (vertical) {
+                        g2.draw(new Line2D.Double(x + w / 2.0 + off, y, x + w / 2.0 + off, y + h));
+                    } else {
+                        g2.draw(new Line2D.Double(x, y + h / 2.0 + off, x + w, y + h / 2.0 + off));
+                    }
                 }
             }
             case TEXT, PAGENO -> {
@@ -804,6 +890,41 @@ public class PdfExportService {
             return ImageIO.read(new ByteArrayInputStream(bytes));
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /** Shared PDF skin: one edge of a per-side stroke, honouring color/width + dash style. */
+    private static void drawStrokeSide(Graphics2D g2, TemplateElement el, char side,
+                                       double x1, double y1, double x2, double y2) {
+        g2.setColor(parseColor(el.sideColorHex(side), Color.BLACK));
+        float bw = (float) Math.max(0.75, el.sideWidthMm(side) * PX_PER_MM);
+        applyStrokeStyle(g2, el.getStrokeStyle(), bw);
+        g2.draw(new Line2D.Double(x1, y1, x2, y2));
+    }
+
+    /** Second, thinner inner rectangle for stroke style “double”. */
+    private static void drawInnerDoubleStroke(Graphics2D g2, TemplateElement el, float bw,
+                                              double x, double y, double w, double h, double cornerR) {
+        double inset = bw * 1.6 + 1;
+        double iw = Math.max(0, w - 2 * inset), ih = Math.max(0, h - 2 * inset);
+        g2.setStroke(new BasicStroke(Math.max(0.75f, bw * 0.6f)));
+        double ir = Math.max(0, cornerR - 2 * inset);
+        if (ir > 0) {
+            g2.draw(new RoundRectangle2D.Double(x + inset, y + inset, iw, ih, ir * 2, ir * 2));
+        } else {
+            g2.draw(new Rectangle2D.Double(x + inset, y + inset, iw, ih));
+        }
+    }
+
+    /** PDF counterpart of the canvas stroke styling: solid / dashed / dotted. */
+    private static void applyStrokeStyle(Graphics2D g2, String style, float widthPx) {
+        String st = style != null ? style : "solid";
+        switch (st) {
+            case "dashed" -> g2.setStroke(new BasicStroke(widthPx, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                    10f, new float[]{widthPx * 4f, widthPx * 2.5f}, 0f));
+            case "dotted" -> g2.setStroke(new BasicStroke(Math.max(0.75f, widthPx), BasicStroke.CAP_ROUND,
+                    BasicStroke.JOIN_ROUND, 10f, new float[]{0.1f, widthPx * 2.2f}, 0f));
+            default -> g2.setStroke(new BasicStroke(widthPx));
         }
     }
 

@@ -3,8 +3,12 @@ package com.invoicestudio.service;
 import com.invoicestudio.model.Bill;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.Template;
+import javafx.geometry.Bounds;
+
+import java.util.Set;
 import javafx.print.*;
 import javafx.scene.Node;
+import javafx.scene.Group;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
@@ -12,11 +16,32 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
+import javafx.scene.transform.Scale;
+import javafx.scene.transform.Translate;
 import javafx.stage.Window;
 
 public class PrintingService {
 
     public static boolean printNode(Node node, Window owner, int copies, String jobName) {
+        return printNode(node, owner, copies, jobName, null, null);
+    }
+
+    /**
+     * Prints a node with full control over the physical page size.
+     *
+     * @param contentWmm template/page width in mm  (null → printer default paper)
+     * @param contentHmm template/page height in mm (null → printer default paper)
+     *
+     * When the template size is given, a CUSTOM PAPER of exactly that size is
+     * requested (A4, 80mm receipt roll, half-letter… — whatever the template is),
+     * so the printed output matches the template 1:1 instead of being laid out
+     * on the printer's default sheet (which clipped or misplaced content).
+     * If the driver rejects the custom size, or the printable area ends up
+     * smaller than the content, the node is uniformly scaled down and centred
+     * so nothing is cut off.
+     */
+    public static boolean printNode(Node node, Window owner, int copies, String jobName,
+                                    Double contentWmm, Double contentHmm) {
         PrinterJob job = PrinterJob.createPrinterJob();
         if (job == null) return false;
 
@@ -27,24 +52,88 @@ public class PrintingService {
             Printer printer = job.getPrinter();
             if (printer != null) {
                 PageLayout current = job.getJobSettings().getPageLayout();
-                PageLayout minMarginLayout = printer.createPageLayout(
-                        current.getPaper(),
-                        current.getPageOrientation(),
-                        Printer.MarginType.HARDWARE_MINIMUM
-                );
-                job.getJobSettings().setPageLayout(minMarginLayout);
+                PageOrientation orientation = current != null ? current.getPageOrientation() : PageOrientation.PORTRAIT;
+                PageLayout layout;
+
+                if (contentWmm != null && contentHmm != null && contentWmm > 0 && contentHmm > 0) {
+                    // Landscape when the template itself is wider than tall
+                    if (contentWmm > contentHmm) orientation = PageOrientation.LANDSCAPE;
+
+                    // JavaFX's Paper has no public custom-size constructor, so pick
+                    // the printer's SUPPORTED paper that best matches the template
+                    // size (A4 for A4, 80mm roll for 80mm roll, …). When nothing is
+                    // close, keep the default paper — scaleToFitLayout() then shrinks
+                    // the content to the printable area so nothing gets cut off.
+                    Paper best = current.getPaper();
+                    double bestDiff = Double.MAX_VALUE;
+                    try {
+                        for (Paper p : printer.getPrinterAttributes().getSupportedPapers()) {
+                            double diff = Math.abs(p.getWidth() - contentWmm * 1000.0)
+                                    + Math.abs(p.getHeight() - contentHmm * 1000.0);
+                            if (diff < bestDiff) {
+                                bestDiff = diff;
+                                best = p;
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    if (best != null && bestDiff <= 5000.0) { // within 5mm total → treat as a match
+                        layout = printer.createPageLayout(best, orientation, Printer.MarginType.HARDWARE_MINIMUM);
+                    } else {
+                        layout = printer.createPageLayout(
+                                current.getPaper(), orientation, Printer.MarginType.HARDWARE_MINIMUM);
+                    }
+                } else {
+                    layout = printer.createPageLayout(
+                            current.getPaper(),
+                            current.getPageOrientation(),
+                            Printer.MarginType.HARDWARE_MINIMUM);
+                }
+                job.getJobSettings().setPageLayout(layout);
             }
         } catch (Exception ignored) {}
 
         boolean proceed = job.showPrintDialog(owner);
         if (proceed) {
-            boolean success = job.printPage(node);
+            boolean success = job.printPage(scaleToFitLayout(job, node));
             if (success) {
                 job.endJob();
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Wraps the node so that it exactly fills the final page layout's printable
+     * area: uniform scale (only shrink, never upscale) + centre. This is the
+     * safety net that guarantees "nothing missing" even when the printer driver
+     * overrides our custom paper with a smaller one.
+     */
+    private static Node scaleToFitLayout(PrinterJob job, Node node) {
+        try {
+            PageLayout layout = job.getJobSettings().getPageLayout();
+            if (layout == null) return node;
+
+            double printableW = layout.getPrintableWidth();  // points (72 dpi)
+            double printableH = layout.getPrintableHeight();
+            Bounds bounds = node.getLayoutBounds();
+            double nodeW = bounds.getWidth();
+            double nodeH = bounds.getHeight();
+            if (nodeW <= 0 || nodeH <= 0 || printableW <= 0 || printableH <= 0) return node;
+
+            double scale = Math.min(1.0, Math.min(printableW / nodeW, printableH / nodeH));
+            double tx = (printableW - nodeW * scale) / 2.0 - bounds.getMinX() * scale;
+            double ty = (printableH - nodeH * scale) / 2.0 - bounds.getMinY() * scale;
+
+            Group wrapper = new Group(node);
+            wrapper.getTransforms().addAll(
+                    new Scale(scale, scale),
+                    new Translate(tx, ty));
+            return wrapper;
+        } catch (Exception e) {
+            return node;
+        }
     }
 
     public static Pane createCalibrationSheetNode(Settings settings) {

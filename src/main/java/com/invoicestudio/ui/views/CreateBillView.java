@@ -799,7 +799,8 @@ public class CreateBillView extends BorderPane {
             double prevZoom = previewPane.getZoom();
             previewPane.setZoom(1.0);
             try {
-                PrintingService.printNode(previewPane, app.getPrimaryStage(), 1, bill.getBillNo());
+                PrintingService.printNode(previewPane.getPrintableNode(), app.getPrimaryStage(), 1, bill.getBillNo(),
+                        previewPane.getPageWidthMm(), previewPane.getPageHeightMm());
             } finally {
                 previewPane.setZoom(prevZoom);
             }

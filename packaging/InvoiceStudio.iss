@@ -3,13 +3,13 @@
 ; Usage (on a Windows machine):
 ;   1) .\packaging\build-windows-installer.ps1 -AppImage     (builds app-image\InvoiceStudio\)
 ;   2) ISCC.exe packaging\InvoiceStudio.iss                  (Inno Setup 6 compiler)
-;      -> packaging\dist\InvoiceStudio-2.0.1-setup.exe
+;      -> packaging\dist\InvoiceStudio-3.0.0-setup.exe
 ;
 ; The produced setup.exe behaves like any mainstream installer: dir chooser,
 ; desktop-icon task, start-menu group, uninstaller, launch-after-install.
 
 #define AppName "InvoiceStudio"
-#define AppVersion "2.0.1"
+#define AppVersion "3.0.0"
 #define AppExe "InvoiceStudio.exe"
 
 [Setup]

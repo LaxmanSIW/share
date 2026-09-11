@@ -1,6 +1,8 @@
 import com.invoicestudio.model.*;
 import com.invoicestudio.service.BillingService;
+import com.invoicestudio.ui.ColorPickerButton;
 import com.invoicestudio.ui.StudioApp;
+import com.invoicestudio.ui.views.TemplateDesigner;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.embed.swing.SwingFXUtils;
@@ -12,17 +14,23 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ColorPicker;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.DialogPane;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.image.WritableImage;
 import javafx.scene.control.MenuButton;
+import javafx.event.Event;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
 import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
@@ -171,6 +179,21 @@ public class NavSmokeRunner extends StudioApp {
         steps.add(new Step("14-open-template-designer", () -> safeFire(firstContentButton("Designer"), "Designer"),
                 r -> contentNodeCount() > 50));
 
+        // -- v3.0.0 layers panel: switch to the Layers tab FIRST so its list cells
+        //      materialize during the render gap, then drive eye/lock in-list --
+        steps.add(new Step("14a-designer-layers-tab", () -> selectSideTab("Layers"),
+                r -> {
+                    try { return layerCell(0) != null; } catch (Throwable t) { return false; }
+                }));
+        steps.add(new Step("14a2-layers-eye-hide", () -> fireLayerIcon(0, 0),
+                r -> firstLayerElement().map(TemplateElement::isHidden).orElse(false)));
+        steps.add(new Step("14a3-layers-eye-show", () -> fireLayerIcon(0, 0),
+                r -> firstLayerElement().map(e -> !e.isHidden()).orElse(false)));
+        steps.add(new Step("14a4-layers-lock", () -> fireLayerIcon(0, 1),
+                r -> firstLayerElement().map(TemplateElement::isLocked).orElse(false)));
+        steps.add(new Step("14a5-layers-unlock", () -> fireLayerIcon(0, 1),
+                r -> firstLayerElement().map(e -> !e.isLocked()).orElse(false)));
+
         // -- Template Designer: TABLE column reorder via ▲▼ property-panel buttons --
         steps.add(new Step("14b-designer-select-table-layer", () -> selectTableLayer(),
                 r -> columnLabelOrder() != null && columnLabelOrder().size() >= 3));
@@ -196,6 +219,37 @@ public class NavSmokeRunner extends StudioApp {
                 r -> rowHeightChanged(rowHBefore, 12.0)));
         steps.add(new Step("14l-table-rowheight-restore", () -> setRowHeightByLabel("Row Height (mm):", 6.0),
                 r -> true));
+
+        // -- v3.0.0: shapes, per-side stroke, layers panel, magnet, rulers, dialogs --
+        steps.add(new Step("31-shape-ellipse-add", () -> safeFire(firstContentButton("+ Ellipse"), "+ Ellipse"),
+                r -> selectedTableElement().map(e -> e.getType() == ElementType.ELLIPSE).orElse(false)));
+        steps.add(new Step("32-shape-stroke-controls", () -> {},
+                r -> findComboBoxWithItem("dashed") != null && findLabel("Stroke Width (mm):") != null));
+        steps.add(new Step("33-shape-star-add", () -> safeFire(firstContentButton("+ Star"), "+ Star"),
+                r -> selectedTableElement().map(e -> e.getType() == ElementType.STAR).orElse(false)
+                        && findLabel("Star Points:") != null));
+        steps.add(new Step("34-shape-arrow-add", () -> safeFire(firstContentButton("+ Arrow"), "+ Arrow"),
+                r -> selectedTableElement().map(e -> e.getType() == ElementType.ARROW).orElse(false)));
+        steps.add(new Step("35-rect-per-side-section", () -> safeFire(firstContentButton("+ Rect"), "+ Rect"),
+                r -> findCheckBox("Top") != null && findCheckBox("Bottom") != null
+                        && findCheckBox("Left") != null && findCheckBox("Right") != null));
+        steps.add(new Step("36-rect-side-top-off", () -> fireCheckBox("Top"),
+                r -> selectedTableElement().map(e -> !e.isBorderTop()).orElse(false)));
+        steps.add(new Step("37-rect-side-top-on", () -> fireCheckBox("Top"),
+                r -> selectedTableElement().map(TemplateElement::isBorderTop).orElse(false)));
+        steps.add(new Step("42-object-rename", () -> renameViaPropField("Smoke Name"),
+                r -> selectedTableElement().map(e -> "Smoke Name".equals(e.getName())).orElse(false)));
+        steps.add(new Step("43-backspace-in-field-safe", () -> backspaceInSelectedTextElement(),
+                r -> textElementStillPresent()));
+        steps.add(new Step("44-color-picker-dialog-open", () -> fireAsync(firstColorPickerButton(), "color-picker"),
+                r -> dialogWithHeader("Choose Color")));
+        steps.add(new Step("45-color-picker-close", () -> closeDialogAsync(), r -> !isDialogOpen()));
+        steps.add(new Step("46-shortcuts-help-dialog", () -> fireAsync(firstContentButton("? Help"), "? Help"),
+                r -> dialogWithHeader("Template Designer — Shortcuts & Mouse Controls")));
+        steps.add(new Step("47-shortcuts-help-close", () -> closeDialogAsync(), r -> !isDialogOpen()));
+        steps.add(new Step("48-rulers-and-handles", () -> {},
+                r -> rulerTicksPresent() && selectionHandleCount() == 6));
+        steps.add(new Step("49-magnet-snap-math", () -> {}, r -> magnetSnapWorks()));
 
         steps.add(new Step("15-leave-designer-templates", () -> clickSidebar("Templates"),
                 r -> firstContentButton("Designer") != null));
@@ -596,13 +650,201 @@ public class NavSmokeRunner extends StudioApp {
         return Optional.empty();
     }
 
+    // ------------------------------------------------------------------
+    // v3.0.0 helpers: shapes, layers panel, magnet, rulers, dialogs
+    // ------------------------------------------------------------------
+
+    @SuppressWarnings("unchecked")
+    ListView<TemplateElement> layersListView() {
+        return (ListView<TemplateElement>) stage.getScene().getRoot().lookup(".layers-list");
+    }
+
+    Optional<TemplateElement> firstLayerElement() {
+        ListView<TemplateElement> lv = layersListView();
+        return lv != null && !lv.getItems().isEmpty() ? Optional.of(lv.getItems().get(0)) : Optional.empty();
+    }
+
+    /** Selects the first layer of the given type through the real selection-model path. */
+    void selectLayerByType(ElementType type) {
+        for (Node n : stage.getScene().getRoot().lookupAll(".tab-pane")) {
+            if (n instanceof TabPane tp) {
+                for (Tab t : tp.getTabs()) {
+                    if ("Properties".equals(t.getText())) tp.getSelectionModel().select(t);
+                }
+            }
+        }
+        ListView<TemplateElement> lv = layersListView();
+        for (int i = 0; i < lv.getItems().size(); i++) {
+            if (lv.getItems().get(i).getType() == type) {
+                lv.getSelectionModel().select(i);
+                return;
+            }
+        }
+        throw new IllegalStateException("no " + type + " element in template");
+    }
+
+    @SuppressWarnings("unchecked")
+    ListCell<TemplateElement> layerCell(int index) {
+        List<ListCell<TemplateElement>> cells = new ArrayList<>();
+        for (Node n : stage.getScene().getRoot().lookupAll(".list-cell")) {
+            if (n instanceof ListCell<?> lc && lc.getListView() == layersListView()
+                    && lc.getItem() != null && lc.getIndex() >= 0) {
+                cells.add((ListCell<TemplateElement>) lc);
+            }
+        }
+        // VirtualFlow keeps spare blank cells — drop them, then match by real index
+        return cells.stream()
+                .filter(c -> c.getIndex() == index)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "layer cell " + index + " not rendered (rendered: "
+                                + cells.stream().map(ListCell::getIndex).sorted().toList() + ")"));
+    }
+
+    static void collectLayerIconButtons(Node n, List<Button> out) {
+        if (n == null) return;
+        if (n instanceof Button b && b.getStyleClass().contains("layer-icon-btn")) { out.add(b); return; }
+        if (n instanceof Parent p) {
+            for (Node ch : p.getChildrenUnmodifiable()) collectLayerIconButtons(ch, out);
+        }
+    }
+
+    /** Fires the eye (buttonIndex 0) or padlock (1) of the layer cell {@code itemIndex}. */
+    void fireLayerIcon(int itemIndex, int buttonIndex) {
+        selectSideTab("Layers");
+        List<Button> iconBtns = new ArrayList<>();
+        collectLayerIconButtons(layerCell(itemIndex).getGraphic(), iconBtns);
+        if (iconBtns.size() <= buttonIndex) {
+            throw new IllegalStateException("layer icon buttons missing (found " + iconBtns.size() + ")");
+        }
+        iconBtns.get(buttonIndex).fire();
+    }
+
+    /** Forces the designer's Properties/Layers side tab (TabPane detaches hidden content). */
+    void selectSideTab(String title) {
+        for (Node n : stage.getScene().getRoot().lookupAll(".tab-pane")) {
+            if (n instanceof TabPane tp) {
+                for (Tab t : tp.getTabs()) {
+                    if (title.equals(t.getText())) tp.getSelectionModel().select(t);
+                }
+            }
+        }
+        // newly attached tab content only materializes its skin/cells after a
+        // layout pulse — force one synchronously so lookups see the cells
+        Node root = stage.getScene().getRoot();
+        root.applyCss();
+        if (root instanceof Parent p) p.layout();
+    }
+
+    /** Types {@code name} into the Properties-panel object-name field. */
+    void renameViaPropField(String name) {
+        selectSideTab("Properties");
+        TextField f = (TextField) findNode(stage.getScene().getRoot(), n ->
+                n instanceof TextField tf && "Object name".equals(tf.getPromptText()));
+        if (f == null) throw new IllegalStateException("object-name field not found");
+        f.setText(name);
+    }
+
+    TemplateElement backspaceTarget;
+    int elementsBeforeBackspace;
+
+    /**
+     * Selects a TEXT element, focuses its content TextArea and fires real
+     * BACK_SPACE key events at it — the element itself must survive.
+     */
+    void backspaceInSelectedTextElement() {
+        selectLayerByType(ElementType.TEXT);
+        backspaceTarget = selectedTableElement().orElseThrow();
+        elementsBeforeBackspace = layersListView().getItems().size();
+        TextArea ta = (TextArea) findNode(stage.getScene().getRoot(), n ->
+                n instanceof TextArea t && t.getStyleClass().contains("designer-textarea"));
+        if (ta == null) throw new IllegalStateException("designer text area not found");
+        ta.requestFocus();
+        KeyEvent backspace = new KeyEvent(KeyEvent.KEY_PRESSED, "\b", "\b",
+                KeyCode.BACK_SPACE, false, false, false, false);
+        Event.fireEvent(ta, backspace);
+        Event.fireEvent(ta, backspace);
+        Event.fireEvent(ta, backspace);
+    }
+
+    boolean textElementStillPresent() {
+        ListView<TemplateElement> lv = layersListView();
+        return lv.getItems().size() == elementsBeforeBackspace && lv.getItems().contains(backspaceTarget);
+    }
+
+    Button firstColorPickerButton() {
+        Button b = (Button) findNode(stage.getScene().getRoot(), n ->
+                n instanceof Button btn && btn.getStyleClass().contains("color-btn"));
+        if (b == null) throw new IllegalStateException("no ColorPickerButton found");
+        return b;
+    }
+
+    boolean dialogWithHeader(String title) {
+        DialogPane dp = findOpenDialogPane();
+        return dp != null && title.equals(dp.getHeaderText());
+    }
+
+    Label findLabel(String text) {
+        return (Label) findNode(stage.getScene().getRoot(), n -> n instanceof Label l && text.equals(l.getText()));
+    }
+
+    boolean rulerTicksPresent() {
+        Node n = stage.getScene().getRoot().lookup(".ruler-pane");
+        return n instanceof Pane p && p.getChildren().size() > 40;
+    }
+
+    int selectionHandleCount() {
+        return stage.getScene().getRoot().lookupAll(".sel-handle").size();
+    }
+
+    TemplateDesigner designerInstance() {
+        return (TemplateDesigner) findNode(stage.getScene().getRoot(), n -> n instanceof TemplateDesigner);
+    }
+
+    /**
+     * Deterministic magnet check: hide every element except two synthetic ones,
+     * place B at x=150 and ask the snap engine where A (x=149.2) lands. The
+     * result must align one of A's edges EXACTLY on a candidate line and move
+     * it by at most the 2mm tolerance.
+     */
+    boolean magnetSnapWorks() {
+        TemplateDesigner d = designerInstance();
+        if (d == null) return false;
+        ListView<TemplateElement> lv = layersListView();
+        if (lv == null || lv.getItems().size() < 2) return false;
+        TemplateElement e1 = lv.getItems().get(lv.getItems().size() - 1);
+        TemplateElement e2 = lv.getItems().get(lv.getItems().size() - 2);
+
+        List<TemplateElement> hidden = new ArrayList<>();
+        try {
+            for (TemplateElement e : lv.getItems()) {
+                if (e != e1 && e != e2) { e.setHidden(true); hidden.add(e); }
+            }
+            e1.setX(149.2); e1.setW(50); e1.setH(10);
+            e2.setX(150); e2.setW(24); e2.setH(24); e2.setY(Math.max(0, e2.getY()));
+
+            double[] r = d.snapMove(e1, 149.2, e1.getY());
+            double g = r[2];
+            if (g < 0) return false;
+            boolean aligned = Math.abs(r[0] - g) < 1e-9
+                    || Math.abs(r[0] + e1.getW() / 2.0 - g) < 1e-9
+                    || Math.abs(r[0] + e1.getW() - g) < 1e-9;
+            boolean bounded = Math.abs(r[0] - 149.2) <= 2.0000001;
+            return aligned && bounded;
+        } finally {
+            for (TemplateElement e : hidden) e.setHidden(false);
+        }
+    }
+
+
     boolean tablePropControlsPresent() {
         if (findComboBoxWithItem("Rows Only") == null) return false;
         for (String t : new String[]{"T", "B", "L", "R"}) {
             if (findCheckBox(t) == null) return false;
         }
         // headerBg + headerText + border + rowBg + rowText + zebra pickers
-        return countNodesOfType(stage.getScene().getRoot(), ColorPicker.class) >= 6;
+        // (v3: ColorPicker replaced everywhere by the themed ColorPickerButton)
+        return countNodesOfType(stage.getScene().getRoot(), ColorPickerButton.class) >= 6;
     }
 
     @SuppressWarnings("unchecked")

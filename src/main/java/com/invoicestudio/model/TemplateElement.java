@@ -8,6 +8,7 @@ import java.util.List;
 public class TemplateElement {
     private String id;
     private ElementType type = ElementType.TEXT;
+    private String name; // optional object name (Layers panel; auto-generated when null)
     private double x; // mm
     private double y; // mm
     private double w = 40; // mm
@@ -37,9 +38,24 @@ public class TemplateElement {
     private String bg = "transparent";
     private double borderWidth; // mm
     private String borderColor = "#1a1a1a";
+    private String strokeStyle = "solid"; // solid, dashed, dotted, double (shapes & lines)
     private double borderRadius; // mm
     private double padding; // mm
     private double opacity = 1.0;
+
+    /* ---- per-side stroke overrides (RECT; null/blank = inherit global) ---- */
+    private Double borderTopWidth;    // mm; null → borderWidth
+    private Double borderBottomWidth;
+    private Double borderLeftWidth;
+    private Double borderRightWidth;
+    private String borderTopColor;    // hex; null/blank → borderColor
+    private String borderBottomColor;
+    private String borderLeftColor;
+    private String borderRightColor;
+
+    /* ---- star shape ---- */
+    private int starPoints = 5;
+    private double starInnerRatio = 0.45;
 
     /* ---- image ---- */
     private String src = "";
@@ -80,6 +96,13 @@ public class TemplateElement {
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
+
+    /** Layers-panel display name; falls back to the element type. */
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String displayName() {
+        return name != null && !name.isBlank() ? name : getType().name();
+    }
 
     public ElementType getType() { return type != null ? type : ElementType.TEXT; }
     public void setType(ElementType type) { this.type = type; }
@@ -161,6 +184,69 @@ public class TemplateElement {
 
     public double getBorderRadius() { return borderRadius; }
     public void setBorderRadius(double borderRadius) { this.borderRadius = borderRadius; }
+
+    public String getStrokeStyle() { return strokeStyle != null && !strokeStyle.isBlank() ? strokeStyle : "solid"; }
+    public void setStrokeStyle(String strokeStyle) { this.strokeStyle = strokeStyle; }
+
+    /* Per-side stroke: null/blank side values inherit the global border color/width. */
+    public Double getBorderTopWidth() { return borderTopWidth; }
+    public void setBorderTopWidth(Double v) { this.borderTopWidth = v; }
+    public Double getBorderBottomWidth() { return borderBottomWidth; }
+    public void setBorderBottomWidth(Double v) { this.borderBottomWidth = v; }
+    public Double getBorderLeftWidth() { return borderLeftWidth; }
+    public void setBorderLeftWidth(Double v) { this.borderLeftWidth = v; }
+    public Double getBorderRightWidth() { return borderRightWidth; }
+    public void setBorderRightWidth(Double v) { this.borderRightWidth = v; }
+
+    public String getBorderTopColor() { return borderTopColor; }
+    public void setBorderTopColor(String v) { this.borderTopColor = v; }
+    public String getBorderBottomColor() { return borderBottomColor; }
+    public void setBorderBottomColor(String v) { this.borderBottomColor = v; }
+    public String getBorderLeftColor() { return borderLeftColor; }
+    public void setBorderLeftColor(String v) { this.borderLeftColor = v; }
+    public String getBorderRightColor() { return borderRightColor; }
+    public void setBorderRightColor(String v) { this.borderRightColor = v; }
+
+    /** Effective side width (mm) — side override or global border width. */
+    public double sideWidthMm(char side) {
+        Double v = switch (side) {
+            case 'T' -> borderTopWidth;
+            case 'B' -> borderBottomWidth;
+            case 'L' -> borderLeftWidth;
+            case 'R' -> borderRightWidth;
+            default -> null;
+        };
+        return v != null ? v : borderWidth;
+    }
+
+    /** Effective side color (hex) — side override or global border color. */
+    public String sideColorHex(char side) {
+        String v = switch (side) {
+            case 'T' -> borderTopColor;
+            case 'B' -> borderBottomColor;
+            case 'L' -> borderLeftColor;
+            case 'R' -> borderRightColor;
+            default -> null;
+        };
+        return v != null && !v.isBlank() ? v : (borderColor != null ? borderColor : "#1a1a1a");
+    }
+
+    /** True when any per-side customization is in effect (forces 4-side rendering). */
+    public boolean hasPerSideStroke() {
+        return !(isBorderTop() && isBorderBottom() && isBorderLeft() && isBorderRight())
+                || borderTopWidth != null || borderBottomWidth != null
+                || borderLeftWidth != null || borderRightWidth != null
+                || (borderTopColor != null && !borderTopColor.isBlank())
+                || (borderBottomColor != null && !borderBottomColor.isBlank())
+                || (borderLeftColor != null && !borderLeftColor.isBlank())
+                || (borderRightColor != null && !borderRightColor.isBlank());
+    }
+
+    public int getStarPoints() { return starPoints > 2 ? starPoints : 5; }
+    public void setStarPoints(int starPoints) { this.starPoints = starPoints; }
+
+    public double getStarInnerRatio() { return starInnerRatio > 0.05 && starInnerRatio < 0.95 ? starInnerRatio : 0.45; }
+    public void setStarInnerRatio(double starInnerRatio) { this.starInnerRatio = starInnerRatio; }
 
     public double getPadding() { return padding; }
     public void setPadding(double padding) { this.padding = padding; }

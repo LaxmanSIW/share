@@ -9,6 +9,9 @@ public enum ElementType {
     TABLE("table"),
     LINE("line"),
     RECT("rect"),
+    ELLIPSE("ellipse"),
+    STAR("star"),
+    ARROW("arrow"),
     PAGENO("pageno"),
     QRCODE("qrcode"),
     BARCODE("barcode");

@@ -2155,3 +2155,84 @@ Label {
 .accent-red     { -fx-text-fill: -color-error; }
 .accent-sky     { -fx-text-fill: -color-info; }
 .accent-amber   { -fx-text-fill: -color-warning; }
+
+/* ================= v3.0.0 — Template Designer additions ================= */
+/* NOTE: appended AFTER the .accent-* block on purpose — JavaFX cascade gives
+   the last equal-specificity rule priority (same lesson as Task 7). */
+
+/* Layers panel: inline eye / lock icon buttons + name rows */
+.layers-list .list-cell { -fx-padding: 4 8; }
+.layer-icon-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 2 4;
+    -fx-min-width: 30;
+    -fx-cursor: hand;
+    -fx-font-size: 12px;
+}
+.layer-icon-btn:hover {
+    -fx-background-color: derive(-color-accent, -82%);
+    -fx-border-color: transparent;
+    -fx-background-radius: 6;
+}
+.layer-name { -fx-text-fill: -color-text; -fx-font-size: 12px; -fx-font-weight: bold; }
+.layer-type { -fx-text-fill: -color-text-secondary; -fx-font-size: 9.5px; }
+.layer-rename-field { -fx-font-size: 12px; }
+
+/* Selection handles (6 anchors incl. new left/top) */
+.sel-handle { /* visual base comes from createHandleShape inline styling */ }
+
+/* Header help dialog */
+.shortcut-key {
+    -fx-text-fill: -color-accent;
+    -fx-font-family: 'Consolas', 'Courier New', monospace;
+    -fx-font-size: 11.5px;
+    -fx-font-weight: bold;
+}
+.shortcut-desc { -fx-text-fill: -color-text-secondary; -fx-font-size: 11.5px; }
+
+/* ColorPickerButton (themed in-app color picker) */
+.color-btn {
+    -fx-background-color: -color-bg-elev;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 3 8 3 3;
+    -fx-cursor: hand;
+}
+.color-btn:hover { -fx-border-color: -color-accent; }
+.color-btn-swatch {
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-border-color: #39445A;
+    -fx-border-width: 1;
+}
+.color-btn-hex { -fx-text-fill: -color-text-secondary; -fx-font-size: 11px; }
+
+/* Swatch grid + preview inside the picker dialog */
+.color-swatch {
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+    -fx-border-color: #39445A;
+    -fx-border-width: 1;
+    -fx-padding: 0;
+    -fx-min-width: 24;
+    -fx-min-height: 24;
+    -fx-cursor: hand;
+}
+.color-swatch:hover { -fx-border-color: -color-accent; -fx-border-width: 2; }
+.color-swatch-chip {
+    -fx-background-color: -color-bg-elev;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 5 10;
+    -fx-cursor: hand;
+}
+.color-swatch-chip:hover { -fx-border-color: -color-accent; }
+.color-preview-swatch {
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: #39445A;
+    -fx-border-width: 1;
+}

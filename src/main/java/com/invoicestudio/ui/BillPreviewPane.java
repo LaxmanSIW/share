@@ -13,7 +13,9 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Ellipse;
 import javafx.scene.shape.Line;
+import javafx.scene.shape.Polygon;
 import javafx.scene.shape.Rectangle;
 
 import java.io.ByteArrayInputStream;
@@ -55,6 +57,31 @@ public class BillPreviewPane extends StackPane {
 
     public double getZoom() {
         return zoom;
+    }
+
+    /**
+     * The bare page node to hand to the printer — excludes the surrounding
+     * StackPane padding/zoom wrapper, so print output is exactly the page.
+     */
+    public Node getPrintableNode() {
+        return pagePane;
+    }
+
+    /** Effective page width in mm of the currently rendered template. */
+    public double getPageWidthMm() {
+        return currentTemplate != null && currentTemplate.getPage() != null
+                ? currentTemplate.getPage().getWidth() : 210.0;
+    }
+
+    /** Effective page height in mm (roll/auto-height templates included). */
+    public double getPageHeightMm() {
+        if (currentTemplate == null || currentTemplate.getPage() == null) return 297.0;
+        if (currentTemplate.getPage().isAutoHeight()) {
+            int itemCount = currentBill != null && currentBill.getItems() != null
+                    ? Math.max(1, currentBill.getItems().size()) : 1;
+            return calculateEffectiveHeight(currentTemplate, itemCount);
+        }
+        return currentTemplate.getPage().getHeight();
     }
 
     public void render(Template template, Bill bill, Settings settings) {
@@ -210,15 +237,97 @@ public class BillPreviewPane extends StackPane {
                 } else {
                     r.setFill(Color.TRANSPARENT);
                 }
-                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
-                    r.setStroke(Color.web(el.getBorderColor()));
-                    r.setStrokeWidth(el.getBorderWidth() * MM_PX);
-                }
                 if (el.getBorderRadius() > 0) {
                     r.setArcWidth(el.getBorderRadius() * MM_PX * 2);
                     r.setArcHeight(el.getBorderRadius() * MM_PX * 2);
                 }
+                if (el.hasPerSideStroke()) {
+                    r.setStroke(Color.TRANSPARENT);
+                    r.setStrokeWidth(0);
+                    Pane p = new Pane(r);
+                    p.setPrefSize(w, h);
+                    p.getChildren().addAll(perSideStrokeLines(el, w, h));
+                    return p;
+                }
+                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                    r.setStroke(Color.web(el.getBorderColor()));
+                    r.setStrokeWidth(el.getBorderWidth() * MM_PX);
+                    applyStrokeStyle(r, el.getStrokeStyle());
+                    if ("double".equals(el.getStrokeStyle())) {
+                        double sw = Math.max(1, el.getBorderWidth() * MM_PX);
+                        Rectangle inner = new Rectangle(
+                                Math.max(0, w - 2 * (sw * 1.6 + 1)), Math.max(0, h - 2 * (sw * 1.6 + 1)));
+                        inner.setLayoutX(sw * 1.6 + 1);
+                        inner.setLayoutY(sw * 1.6 + 1);
+                        inner.setFill(Color.TRANSPARENT);
+                        inner.setStroke(Color.web(el.getBorderColor()));
+                        inner.setStrokeWidth(sw * 0.6);
+                        if (el.getBorderRadius() > 0) {
+                            inner.setArcWidth(Math.max(0, r.getArcWidth() - 2 * (sw * 1.6 + 1)));
+                            inner.setArcHeight(Math.max(0, r.getArcHeight() - 2 * (sw * 1.6 + 1)));
+                        }
+                        Pane p = new Pane(r, inner);
+                        p.setPrefSize(w, h);
+                        return p;
+                    }
+                }
                 return r;
+            }
+            case ELLIPSE -> {
+                Ellipse e = new Ellipse(w / 2.0, h / 2.0, Math.max(1, w / 2.0 - 1), Math.max(1, h / 2.0 - 1));
+                if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
+                    e.setFill(Color.web(el.getBg()));
+                } else {
+                    e.setFill(Color.TRANSPARENT);
+                }
+                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                    e.setStroke(Color.web(el.getBorderColor()));
+                    e.setStrokeWidth(el.getBorderWidth() * MM_PX);
+                    applyStrokeStyle(e, el.getStrokeStyle());
+                }
+                return e;
+            }
+            case STAR -> {
+                int n = Math.max(3, el.getStarPoints());
+                double cx = w / 2.0, cy = h / 2.0;
+                double roX = Math.max(1, w / 2.0 - 1), roY = Math.max(1, h / 2.0 - 1);
+                double riX = roX * el.getStarInnerRatio(), riY = roY * el.getStarInnerRatio();
+                List<Double> pts = new ArrayList<>();
+                for (int i = 0; i < n * 2; i++) {
+                    double ang = Math.PI * i / n - Math.PI / 2.0;
+                    boolean outer = i % 2 == 0;
+                    pts.add(cx + (outer ? roX : riX) * Math.cos(ang));
+                    pts.add(cy + (outer ? roY : riY) * Math.sin(ang));
+                }
+                Polygon poly = new Polygon();
+                poly.getPoints().addAll(pts);
+                if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
+                    poly.setFill(Color.web(el.getBg()));
+                } else {
+                    poly.setFill(Color.TRANSPARENT);
+                }
+                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                    poly.setStroke(Color.web(el.getBorderColor()));
+                    poly.setStrokeWidth(el.getBorderWidth() * MM_PX);
+                    applyStrokeStyle(poly, el.getStrokeStyle());
+                }
+                return poly;
+            }
+            case ARROW -> {
+                double shaftY = h / 2.0;
+                double headLen = Math.min(w * 0.4, h * 0.9);
+                double headW = Math.min(h, Math.max(2, w * 0.5));
+                String hex = el.getBorderColor() != null ? el.getBorderColor() : "#1a1a1a";
+                Line shaft = styledLine(0, shaftY, Math.max(0.1, w - headLen), shaftY,
+                        hex, el.getBorderWidth() * MM_PX, el.getStrokeStyle());
+                Polygon head = new Polygon(
+                        w, shaftY,
+                        w - headLen, shaftY - headW / 2.0,
+                        w - headLen, shaftY + headW / 2.0);
+                head.setFill(Color.web(hex));
+                Pane p = new Pane(shaft, head);
+                p.setPrefSize(w, h);
+                return p;
             }
             case LINE -> {
                 Line l = new Line();
@@ -231,6 +340,23 @@ public class BillPreviewPane extends StackPane {
                 }
                 l.setStroke(Color.web(el.getBorderColor() != null ? el.getBorderColor() : "#1a1a1a"));
                 l.setStrokeWidth(Math.max(1, (el.getBorderWidth() > 0 ? el.getBorderWidth() : 0.4) * MM_PX));
+                applyStrokeStyle(l, el.getStrokeStyle());
+                if ("double".equals(el.getStrokeStyle())) {
+                    double sw = Math.max(1, (el.getBorderWidth() > 0 ? el.getBorderWidth() : 0.4) * MM_PX);
+                    Line l2 = new Line();
+                    if ("v".equalsIgnoreCase(el.getDirection())) {
+                        l2.setStartX(w / 2.0 + sw * 1.4); l2.setStartY(0);
+                        l2.setEndX(w / 2.0 + sw * 1.4); l2.setEndY(h);
+                    } else {
+                        l2.setStartX(0); l2.setStartY(h / 2.0 + sw * 1.4);
+                        l2.setEndX(w); l2.setEndY(h / 2.0 + sw * 1.4);
+                    }
+                    l2.setStroke(l.getStroke());
+                    l2.setStrokeWidth(Math.max(0.75, sw * 0.6));
+                    Pane p = new Pane(l, l2);
+                    p.setPrefSize(w, h);
+                    return p;
+                }
                 return l;
             }
             case TEXT, PAGENO -> {
@@ -499,6 +625,44 @@ public class BillPreviewPane extends StackPane {
             return new Image(new ByteArrayInputStream(bytes));
         } catch (Exception e) {
             return null;
+        }
+    }
+    /** Shared with TemplateDesigner canvas skin: per-side T/R/B/L edge lines. */
+    private List<Line> perSideStrokeLines(TemplateElement el, double w, double h) {
+        List<Line> out = new ArrayList<>();
+        if (el.isBorderTop()) {
+            out.add(styledLine(0, 0, w, 0, el.sideColorHex('T'), el.sideWidthMm('T') * MM_PX, el.getStrokeStyle()));
+        }
+        if (el.isBorderRight()) {
+            out.add(styledLine(w, 0, w, h, el.sideColorHex('R'), el.sideWidthMm('R') * MM_PX, el.getStrokeStyle()));
+        }
+        if (el.isBorderBottom()) {
+            out.add(styledLine(0, h, w, h, el.sideColorHex('B'), el.sideWidthMm('B') * MM_PX, el.getStrokeStyle()));
+        }
+        if (el.isBorderLeft()) {
+            out.add(styledLine(0, 0, 0, h, el.sideColorHex('L'), el.sideWidthMm('L') * MM_PX, el.getStrokeStyle()));
+        }
+        return out;
+    }
+
+    private Line styledLine(double x1, double y1, double x2, double y2, String hex, double widthPx, String style) {
+        Line l = new Line(x1, y1, x2, y2);
+        l.setStroke(Color.web(hex != null && !hex.isBlank() ? hex : "#1a1a1a"));
+        l.setStrokeWidth(Math.max(0.75, widthPx));
+        applyStrokeStyle(l, style);
+        return l;
+    }
+
+    private void applyStrokeStyle(javafx.scene.shape.Shape s, String style) {
+        String st = style != null ? style : "solid";
+        switch (st) {
+            case "dashed" -> { s.getStrokeDashArray().clear(); s.getStrokeDashArray().addAll(6.0, 3.0); }
+            case "dotted" -> {
+                s.getStrokeDashArray().clear();
+                s.getStrokeDashArray().addAll(0.1, 3.0);
+                s.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
+            }
+            default -> s.getStrokeDashArray().clear();
         }
     }
 }

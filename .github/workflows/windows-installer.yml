@@ -2,7 +2,7 @@ name: Windows Installer
 
 # Builds the Windows MSI (bundled Java, desktop + start-menu shortcuts) so no
 # local Windows toolchain is required. Trigger from the Actions tab
-# (workflow_dispatch), or push a tag like v2.0.1 to also attach it to a Release.
+# (workflow_dispatch), or push a tag like v3.0.0 to also attach it to a Release.
 # Windows-only on purpose: JavaFX natives and the bundled JRE must match the
 # target OS, and jpackage cannot cross-compile.
 
@@ -41,14 +41,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force packaging/input | Out-Null
-          Copy-Item target/invoice-studio-desktop-2.0.1.jar packaging/input/
+          Copy-Item target/invoice-studio-desktop-3.0.0.jar packaging/input/
           jpackage --type msi `
             --name InvoiceStudio `
             --description "Billing & Invoice Design Studio" `
-            --app-version 2.0.1 --vendor InvoiceStudio `
+            --app-version 3.0.0 --vendor InvoiceStudio `
             --icon packaging/InvoiceStudio.ico `
             --input packaging/input `
-            --main-jar invoice-studio-desktop-2.0.1.jar `
+            --main-jar invoice-studio-desktop-3.0.0.jar `
             --main-class com.invoicestudio.Launcher `
             --win-shortcut --win-menu --win-dir-chooser `
             --dest packaging/dist
@@ -56,7 +56,7 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: InvoiceStudio-2.0.1-windows-installer
+          name: InvoiceStudio-3.0.0-windows-installer
           path: packaging/dist/*.msi
           if-no-files-found: error
 

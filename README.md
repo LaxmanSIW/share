@@ -1,4 +1,4 @@
-# InvoiceStudio 2.0.1
+# InvoiceStudio 3.0.0
 
 **Standalone JavaFX Billing & Invoice Management Desktop Application**
 
@@ -18,7 +18,7 @@ wrapped in a custom dark **“Obsidian & Gold”** theme with a VS Code-style si
 | **Build tool** | Apache Maven (compiler target 21) |
 | **Testing** | JUnit 5.10.2 (27 unit tests) + a 47-step UI smoke harness |
 | **Main class** | `com.invoicestudio.Launcher` |
-| **Final artifact** | `target/invoice-studio-desktop-2.0.1.jar` (self-contained “fat” jar, ≈ 33 MB) |
+| **Final artifact** | `target/invoice-studio-desktop-3.0.0.jar` (self-contained “fat” jar, ≈ 33 MB) |
 
 ---
 
@@ -184,8 +184,8 @@ This is the **main build command**. It:
 Result:
 
 ```
-target/invoice-studio-desktop-2.0.1.jar          ← runnable fat jar (≈ 33 MB)
-target/original-invoice-studio-desktop-2.0.1.jar ← classes only, keep for reference
+target/invoice-studio-desktop-3.0.0.jar          ← runnable fat jar (≈ 33 MB)
+target/original-invoice-studio-desktop-3.0.0.jar ← classes only, keep for reference
 ```
 
 Skip the tests when you just want speed:
@@ -217,7 +217,7 @@ This compiles and launches directly from sources — no jar needed.
 ### 5.2 Option B — run the packaged JAR (any machine with Java 21)
 
 ```bash
-java -jar target/invoice-studio-desktop-2.0.1.jar
+java -jar target/invoice-studio-desktop-3.0.0.jar
 ```
 
 Nothing else is required — every dependency is inside the jar.
@@ -250,7 +250,7 @@ The database is **never** stored next to the app or in `Program Files` —
 - **Portable / custom location** (e.g. keep data on a USB stick or `D:\`):
 
   ```bash
-  java -Dinvoicestudio.data.dir=D:\InvoiceData -jar invoice-studio-desktop-2.0.1.jar
+  java -Dinvoicestudio.data.dir=D:\InvoiceData -jar invoice-studio-desktop-3.0.0.jar
   ```
 
 ---
@@ -275,12 +275,12 @@ Because of that manifest you launch it with a double-click option too
 associated), but the reliable way everywhere is:
 
 ```bash
-java -jar invoice-studio-desktop-2.0.1.jar
+java -jar invoice-studio-desktop-3.0.0.jar
 ```
 
 ### 6.2 Sharing the jar
 
-Copy `target/invoice-studio-desktop-2.0.1.jar` to any computer with **Java 21
+Copy `target/invoice-studio-desktop-3.0.0.jar` to any computer with **Java 21
 for the same OS** and run the command above. The recipient needs nothing else —
 but they *do* need Java installed, and there is no Start-menu/desktop icon.
 **That gap is exactly what the installer in §7 removes**: it bundles its own
@@ -290,7 +290,7 @@ Java runtime, so end users install *nothing*, and it creates proper shortcuts.
 
 ## 7. Create a Windows installer (setup file)
 
-This is the “make it feel like real software” step: one `InvoiceStudio-2.0.1.msi`
+This is the “make it feel like real software” step: one `InvoiceStudio-3.0.0.msi`
 (or a classic `setup.exe`) that the user double-clicks → *Next → Next → Finish*,
 and InvoiceStudio appears in the Start menu **and on the desktop**, with its own
 icon, an entry in *Apps & Features* for clean uninstall — and **no Java install
@@ -304,7 +304,7 @@ It wraps the fat jar, a bundled JRE and shortcuts into a native installer.
 
 | | MSI (default) | setup.exe (Inno Setup route) |
 |---|---|---|
-| File produced | `packaging/dist/InvoiceStudio-2.0.1.msi` | `packaging/dist/InvoiceStudio-2.0.1-setup.exe` |
+| File produced | `packaging/dist/InvoiceStudio-3.0.0.msi` | `packaging/dist/InvoiceStudio-3.0.0-setup.exe` |
 | Bundled Java 21 runtime | ✅ | ✅ |
 | Desktop icon shortcut | ✅ (`--win-shortcut`) | ✅ (installer task, ticked by default) |
 | Start-menu entry | ✅ (`--win-menu`) | ✅ (+ program group + Uninstall entry) |
@@ -327,7 +327,7 @@ The repository already contains a ready CI workflow:
 3. Select **“Windows Installer”** in the left list → **Run workflow** ▼ →
    choose branch `ZAI-GLM` → **Run workflow**.
 4. Wait ≈ 3–6 minutes. Click the finished run and download the artifact
-   **`InvoiceStudio-2.0.1-windows-installer`** — inside is the MSI.
+   **`InvoiceStudio-3.0.0-windows-installer`** — inside is the MSI.
 5. *(Optional, for releases)*: pushing a version **tag** builds automatically and
    attaches the MSI to a GitHub Release that anyone can download:
 
@@ -365,7 +365,7 @@ The script:
 3. stages the jar into `packaging/input/`,
 4. calls `jpackage --type msi --win-shortcut --win-menu --win-dir-chooser …`.
 
-Result: **`packaging\dist\InvoiceStudio-2.0.1.msi`** — send it to anyone.
+Result: **`packaging\dist\InvoiceStudio-3.0.0.msi`** — send it to anyone.
 Double-click → UAC → *Next → Next → Install* → desktop icon appears. Done.
 
 ### 7.4 Option C — classic `setup.exe` with Inno Setup
@@ -384,7 +384,7 @@ folder with the included Inno Setup script:
 
    ```powershell
    ISCC.exe packaging\InvoiceStudio.iss
-   # → packaging\dist\InvoiceStudio-2.0.1-setup.exe
+   # → packaging\dist\InvoiceStudio-3.0.0-setup.exe
    ```
 
 The script adds: directory chooser, **“Create a desktop icon”** task,
@@ -400,11 +400,11 @@ jpackage `
   --type msi `
   --name InvoiceStudio `
   --description "Billing & Invoice Design Studio" `
-  --app-version 2.0.1 `
+  --app-version 3.0.0 `
   --vendor InvoiceStudio `
   --icon packaging/InvoiceStudio.ico `
   --input packaging/input `
-  --main-jar invoice-studio-desktop-2.0.1.jar `
+  --main-jar invoice-studio-desktop-3.0.0.jar `
   --main-class com.invoicestudio.Launcher `
   --win-shortcut --win-menu --win-dir-chooser `
   --dest packaging/dist
@@ -452,16 +452,16 @@ Useful extras: `--win-per-user-install` (no admin rights), `--win-upgrade-uuid �
 
 ```bash
 mvn -B -ntp package -DskipTests
-mkdir -p packaging/input && cp target/invoice-studio-desktop-2.0.1.jar packaging/input/
+mkdir -p packaging/input && cp target/invoice-studio-desktop-3.0.0.jar packaging/input/
 jpackage --type deb \
-  --name invoicestudio --app-version 2.0.1 --vendor InvoiceStudio \
+  --name invoicestudio --app-version 3.0.0 --vendor InvoiceStudio \
   --description "Billing & Invoice Design Studio" \
   --icon packaging/InvoiceStudio.ico \
   --input packaging/input \
-  --main-jar invoice-studio-desktop-2.0.1.jar \
+  --main-jar invoice-studio-desktop-3.0.0.jar \
   --main-class com.invoicestudio.Launcher \
   --linux-shortcut --dest packaging/dist
-sudo dpkg -i packaging/dist/invoicestudio_2.0.1_amd64.deb   # install
+sudo dpkg -i packaging/dist/invoicestudio_3.0.0_amd64.deb   # install
 ```
 
 (Use `--type rpm` for Fedora/RHEL. `--linux-menu-group "Office"` adds a menu category.)
@@ -470,12 +470,12 @@ sudo dpkg -i packaging/dist/invoicestudio_2.0.1_amd64.deb   # install
 
 ```bash
 mvn -B -ntp package -DskipTests
-mkdir -p packaging/input && cp target/invoice-studio-desktop-2.0.1.jar packaging/input/
+mkdir -p packaging/input && cp target/invoice-studio-desktop-3.0.0.jar packaging/input/
 jpackage --type dmg \
-  --name InvoiceStudio --app-version 2.0.1 --vendor InvoiceStudio \
+  --name InvoiceStudio --app-version 3.0.0 --vendor InvoiceStudio \
   --icon packaging/InvoiceStudio.icns \
   --input packaging/input \
-  --main-jar invoice-studio-desktop-2.0.1.jar \
+  --main-jar invoice-studio-desktop-3.0.0.jar \
   --main-class com.invoicestudio.Launcher \
   --dest packaging/dist
 ```
@@ -522,13 +522,13 @@ always `mvn package` first, then rerun the script.
 
 ## 11. Release checklist (version bump)
 
-When the version changes (e.g. `2.0.1` → `2.0.2`), update it in **five** places:
+When the version changes (e.g. `3.0.0` → `3.0.1`), update it in **five** places:
 
 1. `pom.xml` → `<version>` (jar name follows automatically)
 2. `packaging/build-windows-installer.ps1` → `$Jar` filename **and** `--app-version`
 3. `packaging/InvoiceStudio.iss` → `#define AppVersion`
 4. `.github/workflows/windows-installer.yml` → artifact name / jpackage `--app-version`
-5. Tag the release: `git tag v2.0.2 && git push origin v2.0.2` → CI builds the MSI
+5. Tag the release: `git tag v3.0.1 && git push origin v3.0.1` → CI builds the MSI
    and attaches it to a GitHub Release automatically (§7.2, step 5).
 
 ---

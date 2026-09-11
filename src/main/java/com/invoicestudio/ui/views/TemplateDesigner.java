@@ -7,6 +7,7 @@ import com.invoicestudio.model.*;
 import com.invoicestudio.model.TableColumn;
 import com.invoicestudio.service.BarcodeService;
 import com.invoicestudio.service.RenderContext;
+import com.invoicestudio.ui.ColorPickerButton;
 import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
@@ -24,7 +25,9 @@ import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Ellipse;
 import javafx.scene.shape.Line;
+import javafx.scene.shape.Polygon;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
@@ -67,12 +70,16 @@ public class TemplateDesigner extends BorderPane {
     private final Pane canvas = new Pane();
     private final Pane gridPane = new Pane();
     private final Pane elementsPane = new Pane();
+    private final Pane guidesPane = new Pane();  // magenta “magnet” snap guides
+    private final Pane rulerPane = new Pane();   // top + left mm rulers
     private final Pane selectionPane = new Pane();
     private final Group scaleGroup = new Group(canvas);
 
     private double zoom = 0.9;
     private boolean snapToGrid = true;
+    private boolean snapToObjects = true; // “Magnet”: snap edges to other elements / page center
     private boolean showGrid = true;
+    private boolean showRulers = true;
     private boolean isPanMode = false;
     private boolean isSpaceDown = false;
     private boolean isUpdatingLayersSelection = false;
@@ -90,6 +97,13 @@ public class TemplateDesigner extends BorderPane {
     private final ListView<TemplateElement> layersList = new ListView<>();
     private final TabPane sideTabs = new TabPane();
 
+    // Lightweight geometry sync during drags: instead of rebuilding the whole
+    // properties panel every drag frame (expensive + focus-stealing), the four
+    // position/size spinners are updated in place.
+    private Spinner<Double> gxSpin, gySpin, gwSpin, ghSpin;
+    private boolean syncingGeometry = false;
+    private TextField namePropField;
+
     private static final double MM_PX = 3.7795275591; // ~96 DPI screen pixels per mm
 
     public TemplateDesigner(StudioApp app, Template template) {
@@ -101,8 +115,12 @@ public class TemplateDesigner extends BorderPane {
 
         getStyleClass().add("bg-app");
         canvas.getStyleClass().add("bill-sheet-canvas");
-        canvas.getChildren().addAll(gridPane, elementsPane, selectionPane);
+        canvas.getChildren().addAll(gridPane, elementsPane, guidesPane, rulerPane, selectionPane);
+        guidesPane.getStyleClass().add("guides-pane");
+        rulerPane.getStyleClass().add("ruler-pane");
         gridPane.setMouseTransparent(true);
+        guidesPane.setMouseTransparent(true);
+        rulerPane.setMouseTransparent(true);
         selectionPane.setPickOnBounds(false);
 
         setTop(createToolbar());
@@ -143,6 +161,9 @@ public class TemplateDesigner extends BorderPane {
         Button addTable = createToolbarBtn("+ Table", "Add line-item billing table with GST", () -> addElement(ElementType.TABLE));
         Button addLine = createToolbarBtn("+ Line", "Add dividing line (horizontal/vertical)", () -> addElement(ElementType.LINE));
         Button addRect = createToolbarBtn("+ Rect", "Add background rectangle or card", () -> addElement(ElementType.RECT));
+        Button addEllipse = createToolbarBtn("+ Ellipse", "Add ellipse / circle shape", () -> addElement(ElementType.ELLIPSE));
+        Button addStar = createToolbarBtn("+ Star", "Add star shape (adjustable points)", () -> addElement(ElementType.STAR));
+        Button addArrow = createToolbarBtn("+ Arrow", "Add parametric arrow", () -> addElement(ElementType.ARROW));
         Button addQr = createToolbarBtn("+ QR Code", "Add dynamic UPI payment QR code", () -> addElement(ElementType.QRCODE));
         Button addBarcode = createToolbarBtn("+ Barcode", "Add Code 128 invoice barcode", () -> addElement(ElementType.BARCODE));
 
@@ -171,10 +192,28 @@ public class TemplateDesigner extends BorderPane {
         snapCb.setTooltip(new Tooltip("Snap element positioning to 1mm grid"));
         snapCb.selectedProperty().addListener((obs, old, val) -> snapToGrid = val);
 
+        CheckBox magnetCb = new CheckBox("Magnet");
+        magnetCb.setSelected(true);
+        magnetCb.setTooltip(new Tooltip("Magnet: snap object edges to other objects / page centre (M)"));
+        magnetCb.selectedProperty().addListener((obs, old, val) -> {
+            snapToObjects = val;
+            if (!val) clearSnapGuides();
+        });
+
+        CheckBox rulerCb = new CheckBox("Rulers");
+        rulerCb.setSelected(true);
+        rulerCb.setTooltip(new Tooltip("Show horizontal & vertical mm rulers (R)"));
+        rulerCb.selectedProperty().addListener((obs, old, val) -> {
+            showRulers = val;
+            refreshCanvas();
+        });
+
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
         Button pageBtn = createToolbarBtn("Page Settings", "Configure page dimensions, paper size & margins", this::showPageSettingsDialog);
+
+        Button helpBtn = createToolbarBtn("? Help", "All keyboard shortcuts & mouse controls (F1)", this::showShortcutsDialog);
 
         // Tool Mode: Select vs Pan
         selectToolBtn = createToolbarBtn("↖ Select", "Select & Move Tool (V)", () -> setPanMode(false));
@@ -192,10 +231,10 @@ public class TemplateDesigner extends BorderPane {
 
         bar.getChildren().addAll(
                 backBtn, nameField, s1,
-                addText, addImage, addTable, addLine, addRect, addQr, addBarcode, s2,
+                addText, addImage, addTable, addLine, addRect, addEllipse, addStar, addArrow, addQr, addBarcode, s2,
                 selectToolBtn, panToolBtn, undoBtn, redoBtn,
-                zoomOut, zoomLabel, zoomIn, zoom100, zoomFit, gridCb, snapCb, sp,
-                pageBtn, saveBtn
+                zoomOut, zoomLabel, zoomIn, zoom100, zoomFit, gridCb, snapCb, magnetCb, rulerCb, sp,
+                pageBtn, helpBtn, saveBtn
         );
         return bar;
     }
@@ -403,12 +442,68 @@ public class TemplateDesigner extends BorderPane {
                     setText(null);
                     setGraphic(null);
                 } else {
-                    String desc = item.getType().name();
-                    if (item.getType() == ElementType.TEXT && item.getText() != null) {
-                        String t = item.getText().replace("\n", " ");
-                        desc += ": " + (t.length() > 22 ? t.substring(0, 22) + "..." : t);
-                    }
-                    setText(desc);
+                    setText(null);
+
+                    HBox row = new HBox(6);
+                    row.setAlignment(Pos.CENTER_LEFT);
+
+                    // Eye — show/hide directly in the list
+                    Button eyeBtn = new Button(item.isHidden() ? "🚫" : "👁");
+                    eyeBtn.getStyleClass().add("layer-icon-btn");
+                    eyeBtn.setTooltip(new Tooltip(item.isHidden() ? "Show object" : "Hide object"));
+                    eyeBtn.setOnAction(e -> {
+                        item.setHidden(!item.isHidden());
+                        if (item == selectedElement && item.isHidden()) {
+                            selectedElement = null;
+                            updateSelectionOverlay();
+                            updatePropertiesPanel();
+                        }
+                        saveState();
+                        refreshCanvas();
+                        refreshLayersList();
+                    });
+
+                    // Padlock — lock/unlock directly in the list
+                    Button lockBtn = new Button(item.isLocked() ? "🔒" : "🔓");
+                    lockBtn.getStyleClass().add("layer-icon-btn");
+                    lockBtn.setTooltip(new Tooltip(item.isLocked() ? "Unlock object" : "Lock object"));
+                    lockBtn.setOnAction(e -> {
+                        item.setLocked(!item.isLocked());
+                        saveState();
+                        refreshLayersList();
+                    });
+
+                    VBox labels = new VBox(0);
+                    Label nameLbl = new Label(defaultLayerName(item));
+                    nameLbl.getStyleClass().add("layer-name");
+                    Label typeLbl = new Label(item.getType().name());
+                    typeLbl.getStyleClass().add("layer-type");
+                    labels.getChildren().addAll(nameLbl, typeLbl);
+
+                    // Double-click the name to rename inline
+                    nameLbl.setOnMouseClicked(e -> {
+                        if (e.getClickCount() != 2) return;
+                        TextField edit = new TextField(item.getName() != null ? item.getName() : "");
+                        edit.setPromptText("Object name");
+                        edit.getStyleClass().add("layer-rename-field");
+                        labels.getChildren().set(0, edit);
+                        edit.requestFocus();
+                        edit.selectAll();
+                        Runnable commit = () -> {
+                            item.setName(edit.getText() != null ? edit.getText().trim() : null);
+                            if (item.getName() != null && item.getName().isEmpty()) item.setName(null);
+                            saveState();
+                            refreshLayersList();
+                        };
+                        edit.setOnAction(ev -> commit.run());
+                        edit.focusedProperty().addListener((o, was, is) -> { if (!is) commit.run(); });
+                    });
+
+                    Region spacer = new Region();
+                    HBox.setHgrow(spacer, Priority.ALWAYS);
+
+                    row.getChildren().addAll(eyeBtn, lockBtn, labels, spacer);
+                    setGraphic(row);
                     if (!getStyleClass().contains("layer-cell-label")) getStyleClass().add("layer-cell-label");
                 }
             }
@@ -437,6 +532,18 @@ public class TemplateDesigner extends BorderPane {
         side.getChildren().add(sideTabs);
         VBox.setVgrow(sideTabs, Priority.ALWAYS);
         return side;
+    }
+
+    /** Layer row label: custom name when set, otherwise a readable type + snippet. */
+    private String defaultLayerName(TemplateElement el) {
+        if (el.getName() != null && !el.getName().isBlank()) return el.getName();
+        String t = el.getType().name();
+        if (el.getType() == ElementType.TEXT && el.getText() != null && !el.getText().isBlank()) {
+            String s = el.getText().replace("\n", " ").trim();
+            if (s.startsWith("{{") && s.contains("}}")) s = s.substring(2, s.indexOf("}}")) + " …";
+            t += ": " + (s.length() > 18 ? s.substring(0, 18) + "…" : s);
+        }
+        return t;
     }
 
     private void refreshCanvas() {
@@ -497,6 +604,10 @@ public class TemplateDesigner extends BorderPane {
             }
         }
 
+        // mm Rulers (top & left overlay strips — inside the canvas coordinate
+        // space, so ticks stay perfectly aligned with the page at any zoom)
+        drawRulers(pageW, pageH);
+
         // 2. Elements Layer
         elementsPane.getChildren().clear();
         elementsPane.setPrefSize(pageW, pageH);
@@ -513,6 +624,57 @@ public class TemplateDesigner extends BorderPane {
         // 3. Selection Overlay (always on top of all elements)
         selectionPane.setPrefSize(pageW, pageH);
         updateSelectionOverlay();
+    }
+
+    /** Draws the horizontal & vertical mm rulers as overlay strips (top/left of the page). */
+    private void drawRulers(double pageW, double pageH) {
+        rulerPane.getChildren().clear();
+        rulerPane.setPrefSize(pageW, pageH);
+        if (!showRulers) return;
+
+        final double R = 16; // strip thickness (screen px, scales with zoom like the page)
+        Color tickMinor = Color.web("#C3CBD9");
+        Color tickMajor = Color.web("#64748B");
+
+        Rectangle top = new Rectangle(pageW, R);
+        top.setStyle("-fx-background-color: rgba(255,255,255,0.92);");
+        rulerPane.getChildren().add(top);
+        Rectangle left = new Rectangle(R, pageH);
+        left.setStyle("-fx-background-color: rgba(255,255,255,0.92);");
+        rulerPane.getChildren().add(left);
+
+        for (int mm = 0; mm * MM_PX <= pageW; mm++) {
+            double x = mm * MM_PX;
+            boolean major = mm % 10 == 0;
+            double len = major ? 11 : (mm % 5 == 0 ? 7 : 4);
+            Line t = new Line(x, R - len, x, R);
+            t.setStroke(major ? tickMajor : tickMinor);
+            t.setStrokeWidth(major ? 1.0 : 0.5);
+            rulerPane.getChildren().add(t);
+            if (major && mm > 0) {
+                Label lbl = new Label(String.valueOf(mm));
+                lbl.setStyle("-fx-font-size: 7.5px; -fx-text-fill: #475569; -fx-font-family: 'Segoe UI', sans-serif;");
+                lbl.setLayoutX(x + 1.5);
+                lbl.setLayoutY(0);
+                rulerPane.getChildren().add(lbl);
+            }
+        }
+        for (int mm = 0; mm * MM_PX <= pageH; mm++) {
+            double y = mm * MM_PX;
+            boolean major = mm % 10 == 0;
+            double len = major ? 11 : (mm % 5 == 0 ? 7 : 4);
+            Line t = new Line(R - len, y, R, y);
+            t.setStroke(major ? tickMajor : tickMinor);
+            t.setStrokeWidth(major ? 1.0 : 0.5);
+            rulerPane.getChildren().add(t);
+            if (major && mm > 0) {
+                Label lbl = new Label(String.valueOf(mm));
+                lbl.setStyle("-fx-font-size: 7.5px; -fx-text-fill: #475569; -fx-font-family: 'Segoe UI', sans-serif;");
+                lbl.setLayoutX(0.5);
+                lbl.setLayoutY(y - 4);
+                rulerPane.getChildren().add(lbl);
+            }
+        }
     }
 
     private Rectangle createHandleShape(Cursor cursor) {
@@ -598,18 +760,29 @@ public class TemplateDesigner extends BorderPane {
                 }
             }
 
+            // Magnet: snap object edges/centres onto other objects, margins, page centre
+            if (snapToObjects) {
+                double[] s = snapMove(el, newX, newY);
+                newX = Math.max(0, s[0]);
+                newY = Math.max(0, s[1]);
+                showSnapGuides(s[2] >= 0 ? s[2] : null, s[3] >= 0 ? s[3] : null);
+            } else {
+                clearSnapGuides();
+            }
+
             el.setX(newX);
             el.setY(newY);
 
             wrapper.setLayoutX(newX * MM_PX);
             wrapper.setLayoutY(newY * MM_PX);
             updateSelectionOverlayPos(newX * MM_PX, newY * MM_PX);
-            updatePropertiesPanel();
+            syncGeometrySpinners();
             e.consume();
         });
 
         wrapper.setOnMouseReleased(e -> {
             if (isPanMode || isSpaceDown || e.getButton() == MouseButton.MIDDLE) return;
+            clearSnapGuides();
             if (isMoved[0]) {
                 saveState();
                 refreshCanvas();
@@ -639,21 +812,19 @@ public class TemplateDesigner extends BorderPane {
         }
 
         TemplateElement el = selectedElement;
-        double x = el.getX() * MM_PX;
-        double y = el.getY() * MM_PX;
-        double w = el.getW() * MM_PX;
-        double h = el.getH() * MM_PX;
+        double wPx = el.getW() * MM_PX;
+        double hPx = el.getH() * MM_PX;
 
         Pane selBox = new Pane();
-        selBox.setLayoutX(x);
-        selBox.setLayoutY(y);
-        selBox.setPrefSize(w, h);
-        selBox.setMinSize(w, h);
+        selBox.setLayoutX(el.getX() * MM_PX);
+        selBox.setLayoutY(el.getY() * MM_PX);
+        selBox.setPrefSize(wPx, hPx);
+        selBox.setMinSize(wPx, hPx);
         selBox.setPickOnBounds(false);
         activeSelectionBox = selBox;
 
         // Selection Border: High-contrast gold dashed border with drop shadow
-        Rectangle border = new Rectangle(w, h);
+        Rectangle border = new Rectangle(wPx, hPx);
         border.setFill(Color.TRANSPARENT);
         border.setStroke(Color.web("#D9A13B"));
         border.setStrokeWidth(2.0);
@@ -661,176 +832,108 @@ public class TemplateDesigner extends BorderPane {
         border.setMouseTransparent(true);
         border.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 4, 0, 0, 1);");
 
-        // 1. Bottom-Right Corner (SE) Resize Handle
-        Rectangle handleSE = createHandleShape(Cursor.SE_RESIZE);
-        handleSE.setLayoutX(w - 4.5);
-        handleSE.setLayoutY(h - 4.5);
+        // Six resize anchors: NW, N, W, E, S, SE.
+        // v3.0.0 adds the LEFT (W) and TOP (N) edge handles — previously objects
+        // could only be resized from the right/bottom, with no point to scale from.
+        Rectangle hNW = createHandleShape(Cursor.NW_RESIZE);
+        Rectangle hN  = createHandleShape(Cursor.N_RESIZE);
+        Rectangle hW  = createHandleShape(Cursor.W_RESIZE);
+        Rectangle hE  = createHandleShape(Cursor.E_RESIZE);
+        Rectangle hS  = createHandleShape(Cursor.S_RESIZE);
+        Rectangle hSE = createHandleShape(Cursor.SE_RESIZE);
+        hNW.getStyleClass().add("sel-handle");
+        hN.getStyleClass().add("sel-handle");
+        hW.getStyleClass().add("sel-handle");
+        hE.getStyleClass().add("sel-handle");
+        hS.getStyleClass().add("sel-handle");
+        hSE.getStyleClass().add("sel-handle");
+        List<Rectangle> handles = List.of(hNW, hN, hW, hE, hS, hSE);
 
-        // 2. Right-Center Edge (E) Resize Handle
-        Rectangle handleE = createHandleShape(Cursor.E_RESIZE);
-        handleE.setLayoutX(w - 4.5);
-        handleE.setLayoutY((h / 2.0) - 4.5);
-
-        // 3. Bottom-Center Edge (S) Resize Handle
-        Rectangle handleS = createHandleShape(Cursor.S_RESIZE);
-        handleS.setLayoutX((w / 2.0) - 4.5);
-        handleS.setLayoutY(h - 4.5);
-
-        // 4. Top-Left Corner (NW) Resize Handle
-        Rectangle handleNW = createHandleShape(Cursor.NW_RESIZE);
-        handleNW.setLayoutX(-4.5);
-        handleNW.setLayoutY(-4.5);
-
-        final double[] resizeStart = new double[6];
-
-        // SE Handle Drag (Width & Height)
-        handleSE.setOnMousePressed(e -> {
-            if (e.isPrimaryButtonDown()) {
-                resizeStart[0] = e.getScreenX();
-                resizeStart[1] = e.getScreenY();
-                resizeStart[2] = el.getW();
-                resizeStart[3] = el.getH();
-                e.consume();
+        final double[] rs = new double[6]; // screenX, screenY, w, h, x, y
+        java.util.function.Consumer<MouseEvent> press = ev -> {
+            if (ev.isPrimaryButtonDown()) {
+                rs[0] = ev.getScreenX();
+                rs[1] = ev.getScreenY();
+                rs[2] = el.getW();
+                rs[3] = el.getH();
+                rs[4] = el.getX();
+                rs[5] = el.getY();
+                ev.consume();
             }
+        };
+
+        attachResize(hSE, el, rs, press, 1, 0, 1, 0, selBox, border, handles);
+        attachResize(hE,  el, rs, press, 1, 0, 0, 0, selBox, border, handles);
+        attachResize(hS,  el, rs, press, 0, 0, 1, 0, selBox, border, handles);
+        attachResize(hW,  el, rs, press, 0, 1, 0, 0, selBox, border, handles);
+        attachResize(hN,  el, rs, press, 0, 0, 0, 1, selBox, border, handles);
+        attachResize(hNW, el, rs, press, 0, 1, 0, 1, selBox, border, handles);
+
+        positionHandles(handles, wPx, hPx);
+        selBox.getChildren().add(border);
+        selBox.getChildren().addAll(handles);
+        selectionPane.getChildren().add(selBox);
+    }
+
+    /**
+     * Generic edge/corner resize driver. growRight/growBottom stretch the
+     * right/bottom edge; growLeft/growTop move the left/top edge (and the
+     * object with it). Exactly one of growLeft/growRight (and one of
+     * growTop/growBottom) is set per handle.
+     */
+    private void attachResize(Rectangle handle, TemplateElement el, double[] rs,
+                              java.util.function.Consumer<MouseEvent> press,
+                              int growRight, int growLeft, int growBottom, int growTop,
+                              Pane selBox, Rectangle border, List<Rectangle> handles) {
+        handle.setOnMousePressed(e -> {
+            if (isPanMode || isSpaceDown) return;
+            press.accept(e);
         });
-        handleSE.setOnMouseDragged(e -> {
+        handle.setOnMouseDragged(e -> {
+            if (isPanMode || isSpaceDown) return;
             if (el.isLocked()) return;
-            double dx = (e.getScreenX() - resizeStart[0]) / zoom / MM_PX;
-            double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
-            double newW = Math.max(5.0, resizeStart[2] + dx);
-            double newH = Math.max(3.0, resizeStart[3] + dy);
-            if (snapToGrid) {
-                newW = Math.round(newW);
-                newH = Math.round(newH);
+
+            double dx = (e.getScreenX() - rs[0]) / zoom / MM_PX;
+            double dy = (e.getScreenY() - rs[1]) / zoom / MM_PX;
+
+            double newW = rs[2], newH = rs[3], newX = rs[4], newY = rs[5];
+
+            if (growRight == 1)  newW = Math.max(5.0, rs[2] + dx);
+            if (growBottom == 1) newH = Math.max(3.0, rs[3] + dy);
+            if (growLeft == 1) {
+                newW = Math.max(5.0, rs[2] - dx);
+                newX = Math.max(0, rs[4] + (rs[2] - newW));
             }
-            el.setW(newW);
-            el.setH(newH);
-
-            double nwPx = newW * MM_PX;
-            double nhPx = newH * MM_PX;
-            selBox.setPrefSize(nwPx, nhPx);
-            selBox.setMinSize(nwPx, nhPx);
-            border.setWidth(nwPx);
-            border.setHeight(nhPx);
-
-            handleSE.setLayoutX(nwPx - 4.5);
-            handleSE.setLayoutY(nhPx - 4.5);
-            handleE.setLayoutX(nwPx - 4.5);
-            handleE.setLayoutY((nhPx / 2.0) - 4.5);
-            handleS.setLayoutX((nwPx / 2.0) - 4.5);
-            handleS.setLayoutY(nhPx - 4.5);
-
-            updatePropertiesPanel();
-            e.consume();
-        });
-        handleSE.setOnMouseReleased(e -> {
-            saveState();
-            refreshCanvas();
-            updatePropertiesPanel();
-            e.consume();
-        });
-
-        // E Handle Drag (Width only)
-        handleE.setOnMousePressed(e -> {
-            if (e.isPrimaryButtonDown()) {
-                resizeStart[0] = e.getScreenX();
-                resizeStart[1] = e.getScreenY();
-                resizeStart[2] = el.getW();
-                resizeStart[3] = el.getH();
-                e.consume();
+            if (growTop == 1) {
+                newH = Math.max(3.0, rs[3] - dy);
+                newY = Math.max(0, rs[5] + (rs[3] - newH));
             }
-        });
-        handleE.setOnMouseDragged(e -> {
-            if (el.isLocked()) return;
-            double dx = (e.getScreenX() - resizeStart[0]) / zoom / MM_PX;
-            double newW = Math.max(5.0, resizeStart[2] + dx);
-            if (snapToGrid) newW = Math.round(newW);
-            el.setW(newW);
 
-            double nwPx = newW * MM_PX;
-            double nhPx = el.getH() * MM_PX;
-            selBox.setPrefSize(nwPx, nhPx);
-            selBox.setMinSize(nwPx, nhPx);
-            border.setWidth(nwPx);
-
-            handleSE.setLayoutX(nwPx - 4.5);
-            handleE.setLayoutX(nwPx - 4.5);
-            handleS.setLayoutX((nwPx / 2.0) - 4.5);
-
-            updatePropertiesPanel();
-            e.consume();
-        });
-        handleE.setOnMouseReleased(e -> {
-            saveState();
-            refreshCanvas();
-            updatePropertiesPanel();
-            e.consume();
-        });
-
-        // S Handle Drag (Height only)
-        handleS.setOnMousePressed(e -> {
-            if (e.isPrimaryButtonDown()) {
-                resizeStart[0] = e.getScreenX();
-                resizeStart[1] = e.getScreenY();
-                resizeStart[2] = el.getW();
-                resizeStart[3] = el.getH();
-                e.consume();
+            // Magnet: snap the dragged edges to nearby object edges/centres
+            if (snapToObjects) {
+                Double snapV = null, snapH = null;
+                if (growRight == 1) {
+                    double s = nearestObjectEdgeX(el, rs[4] + newW);
+                    if (s >= 0) { newW = Math.max(5.0, s - newX); snapV = s; }
+                } else if (growLeft == 1) {
+                    double s = nearestObjectEdgeX(el, newX);
+                    if (s >= 0) { newW = Math.max(5.0, rs[4] + rs[2] - s); newX = s; snapV = s; }
+                }
+                if (growBottom == 1) {
+                    double s = nearestObjectEdgeY(el, rs[5] + newH);
+                    if (s >= 0) { newH = Math.max(3.0, s - newY); snapH = s; }
+                } else if (growTop == 1) {
+                    double s = nearestObjectEdgeY(el, newY);
+                    if (s >= 0) { newH = Math.max(3.0, rs[5] + rs[3] - s); newY = s; snapH = s; }
+                }
+                showSnapGuides(snapV, snapH);
             }
-        });
-        handleS.setOnMouseDragged(e -> {
-            if (el.isLocked()) return;
-            double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
-            double newH = Math.max(3.0, resizeStart[3] + dy);
-            if (snapToGrid) newH = Math.round(newH);
-            el.setH(newH);
-
-            double nwPx = el.getW() * MM_PX;
-            double nhPx = newH * MM_PX;
-            selBox.setPrefSize(nwPx, nhPx);
-            selBox.setMinSize(nwPx, nhPx);
-            border.setHeight(nhPx);
-
-            handleSE.setLayoutY(nhPx - 4.5);
-            handleE.setLayoutY((nhPx / 2.0) - 4.5);
-            handleS.setLayoutY(nhPx - 4.5);
-
-            updatePropertiesPanel();
-            e.consume();
-        });
-        handleS.setOnMouseReleased(e -> {
-            saveState();
-            refreshCanvas();
-            updatePropertiesPanel();
-            e.consume();
-        });
-
-        // NW Handle Drag (X, Y, W, H)
-        handleNW.setOnMousePressed(e -> {
-            if (e.isPrimaryButtonDown()) {
-                resizeStart[0] = e.getScreenX();
-                resizeStart[1] = e.getScreenY();
-                resizeStart[2] = el.getW();
-                resizeStart[3] = el.getH();
-                resizeStart[4] = el.getX();
-                resizeStart[5] = el.getY();
-                e.consume();
-            }
-        });
-        handleNW.setOnMouseDragged(e -> {
-            if (el.isLocked()) return;
-            double dx = (e.getScreenX() - resizeStart[0]) / zoom / MM_PX;
-            double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
-
-            double newW = Math.max(5.0, resizeStart[2] - dx);
-            double newH = Math.max(3.0, resizeStart[3] - dy);
-            double newX = Math.max(0, resizeStart[4] + (resizeStart[2] - newW));
-            double newY = Math.max(0, resizeStart[5] + (resizeStart[3] - newH));
 
             if (snapToGrid) {
-                newW = Math.round(newW);
-                newH = Math.round(newH);
-                newX = Math.round(newX);
-                newY = Math.round(newY);
+                if (growRight == 1 || growLeft == 1) newW = Math.round(newW);
+                if (growBottom == 1 || growTop == 1) newH = Math.round(newH);
+                if (growLeft == 1) newX = Math.round(newX);
+                if (growTop == 1) newY = Math.round(newY);
             }
 
             el.setW(newW);
@@ -838,34 +941,76 @@ public class TemplateDesigner extends BorderPane {
             el.setX(newX);
             el.setY(newY);
 
-            double nwPx = newW * MM_PX;
-            double nhPx = newH * MM_PX;
+            double wPx = newW * MM_PX, hPx = newH * MM_PX;
             selBox.setLayoutX(newX * MM_PX);
             selBox.setLayoutY(newY * MM_PX);
-            selBox.setPrefSize(nwPx, nhPx);
-            selBox.setMinSize(nwPx, nhPx);
-            border.setWidth(nwPx);
-            border.setHeight(nhPx);
-
-            handleSE.setLayoutX(nwPx - 4.5);
-            handleSE.setLayoutY(nhPx - 4.5);
-            handleE.setLayoutX(nwPx - 4.5);
-            handleE.setLayoutY((nhPx / 2.0) - 4.5);
-            handleS.setLayoutX((nwPx / 2.0) - 4.5);
-            handleS.setLayoutY(nhPx - 4.5);
-
-            updatePropertiesPanel();
+            selBox.setPrefSize(wPx, hPx);
+            selBox.setMinSize(wPx, hPx);
+            border.setWidth(wPx);
+            border.setHeight(hPx);
+            positionHandles(handles, wPx, hPx);
+            syncGeometrySpinners();
             e.consume();
         });
-        handleNW.setOnMouseReleased(e -> {
+        handle.setOnMouseReleased(e -> {
+            if (isPanMode || isSpaceDown) return;
+            clearSnapGuides();
             saveState();
             refreshCanvas();
             updatePropertiesPanel();
             e.consume();
         });
+    }
 
-        selBox.getChildren().addAll(border, handleSE, handleE, handleS, handleNW);
-        selectionPane.getChildren().add(selBox);
+    /** Fixed screen positions of the six handles inside the selection box. */
+    private static void positionHandles(List<Rectangle> hs, double wPx, double hPx) {
+        hs.get(0).setLayoutX(-4.5);             hs.get(0).setLayoutY(-4.5);            // NW
+        hs.get(1).setLayoutX(wPx / 2.0 - 4.5);  hs.get(1).setLayoutY(-4.5);            // N
+        hs.get(2).setLayoutX(-4.5);             hs.get(2).setLayoutY(hPx / 2.0 - 4.5); // W
+        hs.get(3).setLayoutX(wPx - 4.5);        hs.get(3).setLayoutY(hPx / 2.0 - 4.5); // E
+        hs.get(4).setLayoutX(wPx / 2.0 - 4.5);  hs.get(4).setLayoutY(hPx - 4.5);       // S
+        hs.get(5).setLayoutX(wPx - 4.5);        hs.get(5).setLayoutY(hPx - 4.5);       // SE
+    }
+
+    /** Builds up to 4 edge lines (T/R/B/L) honouring per-side enabled/color/width + stroke style. */
+    private List<Line> perSideStrokeLines(TemplateElement el, double w, double h) {
+        List<Line> out = new ArrayList<>();
+        if (el.isBorderTop()) {
+            out.add(styledLine(0, 0, w, 0, el.sideColorHex('T'), el.sideWidthMm('T') * MM_PX, el.getStrokeStyle()));
+        }
+        if (el.isBorderRight()) {
+            out.add(styledLine(w, 0, w, h, el.sideColorHex('R'), el.sideWidthMm('R') * MM_PX, el.getStrokeStyle()));
+        }
+        if (el.isBorderBottom()) {
+            out.add(styledLine(0, h, w, h, el.sideColorHex('B'), el.sideWidthMm('B') * MM_PX, el.getStrokeStyle()));
+        }
+        if (el.isBorderLeft()) {
+            out.add(styledLine(0, 0, 0, h, el.sideColorHex('L'), el.sideWidthMm('L') * MM_PX, el.getStrokeStyle()));
+        }
+        return out;
+    }
+
+    /** Convenience line factory with themed color/width and dash styling. */
+    private Line styledLine(double x1, double y1, double x2, double y2, String hex, double widthPx, String style) {
+        Line l = new Line(x1, y1, x2, y2);
+        l.setStroke(Color.web(hex != null && !hex.isBlank() ? hex : "#1a1a1a"));
+        l.setStrokeWidth(Math.max(0.75, widthPx));
+        applyStrokeStyle(l, style);
+        return l;
+    }
+
+    /** Shared canvas stroke styling: solid / dashed / dotted. */
+    private void applyStrokeStyle(javafx.scene.shape.Shape s, String style) {
+        String st = style != null ? style : "solid";
+        switch (st) {
+            case "dashed" -> { s.getStrokeDashArray().clear(); s.getStrokeDashArray().addAll(6.0, 3.0); }
+            case "dotted" -> {
+                s.getStrokeDashArray().clear();
+                s.getStrokeDashArray().addAll(0.1, 3.0);
+                s.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
+            }
+            default -> s.getStrokeDashArray().clear();
+        }
     }
 
     private Node renderVisualElement(TemplateElement el, RenderContext ctx, double w, double h) {
@@ -875,15 +1020,95 @@ public class TemplateDesigner extends BorderPane {
                 if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
                     r.setFill(Color.web(el.getBg()));
                 } else r.setFill(Color.TRANSPARENT);
-                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
-                    r.setStroke(Color.web(el.getBorderColor()));
-                    r.setStrokeWidth(el.getBorderWidth() * MM_PX);
-                }
                 if (el.getBorderRadius() > 0) {
                     r.setArcWidth(el.getBorderRadius() * MM_PX * 2);
                     r.setArcHeight(el.getBorderRadius() * MM_PX * 2);
                 }
+                if (el.hasPerSideStroke()) {
+                    // per-side color/width/enabled: 4 independent edge lines
+                    // (note: rounded corners are approximated by straight edges here)
+                    r.setStroke(Color.TRANSPARENT);
+                    r.setStrokeWidth(0);
+                    Pane p = new Pane(r);
+                    p.setPrefSize(w, h);
+                    p.getChildren().addAll(perSideStrokeLines(el, w, h));
+                    return p;
+                }
+                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                    r.setStroke(Color.web(el.getBorderColor()));
+                    r.setStrokeWidth(el.getBorderWidth() * MM_PX);
+                    applyStrokeStyle(r, el.getStrokeStyle());
+                    if ("double".equals(el.getStrokeStyle())) {
+                        double sw = Math.max(1, el.getBorderWidth() * MM_PX);
+                        Rectangle inner = new Rectangle(
+                                Math.max(0, w - 2 * (sw * 1.6 + 1)), Math.max(0, h - 2 * (sw * 1.6 + 1)));
+                        inner.setLayoutX(sw * 1.6 + 1);
+                        inner.setLayoutY(sw * 1.6 + 1);
+                        inner.setFill(Color.TRANSPARENT);
+                        inner.setStroke(Color.web(el.getBorderColor()));
+                        inner.setStrokeWidth(sw * 0.6);
+                        if (el.getBorderRadius() > 0) {
+                            inner.setArcWidth(Math.max(0, r.getArcWidth() - 2 * (sw * 1.6 + 1)));
+                            inner.setArcHeight(Math.max(0, r.getArcHeight() - 2 * (sw * 1.6 + 1)));
+                        }
+                        Pane p = new Pane(r, inner);
+                        p.setPrefSize(w, h);
+                        return p;
+                    }
+                }
                 return r;
+            }
+            case ELLIPSE: {
+                Ellipse e = new Ellipse(w / 2.0, h / 2.0, Math.max(1, w / 2.0 - 1), Math.max(1, h / 2.0 - 1));
+                if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
+                    e.setFill(Color.web(el.getBg()));
+                } else e.setFill(Color.TRANSPARENT);
+                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                    e.setStroke(Color.web(el.getBorderColor()));
+                    e.setStrokeWidth(el.getBorderWidth() * MM_PX);
+                    applyStrokeStyle(e, el.getStrokeStyle());
+                }
+                return e;
+            }
+            case STAR: {
+                int n = Math.max(3, el.getStarPoints());
+                double cx = w / 2.0, cy = h / 2.0;
+                double roX = Math.max(1, w / 2.0 - 1), roY = Math.max(1, h / 2.0 - 1);
+                double riX = roX * el.getStarInnerRatio(), riY = roY * el.getStarInnerRatio();
+                List<Double> pts = new ArrayList<>();
+                for (int i = 0; i < n * 2; i++) {
+                    double ang = Math.PI * i / n - Math.PI / 2.0;
+                    boolean outer = i % 2 == 0;
+                    pts.add(cx + (outer ? roX : riX) * Math.cos(ang));
+                    pts.add(cy + (outer ? roY : riY) * Math.sin(ang));
+                }
+                Polygon poly = new Polygon();
+                poly.getPoints().addAll(pts);
+                if (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) {
+                    poly.setFill(Color.web(el.getBg()));
+                } else poly.setFill(Color.TRANSPARENT);
+                if (el.getBorderWidth() > 0 && el.getBorderColor() != null) {
+                    poly.setStroke(Color.web(el.getBorderColor()));
+                    poly.setStrokeWidth(el.getBorderWidth() * MM_PX);
+                    applyStrokeStyle(poly, el.getStrokeStyle());
+                }
+                return poly;
+            }
+            case ARROW: {
+                double shaftY = h / 2.0;
+                double headLen = Math.min(w * 0.4, h * 0.9);
+                double headW = Math.min(h, Math.max(2, w * 0.5));
+                String hex = el.getBorderColor() != null ? el.getBorderColor() : "#1a1a1a";
+                Line shaft = styledLine(0, shaftY, Math.max(0.1, w - headLen), shaftY,
+                        hex, el.getBorderWidth() * MM_PX, el.getStrokeStyle());
+                Polygon head = new Polygon(
+                        w, shaftY,
+                        w - headLen, shaftY - headW / 2.0,
+                        w - headLen, shaftY + headW / 2.0);
+                head.setFill(Color.web(hex));
+                Pane p = new Pane(shaft, head);
+                p.setPrefSize(w, h);
+                return p;
             }
             case LINE: {
                 Line l = new Line();
@@ -896,6 +1121,23 @@ public class TemplateDesigner extends BorderPane {
                 }
                 l.setStroke(Color.web(el.getBorderColor() != null ? el.getBorderColor() : "#1a1a1a"));
                 l.setStrokeWidth(Math.max(1, el.getBorderWidth() * MM_PX));
+                applyStrokeStyle(l, el.getStrokeStyle());
+                if ("double".equals(el.getStrokeStyle())) {
+                    double sw = Math.max(1, el.getBorderWidth() * MM_PX);
+                    Line l2 = new Line();
+                    if ("v".equalsIgnoreCase(el.getDirection())) {
+                        l2.setStartX(w / 2 + sw * 1.4); l2.setStartY(0);
+                        l2.setEndX(w / 2 + sw * 1.4); l2.setEndY(h);
+                    } else {
+                        l2.setStartX(0); l2.setStartY(h / 2 + sw * 1.4);
+                        l2.setEndX(w); l2.setEndY(h / 2 + sw * 1.4);
+                    }
+                    l2.setStroke(l.getStroke());
+                    l2.setStrokeWidth(Math.max(0.75, sw * 0.6));
+                    Pane p = new Pane(l, l2);
+                    p.setPrefSize(w, h);
+                    return p;
+                }
                 return l;
             }
             case TEXT:
@@ -1098,6 +1340,12 @@ public class TemplateDesigner extends BorderPane {
         Label typeLbl = new Label(el.getType().name());
         typeLbl.getStyleClass().add("element-type-badge");
 
+        namePropField = new TextField(el.getName() != null ? el.getName() : "");
+        namePropField.setPromptText("Object name");
+        namePropField.setPrefWidth(130);
+        namePropField.setTooltip(new Tooltip("Object name shown in the Layers list (double-click a layer row to rename too)"));
+        namePropField.textProperty().addListener((obs, o, v) -> el.setName(v != null && !v.isBlank() ? v : null));
+
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
@@ -1106,7 +1354,7 @@ public class TemplateDesigner extends BorderPane {
         Button downBtn = createToolbarBtn("▼", "Send Backward", () -> moveLayer(-1));
         Button delBtn = createToolbarBtn("🗑", "Delete Element (Delete key)", this::deleteSelected);
 
-        headerRow.getChildren().addAll(typeLbl, sp, dupBtn, upBtn, downBtn, delBtn);
+        headerRow.getChildren().addAll(typeLbl, namePropField, sp, dupBtn, upBtn, downBtn, delBtn);
         propBox.getChildren().add(headerRow);
 
         // Position & Size Grid
@@ -1119,32 +1367,32 @@ public class TemplateDesigner extends BorderPane {
         posGrid.setPadding(new Insets(8));
 
         posGrid.add(new Label("X:"), 0, 0);
-        Spinner<Double> xSpin = new Spinner<>(0.0, 500.0, el.getX(), 1.0);
-        xSpin.setPrefWidth(85);
-        xSpin.setEditable(true);
-        xSpin.valueProperty().addListener((obs, o, v) -> { el.setX(v); refreshCanvas(); });
-        posGrid.add(xSpin, 1, 0);
+        gxSpin = new Spinner<>(0.0, 500.0, el.getX(), 1.0);
+        gxSpin.setPrefWidth(85);
+        gxSpin.setEditable(true);
+        gxSpin.valueProperty().addListener((obs, o, v) -> { if (!syncingGeometry) { el.setX(v); refreshCanvas(); } });
+        posGrid.add(gxSpin, 1, 0);
 
         posGrid.add(new Label("Y:"), 2, 0);
-        Spinner<Double> ySpin = new Spinner<>(0.0, 500.0, el.getY(), 1.0);
-        ySpin.setPrefWidth(85);
-        ySpin.setEditable(true);
-        ySpin.valueProperty().addListener((obs, o, v) -> { el.setY(v); refreshCanvas(); });
-        posGrid.add(ySpin, 3, 0);
+        gySpin = new Spinner<>(0.0, 500.0, el.getY(), 1.0);
+        gySpin.setPrefWidth(85);
+        gySpin.setEditable(true);
+        gySpin.valueProperty().addListener((obs, o, v) -> { if (!syncingGeometry) { el.setY(v); refreshCanvas(); } });
+        posGrid.add(gySpin, 3, 0);
 
         posGrid.add(new Label("W:"), 0, 1);
-        Spinner<Double> wSpin = new Spinner<>(1.0, 500.0, el.getW(), 1.0);
-        wSpin.setPrefWidth(85);
-        wSpin.setEditable(true);
-        wSpin.valueProperty().addListener((obs, o, v) -> { el.setW(v); refreshCanvas(); });
-        posGrid.add(wSpin, 1, 1);
+        gwSpin = new Spinner<>(1.0, 500.0, el.getW(), 1.0);
+        gwSpin.setPrefWidth(85);
+        gwSpin.setEditable(true);
+        gwSpin.valueProperty().addListener((obs, o, v) -> { if (!syncingGeometry) { el.setW(v); refreshCanvas(); } });
+        posGrid.add(gwSpin, 1, 1);
 
         posGrid.add(new Label("H:"), 2, 1);
-        Spinner<Double> hSpin = new Spinner<>(1.0, 500.0, el.getH(), 1.0);
-        hSpin.setPrefWidth(85);
-        hSpin.setEditable(true);
-        hSpin.valueProperty().addListener((obs, o, v) -> { el.setH(v); refreshCanvas(); });
-        posGrid.add(hSpin, 3, 1);
+        ghSpin = new Spinner<>(1.0, 500.0, el.getH(), 1.0);
+        ghSpin.setPrefWidth(85);
+        ghSpin.setEditable(true);
+        ghSpin.valueProperty().addListener((obs, o, v) -> { if (!syncingGeometry) { el.setH(v); refreshCanvas(); } });
+        posGrid.add(ghSpin, 3, 1);
 
         geoPane.setContent(posGrid);
         propBox.getChildren().add(geoPane);
@@ -1152,8 +1400,9 @@ public class TemplateDesigner extends BorderPane {
         // Specific Type Editors
         if (el.getType() == ElementType.TEXT || el.getType() == ElementType.PAGENO) {
             buildTextProperties(el);
-        } else if (el.getType() == ElementType.RECT) {
-            buildRectProperties(el);
+        } else if (el.getType() == ElementType.RECT || el.getType() == ElementType.ELLIPSE
+                || el.getType() == ElementType.STAR || el.getType() == ElementType.ARROW) {
+            buildShapeProperties(el);
         } else if (el.getType() == ElementType.LINE) {
             buildLineProperties(el);
         } else if (el.getType() == ElementType.IMAGE) {
@@ -1320,10 +1569,7 @@ public class TemplateDesigner extends BorderPane {
         GridPane colorGrid = new GridPane();
         colorGrid.setHgap(8); colorGrid.setVgap(8);
 
-        ColorPicker textColorPicker = new ColorPicker(hexToColor(el.getColor(), Color.web("#1a1a1a")));
-        textColorPicker.setTooltip(new Tooltip("Text Color Picker"));
-        textColorPicker.setOnAction(e -> {
-            String hex = colorToHex(textColorPicker.getValue());
+        ColorPickerButton textColorPicker = new ColorPickerButton(el.getColor(), false, hex -> {
             el.setColor(hex);
             refreshCanvas();
         });
@@ -1340,7 +1586,7 @@ public class TemplateDesigner extends BorderPane {
             chip.setTooltip(new Tooltip("Set text color: " + hex));
             chip.setOnAction(e -> {
                 el.setColor(hex);
-                textColorPicker.setValue(Color.web(hex));
+                textColorPicker.setHex(hex);
                 refreshCanvas();
             });
             colorPresetRow.getChildren().add(chip);
@@ -1351,9 +1597,10 @@ public class TemplateDesigner extends BorderPane {
         colorGrid.add(new Label("Text Color:"), 0, 0);
         colorGrid.add(textColBox, 1, 0);
 
-        ColorPicker bgColorPicker = new ColorPicker(hexToColor(el.getBg(), Color.TRANSPARENT));
-        bgColorPicker.setTooltip(new Tooltip("Background Fill Color"));
-        bgColorPicker.setOnAction(e -> { el.setBg(colorToHex(bgColorPicker.getValue())); refreshCanvas(); });
+        ColorPickerButton bgColorPicker = new ColorPickerButton(el.getBg(), true, hex -> {
+            el.setBg(hex);
+            refreshCanvas();
+        });
 
         CheckBox bgTransCb = new CheckBox("Transparent");
         bgTransCb.setSelected(el.getBg() == null || "transparent".equalsIgnoreCase(el.getBg()));
@@ -1361,7 +1608,7 @@ public class TemplateDesigner extends BorderPane {
             if (bgTransCb.isSelected()) {
                 el.setBg("transparent");
             } else {
-                el.setBg(colorToHex(bgColorPicker.getValue()));
+                el.setBg(bgColorPicker.getHex());
             }
             refreshCanvas();
         });
@@ -1373,7 +1620,8 @@ public class TemplateDesigner extends BorderPane {
         propBox.getChildren().add(sec);
     }
 
-    private void buildRectProperties(TemplateElement el) {
+    /** Unified editor for RECT / ELLIPSE / STAR / ARROW shapes. */
+    private void buildShapeProperties(TemplateElement el) {
         VBox sec = new VBox(8);
         Label title = new Label("Shape Properties:");
         title.getStyleClass().add("prop-title");
@@ -1381,39 +1629,158 @@ public class TemplateDesigner extends BorderPane {
         GridPane grid = new GridPane();
         grid.setHgap(8); grid.setVgap(8);
 
-        ColorPicker fillPicker = new ColorPicker(hexToColor(el.getBg(), Color.web("#f4f1ea")));
-        fillPicker.setOnAction(e -> { el.setBg(colorToHex(fillPicker.getValue())); refreshCanvas(); });
+        boolean isArrow = el.getType() == ElementType.ARROW;
+        int row = 0;
 
-        CheckBox transCb = new CheckBox("Transparent");
-        transCb.setSelected(el.getBg() == null || "transparent".equalsIgnoreCase(el.getBg()));
-        transCb.setOnAction(e -> {
-            if (transCb.isSelected()) el.setBg("transparent");
-            else el.setBg(colorToHex(fillPicker.getValue()));
+        if (!isArrow) {
+            ColorPickerButton fillPicker = new ColorPickerButton(el.getBg(), true, hex -> {
+                el.setBg(hex);
+                refreshCanvas();
+            });
+            CheckBox transCb = new CheckBox("Transparent");
+            transCb.setSelected(el.getBg() == null || "transparent".equalsIgnoreCase(el.getBg()));
+            transCb.setOnAction(e -> {
+                if (transCb.isSelected()) el.setBg("transparent");
+                else el.setBg(fillPicker.getHex());
+                refreshCanvas();
+            });
+            grid.add(new Label("Fill Color:"), 0, row);
+            grid.add(new HBox(6, fillPicker, transCb), 1, row);
+            row++;
+        }
+
+        ColorPickerButton borderPicker = new ColorPickerButton(el.getBorderColor(), false, hex -> {
+            el.setBorderColor(hex);
             refreshCanvas();
         });
-
-        grid.add(new Label("Fill Color:"), 0, 0);
-        grid.add(new HBox(6, fillPicker, transCb), 1, 0);
-
-        ColorPicker borderPicker = new ColorPicker(hexToColor(el.getBorderColor(), Color.web("#1a1a1a")));
-        borderPicker.setOnAction(e -> { el.setBorderColor(colorToHex(borderPicker.getValue())); refreshCanvas(); });
-        grid.add(new Label("Border Color:"), 0, 1);
-        grid.add(borderPicker, 1, 1);
+        grid.add(new Label("Stroke Color:"), 0, row);
+        grid.add(borderPicker, 1, row);
+        row++;
 
         Spinner<Double> borderW = new Spinner<>(0.0, 10.0, el.getBorderWidth(), 0.5);
         borderW.setEditable(true);
         borderW.valueProperty().addListener((obs, o, v) -> { el.setBorderWidth(v); refreshCanvas(); });
-        grid.add(new Label("Border (mm):"), 0, 2);
-        grid.add(borderW, 1, 2);
+        grid.add(new Label("Stroke Width (mm):"), 0, row);
+        grid.add(borderW, 1, row);
+        row++;
 
-        Spinner<Double> borderR = new Spinner<>(0.0, 50.0, el.getBorderRadius(), 1.0);
-        borderR.setEditable(true);
-        borderR.valueProperty().addListener((obs, o, v) -> { el.setBorderRadius(v); refreshCanvas(); });
-        grid.add(new Label("Corner Radius:"), 0, 3);
-        grid.add(borderR, 1, 3);
+        ComboBox<String> styleCb = new ComboBox<>(FXCollections.observableArrayList("solid", "dashed", "dotted", "double"));
+        styleCb.setValue(el.getStrokeStyle());
+        styleCb.valueProperty().addListener((obs, o, v) -> { if (v != null) el.setStrokeStyle(v); refreshCanvas(); });
+        grid.add(new Label("Stroke Type:"), 0, row);
+        grid.add(styleCb, 1, row);
+        row++;
+
+        if (el.getType() == ElementType.RECT) {
+            Spinner<Double> borderR = new Spinner<>(0.0, 50.0, el.getBorderRadius(), 1.0);
+            borderR.setEditable(true);
+            borderR.valueProperty().addListener((obs, o, v) -> { el.setBorderRadius(v); refreshCanvas(); });
+            grid.add(new Label("Corner Radius:"), 0, row);
+            grid.add(borderR, 1, row);
+            row++;
+        }
+
+        if (el.getType() == ElementType.STAR) {
+            Spinner<Integer> pts = new Spinner<>(3, 24, el.getStarPoints(), 1);
+            pts.setEditable(true);
+            pts.valueProperty().addListener((obs, o, v) -> { if (v != null) el.setStarPoints(v); refreshCanvas(); });
+            grid.add(new Label("Star Points:"), 0, row);
+            grid.add(pts, 1, row);
+            row++;
+
+            Spinner<Double> inner = new Spinner<>(0.1, 0.9, el.getStarInnerRatio(), 0.05);
+            inner.setEditable(true);
+            inner.valueProperty().addListener((obs, o, v) -> { if (v != null) el.setStarInnerRatio(v); refreshCanvas(); });
+            grid.add(new Label("Inner Radius Ratio:"), 0, row);
+            grid.add(inner, 1, row);
+            row++;
+        }
 
         sec.getChildren().addAll(title, grid);
         propBox.getChildren().add(sec);
+
+        if (el.getType() == ElementType.RECT) {
+            buildPerSideStrokeSection(el);
+        }
+    }
+
+    /** Per-side stroke editor (RECT): enable + color + width for Top/Bottom/Left/Right. */
+    private void buildPerSideStrokeSection(TemplateElement el) {
+        TitledPane sidePane = new TitledPane();
+        sidePane.setText("Individual Sides (Top / Bottom / Left / Right)");
+        sidePane.setExpanded(false);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(8); grid.setVgap(6);
+        grid.setPadding(new Insets(6));
+
+        String[][] sides = {{"T", "Top"}, {"B", "Bottom"}, {"L", "Left"}, {"R", "Right"}};
+        int r = 0;
+        for (String[] side : sides) {
+            char s = side[0].charAt(0);
+            boolean enabled = switch (s) {
+                case 'T' -> el.isBorderTop();
+                case 'B' -> el.isBorderBottom();
+                case 'L' -> el.isBorderLeft();
+                default -> el.isBorderRight();
+            };
+            CheckBox en = new CheckBox(side[1]);
+            en.setSelected(enabled);
+            en.getStyleClass().add("check-plain");
+            en.setOnAction(e -> {
+                switch (s) {
+                    case 'T' -> el.setBorderTop(en.isSelected());
+                    case 'B' -> el.setBorderBottom(en.isSelected());
+                    case 'L' -> el.setBorderLeft(en.isSelected());
+                    default -> el.setBorderRight(en.isSelected());
+                }
+                refreshCanvas();
+            });
+            grid.add(en, 0, r);
+
+            ColorPickerButton colBtn = new ColorPickerButton(el.sideColorHex(s), false, hex -> {
+                switch (s) {
+                    case 'T' -> el.setBorderTopColor(hex);
+                    case 'B' -> el.setBorderBottomColor(hex);
+                    case 'L' -> el.setBorderLeftColor(hex);
+                    default -> el.setBorderRightColor(hex);
+                }
+                refreshCanvas();
+            });
+            grid.add(colBtn, 1, r);
+
+            Spinner<Double> wSpin = new Spinner<>(0.0, 10.0, el.sideWidthMm(s), 0.25);
+            wSpin.setEditable(true);
+            wSpin.setPrefWidth(80);
+            wSpin.valueProperty().addListener((obs, o, v) -> {
+                switch (s) {
+                    case 'T' -> el.setBorderTopWidth(v);
+                    case 'B' -> el.setBorderBottomWidth(v);
+                    case 'L' -> el.setBorderLeftWidth(v);
+                    default -> el.setBorderRightWidth(v);
+                }
+                refreshCanvas();
+            });
+            grid.add(wSpin, 2, r);
+
+            Button reset = createToolbarBtn("↺", "Reset this side to inherit the global stroke", () -> {
+                switch (s) {
+                    case 'T' -> { el.setBorderTopWidth(null); el.setBorderTopColor(null); }
+                    case 'B' -> { el.setBorderBottomWidth(null); el.setBorderBottomColor(null); }
+                    case 'L' -> { el.setBorderLeftWidth(null); el.setBorderLeftColor(null); }
+                    default -> { el.setBorderRightWidth(null); el.setBorderRightColor(null); }
+                }
+                refreshCanvas();
+                updatePropertiesPanel();
+            });
+            grid.add(reset, 3, r);
+            r++;
+        }
+
+        Label hint = new Label("Untouched sides inherit the global Stroke Color / Width above.");
+        hint.getStyleClass().add("guide-note");
+        sidePane.setContent(new VBox(6, grid, hint));
+        propBox.getChildren().add(sidePane);
     }
 
     private void buildLineProperties(TemplateElement el) {
@@ -1433,8 +1800,10 @@ public class TemplateDesigner extends BorderPane {
         grid.add(new Label("Direction:"), 0, 0);
         grid.add(dirCb, 1, 0);
 
-        ColorPicker colorPicker = new ColorPicker(hexToColor(el.getBorderColor(), Color.web("#1a1a1a")));
-        colorPicker.setOnAction(e -> { el.setBorderColor(colorToHex(colorPicker.getValue())); refreshCanvas(); });
+        ColorPickerButton colorPicker = new ColorPickerButton(el.getBorderColor(), false, hex -> {
+            el.setBorderColor(hex);
+            refreshCanvas();
+        });
         grid.add(new Label("Line Color:"), 0, 1);
         grid.add(colorPicker, 1, 1);
 
@@ -1443,6 +1812,12 @@ public class TemplateDesigner extends BorderPane {
         thickSpin.valueProperty().addListener((obs, o, v) -> { el.setBorderWidth(v); refreshCanvas(); });
         grid.add(new Label("Thickness (mm):"), 0, 2);
         grid.add(thickSpin, 1, 2);
+
+        ComboBox<String> styleCb = new ComboBox<>(FXCollections.observableArrayList("solid", "dashed", "dotted", "double"));
+        styleCb.setValue(el.getStrokeStyle());
+        styleCb.valueProperty().addListener((obs, o, v) -> { if (v != null) el.setStrokeStyle(v); refreshCanvas(); });
+        grid.add(new Label("Line Style:"), 0, 3);
+        grid.add(styleCb, 1, 3);
 
         sec.getChildren().addAll(title, grid);
         propBox.getChildren().add(sec);
@@ -1660,15 +2035,17 @@ public class TemplateDesigner extends BorderPane {
         GridPane grid = new GridPane();
         grid.setHgap(8); grid.setVgap(8);
 
-        ColorPicker hBgPicker = new ColorPicker(hexToColor(el.getHeaderBg(), Color.web("#efe9db")));
-        hBgPicker.setTooltip(new Tooltip("Header Background Color"));
-        hBgPicker.setOnAction(e -> { el.setHeaderBg(colorToHex(hBgPicker.getValue())); refreshCanvas(); });
+        ColorPickerButton hBgPicker = new ColorPickerButton(el.getHeaderBg(), false, hex -> {
+            el.setHeaderBg(hex);
+            refreshCanvas();
+        });
         grid.add(new Label("Header BG:"), 0, 0);
         grid.add(hBgPicker, 1, 0);
 
-        ColorPicker hTextPicker = new ColorPicker(hexToColor(el.getHeaderColor(), Color.web("#1a1a1a")));
-        hTextPicker.setTooltip(new Tooltip("Header Text Color"));
-        hTextPicker.setOnAction(e -> { el.setHeaderColor(colorToHex(hTextPicker.getValue())); refreshCanvas(); });
+        ColorPickerButton hTextPicker = new ColorPickerButton(el.getHeaderColor(), false, hex -> {
+            el.setHeaderColor(hex);
+            refreshCanvas();
+        });
         grid.add(new Label("Header Text:"), 0, 1);
         grid.add(hTextPicker, 1, 1);
 
@@ -1707,9 +2084,10 @@ public class TemplateDesigner extends BorderPane {
         grid.add(new Label("Border Type:"), 0, 4);
         grid.add(borderTypeCb, 1, 4);
 
-        ColorPicker bColorPicker = new ColorPicker(hexToColor(el.getTableBorderColor(), Color.web("#c8c8c8")));
-        bColorPicker.setTooltip(new Tooltip("Table Border Color"));
-        bColorPicker.setOnAction(e -> { el.setTableBorderColor(colorToHex(bColorPicker.getValue())); refreshCanvas(); });
+        ColorPickerButton bColorPicker = new ColorPickerButton(el.getTableBorderColor(), false, hex -> {
+            el.setTableBorderColor(hex);
+            refreshCanvas();
+        });
         grid.add(new Label("Border Color:"), 0, 5);
         grid.add(bColorPicker, 1, 5);
 
@@ -1742,21 +2120,24 @@ public class TemplateDesigner extends BorderPane {
         grid.add(sidesBox, 1, 7);
 
         // --- Data row (record) colors ---
-        ColorPicker rowBgPicker = new ColorPicker(hexToColor(el.getRowBg(), Color.WHITE));
-        rowBgPicker.setTooltip(new Tooltip("Data Row Background Color"));
-        rowBgPicker.setOnAction(e -> { el.setRowBg(colorToHex(rowBgPicker.getValue())); refreshCanvas(); });
+        ColorPickerButton rowBgPicker = new ColorPickerButton(el.getRowBg(), false, hex -> {
+            el.setRowBg(hex);
+            refreshCanvas();
+        });
         grid.add(new Label("Row BG:"), 0, 8);
         grid.add(rowBgPicker, 1, 8);
 
-        ColorPicker rowTextPicker = new ColorPicker(hexToColor(el.getRowColor(), Color.web("#1a1a1a")));
-        rowTextPicker.setTooltip(new Tooltip("Data Row Text Color"));
-        rowTextPicker.setOnAction(e -> { el.setRowColor(colorToHex(rowTextPicker.getValue())); refreshCanvas(); });
+        ColorPickerButton rowTextPicker = new ColorPickerButton(el.getRowColor(), false, hex -> {
+            el.setRowColor(hex);
+            refreshCanvas();
+        });
         grid.add(new Label("Row Text:"), 0, 9);
         grid.add(rowTextPicker, 1, 9);
 
-        ColorPicker zebraPicker = new ColorPicker(hexToColor(el.getZebraColor(), Color.web("#f8f8f8")));
-        zebraPicker.setTooltip(new Tooltip("Alternate (striped) Row Color — used when Zebra Striping is on"));
-        zebraPicker.setOnAction(e -> { el.setZebraColor(colorToHex(zebraPicker.getValue())); refreshCanvas(); });
+        ColorPickerButton zebraPicker = new ColorPickerButton(el.getZebraColor(), false, hex -> {
+            el.setZebraColor(hex);
+            refreshCanvas();
+        });
         grid.add(new Label("Zebra Color:"), 0, 10);
         grid.add(zebraPicker, 1, 10);
 
@@ -2580,16 +2961,21 @@ public class TemplateDesigner extends BorderPane {
         el.setH(10);
 
         switch (type) {
-            case TEXT: el.setText("New text"); break;
-            case RECT: el.setW(60); el.setH(30); el.setBg("#f4f1ea"); break;
-            case LINE: el.setW(80); el.setH(1); el.setBorderWidth(0.5); break;
-            case IMAGE: el.setW(30); el.setH(25); el.setUseBusinessLogo(true); break;
-            case QRCODE: el.setW(24); el.setH(24); break;
-            case BARCODE: el.setW(45); el.setH(14); break;
+            case TEXT: el.setText("New text"); el.setName("Text"); break;
+            case RECT: el.setW(60); el.setH(30); el.setBg("#f4f1ea"); el.setName("Rectangle"); el.setBorderWidth(0.4); break;
+            case ELLIPSE: el.setW(30); el.setH(30); el.setBg("#f4f1ea"); el.setName("Ellipse"); el.setBorderWidth(0.4); break;
+            case STAR: el.setW(24); el.setH(24); el.setBg("#f4f1ea"); el.setName("Star"); el.setBorderWidth(0.4); break;
+            case ARROW: el.setW(40); el.setH(8); el.setName("Arrow"); el.setBorderWidth(0.8); break;
+            case LINE: el.setW(80); el.setH(1); el.setBorderWidth(0.5); el.setName("Line"); break;
+            case IMAGE: el.setW(30); el.setH(25); el.setUseBusinessLogo(true); el.setName("Image"); break;
+            case QRCODE: el.setW(24); el.setH(24); el.setName("QR Code"); break;
+            case BARCODE: el.setW(45); el.setH(14); el.setName("Barcode"); break;
             case TABLE:
                 el.setW(190); el.setH(30);
                 el.setColumns(PresetTemplates.defaultItemColumns());
+                el.setName("Item Table");
                 break;
+            default: break;
         }
 
         template.getElements().add(el);
@@ -2602,33 +2988,20 @@ public class TemplateDesigner extends BorderPane {
 
     private void duplicateSelected() {
         if (selectedElement == null) return;
-        TemplateElement copy = new TemplateElement();
+        TemplateElement copy;
+        try {
+            // Full-fidelity JSON round-trip: every property (incl. new shape /
+            // per-side stroke fields) is copied without maintaining a field list.
+            copy = mapper.readValue(mapper.writeValueAsString(selectedElement), TemplateElement.class);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            copy = selectedElement; // unreachable in practice; prevents partial adds below on failure
+            return;
+        }
         copy.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
-        copy.setType(selectedElement.getType());
+        if (copy.getName() != null) copy.setName(copy.getName() + " copy");
         copy.setX(selectedElement.getX() + 5);
         copy.setY(selectedElement.getY() + 5);
-        copy.setW(selectedElement.getW());
-        copy.setH(selectedElement.getH());
-        copy.setText(selectedElement.getText());
-        copy.setColor(selectedElement.getColor());
-        copy.setBg(selectedElement.getBg());
-        copy.setBorderColor(selectedElement.getBorderColor());
-        copy.setBorderWidth(selectedElement.getBorderWidth());
-        copy.setFontSize(selectedElement.getFontSize());
-        copy.setFontWeight(selectedElement.getFontWeight());
-        copy.setItalic(selectedElement.isItalic());
-        copy.setAlign(selectedElement.getAlign());
-        copy.setHeaderBg(selectedElement.getHeaderBg());
-        copy.setHeaderColor(selectedElement.getHeaderColor());
-        copy.setRowHeight(selectedElement.getRowHeight());
-        copy.setShowZebra(selectedElement.isShowZebra());
-        if (selectedElement.getColumns() != null) {
-            List<TableColumn> copiedCols = new ArrayList<>();
-            for (TableColumn c : selectedElement.getColumns()) {
-                copiedCols.add(new TableColumn(c.getKey(), c.getLabel(), c.getWidth(), c.getAlign()));
-            }
-            copy.setColumns(copiedCols);
-        }
 
         template.getElements().add(copy);
         selectedElement = copy;
@@ -2674,8 +3047,17 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void refreshLayersList() {
-        layersList.setItems(FXCollections.observableArrayList(template.getElements()));
-        syncLayersListSelection();
+        // Guard the WHOLE refresh: setItems() makes the selection model retain the
+        // old selected index and re-emit the (old) selected item as a change event.
+        // Without the guard that event re-selected the previously selected element
+        // right after add/duplicate/delete — silently discarding the new selection.
+        isUpdatingLayersSelection = true;
+        try {
+            layersList.setItems(FXCollections.observableArrayList(template.getElements()));
+            syncLayersListSelection();
+        } finally {
+            isUpdatingLayersSelection = false;
+        }
     }
 
     private void saveTemplate() {
@@ -2776,9 +3158,67 @@ public class TemplateDesigner extends BorderPane {
     private final EventHandler<KeyEvent> sceneKeyFilter = this::handleGlobalKeyPress;
     private final EventHandler<KeyEvent> sceneKeyReleaseFilter = this::handleGlobalKeyRelease;
 
+    /** Header “? Help” / F1: all keyboard shortcuts & mouse controls. */
+    private void showShortcutsDialog() {
+        Dialog<Void> dlg = new Dialog<>();
+        dlg.setTitle("Keyboard Shortcuts");
+        dlg.setHeaderText("Template Designer — Shortcuts & Mouse Controls");
+        DialogHelper.styleDialog(dlg, 560, 560);
+        dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        String[][] shortcuts = {
+                {"V", "Select tool"}, {"H / Space (hold)", "Pan tool"},
+                {"Mouse drag on object", "Move object (magnet snaps to edges)"},
+                {"Drag ▣ handles", "Resize — 6 anchors incl. left (W) & top (N)"},
+                {"Arrow keys", "Nudge object 1mm (Shift = 5mm)"},
+                {"Ctrl Z / Ctrl Shift Z / Ctrl Y", "Undo / Redo"},
+                {"Ctrl C / Ctrl V / Ctrl D", "Copy / Paste / Duplicate object"},
+                {"Delete / Backspace", "Delete selected object (safe while typing)"},
+                {"Esc", "Deselect object"},
+                {"M", "Toggle Magnet (snap to objects / page centre)"},
+                {"G", "Toggle 1mm grid"}, {"R", "Toggle mm rulers"},
+                {"Ctrl S", "Save template"},
+                {"Ctrl 0 / Ctrl + / Ctrl -", "Zoom 100% / in / out"},
+                {"Ctrl + Scroll", "Zoom at pointer"},
+                {"Middle-drag / Pan tool drag", "Pan the canvas"},
+                {"Double-click layer name", "Rename object"},
+                {"Layers 👁 / 🔒", "Hide-show / lock objects directly in the list"},
+                {"F1", "This help"}
+        };
+
+        GridPane grid = new GridPane();
+        grid.setHgap(14);
+        grid.setVgap(7);
+        grid.setPadding(new Insets(8));
+        int r = 0;
+        for (String[] sc : shortcuts) {
+            Label key = new Label(sc[0]);
+            key.getStyleClass().add("shortcut-key");
+            Label val = new Label(sc[1]);
+            val.getStyleClass().add("shortcut-desc");
+            grid.add(key, 0, r);
+            grid.add(val, 1, r);
+            r++;
+        }
+
+        ScrollPane sp = new ScrollPane(grid);
+        sp.setFitToWidth(true);
+        sp.getStyleClass().add("scroll-side");
+        sp.setPrefSize(540, 430);
+        dlg.getDialogPane().setContent(sp);
+        dlg.showAndWait();
+    }
+
     private void setupKeyboardShortcuts() {
         setFocusTraversable(true);
-        setOnMouseClicked(e -> requestFocus());
+        // Root grabs focus only when clicking non-text areas — clicking a text
+        // field/spinner/combo must NOT steal its focus (stealing it made the
+        // next Backspace fall through to the scene filter and DELETE the object).
+        setOnMouseClicked(e -> {
+            if (e.getTarget() instanceof Node tn && isInsideTextEditor(tn)) return;
+            if (e.getPickResult().getIntersectedNode() instanceof Node pn && isInsideTextEditor(pn)) return;
+            requestFocus();
+        });
 
         sceneProperty().addListener((obs, oldS, newS) -> {
             if (oldS != null) {
@@ -2792,10 +3232,166 @@ public class TemplateDesigner extends BorderPane {
         });
     }
 
+    /** True when node is (or lives inside) a text-editing control (TextField, Spinner editor, ComboBox…). */
+    private static boolean isInsideTextEditor(Node n) {
+        while (n != null) {
+            if (n instanceof TextInputControl || n instanceof ComboBox || n instanceof Spinner) return true;
+            n = n.getParent();
+        }
+        return false;
+    }
+
+    /** Lightweight in-place refresh of the X/Y/W/H spinners (used every drag frame — no rebuild). */
+    private void syncGeometrySpinners() {
+        if (selectedElement == null || gxSpin == null) return;
+        syncingGeometry = true;
+        try {
+            gxSpin.getValueFactory().setValue(selectedElement.getX());
+            gySpin.getValueFactory().setValue(selectedElement.getY());
+            gwSpin.getValueFactory().setValue(selectedElement.getW());
+            ghSpin.getValueFactory().setValue(selectedElement.getH());
+        } catch (Exception ignored) {
+        } finally {
+            syncingGeometry = false;
+        }
+    }
+
+    /* ===================== Magnet — snap to other objects / page ===================== */
+
+    private static final double SNAP_TOLERANCE_MM = 2.0;
+
+    private void clearSnapGuides() {
+        guidesPane.getChildren().clear();
+    }
+
+    /** Draws the magenta magnet guide lines (mm positions; null = hide that axis). */
+    private void showSnapGuides(Double vmMm, Double hmMm) {
+        clearSnapGuides();
+        if (template == null || template.getPage() == null) return;
+        PageConfig page = template.getPage();
+        if (vmMm != null) {
+            Line l = new Line(vmMm * MM_PX, 0, vmMm * MM_PX, page.getHeight() * MM_PX);
+            l.setStroke(Color.web("#EC4899"));
+            l.setStrokeWidth(1.2);
+            l.getStrokeDashArray().addAll(4.0, 3.0);
+            guidesPane.getChildren().add(l);
+        }
+        if (hmMm != null) {
+            Line l = new Line(0, hmMm * MM_PX, page.getWidth() * MM_PX, hmMm * MM_PX);
+            l.setStroke(Color.web("#EC4899"));
+            l.setStrokeWidth(1.2);
+            l.getStrokeDashArray().addAll(4.0, 3.0);
+            guidesPane.getChildren().add(l);
+        }
+    }
+
+    /** All vertical magnet candidate lines (mm): page centre, margins, other objects' L/C/R. */
+    private List<Double> magnetLinesX(TemplateElement moving) {
+        List<Double> lines = new ArrayList<>();
+        PageConfig page = template.getPage();
+        lines.add(page.getWidth() / 2.0);
+        PageConfig.Margins mg = page.getMargin();
+        if (mg != null) {
+            lines.add(mg.getLeft());
+            lines.add(page.getWidth() - mg.getRight());
+        }
+        for (TemplateElement o : template.getElements()) {
+            if (o == moving || o.isHidden()) continue;
+            lines.add(o.getX());
+            lines.add(o.getX() + o.getW() / 2.0);
+            lines.add(o.getX() + o.getW());
+        }
+        return lines;
+    }
+
+    /** All horizontal magnet candidate lines (mm): page centre, margins, other objects' T/M/B. */
+    private List<Double> magnetLinesY(TemplateElement moving) {
+        List<Double> lines = new ArrayList<>();
+        PageConfig page = template.getPage();
+        lines.add(page.getHeight() / 2.0);
+        PageConfig.Margins mg = page.getMargin();
+        if (mg != null) {
+            lines.add(mg.getTop());
+            lines.add(page.getHeight() - mg.getBottom());
+        }
+        for (TemplateElement o : template.getElements()) {
+            if (o == moving || o.isHidden()) continue;
+            lines.add(o.getY());
+            lines.add(o.getY() + o.getH() / 2.0);
+            lines.add(o.getY() + o.getH());
+        }
+        return lines;
+    }
+
+    /**
+     * Magnet snap for a MOVING object: aligns its left/centre/right edge to the
+     * nearest vertical magnet line and top/middle/bottom to the nearest horizontal
+     * line, within {@link #SNAP_TOLERANCE_MM}.
+     *
+     * @return {snappedX, snappedY, guideVmM(-1 when none), guideHmM(-1 when none)}
+     */
+    public double[] snapMove(TemplateElement moving, double x, double y) {
+        double w = moving.getW(), h = moving.getH();
+        double bestX = x, bestY = y;
+        double guideV = -1, guideH = -1;
+        double bestDX = SNAP_TOLERANCE_MM + 1e-6, bestDY = SNAP_TOLERANCE_MM + 1e-6;
+
+        double[] myX = {x, x + w / 2.0, x + w};
+        double[] myY = {y, y + h / 2.0, y + h};
+
+        for (double line : magnetLinesX(moving)) {
+            for (double mx : myX) {
+                double d = Math.abs(mx - line);
+                if (d < bestDX) {
+                    bestDX = d;
+                    bestX = x + (line - mx);
+                    guideV = line;
+                }
+            }
+        }
+        for (double line : magnetLinesY(moving)) {
+            for (double my : myY) {
+                double d = Math.abs(my - line);
+                if (d < bestDY) {
+                    bestDY = d;
+                    bestY = y + (line - my);
+                    guideH = line;
+                }
+            }
+        }
+        return new double[]{Math.max(0, bestX), Math.max(0, bestY), guideV, guideH};
+    }
+
+    /** Nearest vertical object/margin/centre edge (mm) to a dragging edge; -1 when out of tolerance. */
+    private double nearestObjectEdgeX(TemplateElement moving, double edgeXmM) {
+        double best = -1, bestD = SNAP_TOLERANCE_MM + 1e-6;
+        for (double line : magnetLinesX(moving)) {
+            double d = Math.abs(edgeXmM - line);
+            if (d < bestD) { bestD = d; best = line; }
+        }
+        return best;
+    }
+
+    /** Nearest horizontal object/margin/centre edge (mm) to a dragging edge; -1 when out of tolerance. */
+    private double nearestObjectEdgeY(TemplateElement moving, double edgeYmM) {
+        double best = -1, bestD = SNAP_TOLERANCE_MM + 1e-6;
+        for (double line : magnetLinesY(moving)) {
+            double d = Math.abs(edgeYmM - line);
+            if (d < bestD) { bestD = d; best = line; }
+        }
+        return best;
+    }
+
     private void handleGlobalKeyPress(KeyEvent e) {
         if (!isVisible() || getScene() == null) return;
 
-        boolean isTextInput = (e.getTarget() instanceof TextInputControl);
+        // Text-input safety: any key typed while editing a text control belongs
+        // to that control. Check BOTH the event target and the scene focus owner
+        // — the filter runs before the target, and a stale/steal focus scenario
+        // previously let Backspace reach the delete shortcut and remove the
+        // object being edited.
+        boolean isTextInput = (e.getTarget() instanceof TextInputControl)
+                || (getScene().getFocusOwner() instanceof TextInputControl);
 
         if (e.isControlDown() && e.getCode() == KeyCode.S) {
             saveTemplate();
@@ -2825,6 +3421,30 @@ public class TemplateDesigner extends BorderPane {
             return;
         } else if (e.getCode() == KeyCode.H && !e.isControlDown()) {
             setPanMode(true);
+            e.consume();
+            return;
+        }
+
+        // View / snap toggles
+        if (!e.isControlDown() && e.getCode() == KeyCode.M) {
+            snapToObjects = !snapToObjects;
+            if (!snapToObjects) clearSnapGuides();
+            Toast.show(app.getRootPane(), "Magnet " + (snapToObjects ? "ON" : "OFF"),
+                    snapToObjects ? "Edges snap to other objects & page centre." : "Free positioning — no object snapping.", false);
+            e.consume();
+            return;
+        } else if (!e.isControlDown() && e.getCode() == KeyCode.G) {
+            showGrid = !showGrid;
+            refreshCanvas();
+            e.consume();
+            return;
+        } else if (!e.isControlDown() && e.getCode() == KeyCode.R) {
+            showRulers = !showRulers;
+            refreshCanvas();
+            e.consume();
+            return;
+        } else if (e.getCode() == KeyCode.F1) {
+            showShortcutsDialog();
             e.consume();
             return;
         }
