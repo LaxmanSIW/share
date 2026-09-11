@@ -17,6 +17,7 @@ import javafx.scene.Node;
 import javafx.scene.chart.*;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.stage.PopupWindow;
 import javafx.util.Duration;
 
 import java.text.DecimalFormat;
@@ -298,11 +299,13 @@ public class Dashboard2View extends BorderPane {
         HBox row = new HBox(20);
 
         // Chart 1: Monthly Sales vs Payments (12 Months)
-        VBox card1 = UiTheme.card(10);
+        VBox card1 = UiTheme.card(2);
+        card1.setStyle("-fx-padding: 6px 14px 4px 14px;");
         HBox.setHgrow(card1, Priority.ALWAYS);
 
         HBox c1Header = new HBox(8);
         c1Header.setAlignment(Pos.CENTER_LEFT);
+        c1Header.setStyle("-fx-padding: 0 0 2px 0;");
         Label c1Title = UiTheme.sectionTitle("Monthly Sales vs Payments");
         Label c1Sub = new Label("Last 12 months comparison");
         c1Sub.getStyleClass().add("kpi-subtext");
@@ -312,9 +315,11 @@ public class Dashboard2View extends BorderPane {
         CategoryAxis xAxis1 = new CategoryAxis();
         NumberAxis yAxis1 = new NumberAxis();
         LineChart<String, Number> lineChart = new LineChart<>(xAxis1, yAxis1);
-        lineChart.setPrefHeight(260);
+        lineChart.setPrefHeight(390);
+        lineChart.setMinHeight(340);
         lineChart.setAnimated(false);
         lineChart.setCreateSymbols(true);
+        VBox.setVgrow(lineChart, Priority.ALWAYS);
 
         XYChart.Series<String, Number> salesSeries = new XYChart.Series<>();
         salesSeries.setName("Sales (₹)");
@@ -349,11 +354,13 @@ public class Dashboard2View extends BorderPane {
         card1.getChildren().add(lineChart);
 
         // Chart 2: Monthly Trouser Movement (Pieces Sold)
-        VBox card2 = UiTheme.card(10);
+        VBox card2 = UiTheme.card(2);
+        card2.setStyle("-fx-padding: 6px 14px 4px 14px;");
         HBox.setHgrow(card2, Priority.ALWAYS);
 
         HBox c2Header = new HBox(8);
         c2Header.setAlignment(Pos.CENTER_LEFT);
+        c2Header.setStyle("-fx-padding: 0 0 2px 0;");
         Label c2Title = UiTheme.sectionTitle("Monthly Trouser Movement");
         Label c2Sub = new Label("Pieces sold per month");
         c2Sub.getStyleClass().add("kpi-subtext");
@@ -363,11 +370,13 @@ public class Dashboard2View extends BorderPane {
         CategoryAxis xAxis2 = new CategoryAxis();
         NumberAxis yAxis2 = new NumberAxis();
         BarChart<String, Number> barChart = new BarChart<>(xAxis2, yAxis2);
-        barChart.setPrefHeight(260);
+        barChart.setPrefHeight(390);
+        barChart.setMinHeight(340);
         barChart.setAnimated(false);
         barChart.setLegendVisible(false);
         barChart.setCategoryGap(24);
         barChart.setBarGap(6);
+        VBox.setVgrow(barChart, Priority.ALWAYS);
 
         XYChart.Series<String, Number> qtySeries = new XYChart.Series<>();
         qtySeries.setName("Pieces");
@@ -399,10 +408,12 @@ public class Dashboard2View extends BorderPane {
     }
 
     private Node createParcelAnalysisCard(List<Transaction> txs) {
-        VBox card = UiTheme.card(12);
+        VBox card = UiTheme.card(4);
+        card.setStyle("-fx-padding: 8px 14px 6px 14px;");
 
         HBox top = new HBox(12);
         top.setAlignment(Pos.CENTER_LEFT);
+        top.setStyle("-fx-padding: 0 0 2px 0;");
 
         VBox titleBox = new VBox(2);
         Label title = UiTheme.sectionTitle("Parcel Counts Analysis");
@@ -437,7 +448,9 @@ public class Dashboard2View extends BorderPane {
 
         VBox callout = new VBox(6);
         callout.setPrefWidth(220);
-        callout.setPadding(new Insets(20));
+        callout.setPrefHeight(330);
+        callout.setMinHeight(300);
+        callout.setPadding(new Insets(16, 20, 16, 20));
         callout.setAlignment(Pos.CENTER);
         callout.getStyleClass().add("card-kpi-mini");
         callout.setStyle("-fx-border-left-color: #F2CA6B; -fx-border-left-width: 4px;");
@@ -458,12 +471,14 @@ public class Dashboard2View extends BorderPane {
         CategoryAxis xAxis = new CategoryAxis();
         NumberAxis yAxis = new NumberAxis();
         BarChart<String, Number> parcelChart = new BarChart<>(xAxis, yAxis);
-        parcelChart.setPrefHeight(220);
+        parcelChart.setPrefHeight(330);
+        parcelChart.setMinHeight(300);
         parcelChart.setLegendVisible(false);
         parcelChart.setAnimated(false);
         parcelChart.setCategoryGap(20);
         parcelChart.setBarGap(6);
         HBox.setHgrow(parcelChart, Priority.ALWAYS);
+        VBox.setVgrow(parcelChart, Priority.ALWAYS);
 
         XYChart.Series<String, Number> series = new XYChart.Series<>();
         series.setName("Parcels");
@@ -598,6 +613,14 @@ public class Dashboard2View extends BorderPane {
         tooltip.setShowDelay(Duration.millis(50));
         tooltip.setHideDelay(Duration.millis(120));
         tooltip.setShowDuration(Duration.seconds(20));
+        tooltip.setAnchorLocation(PopupWindow.AnchorLocation.CONTENT_BOTTOM_LEFT);
+        tooltip.setOnShowing(ev -> {
+            // Anchor location CONTENT_BOTTOM_LEFT places the bottom of the tooltip at anchorY.
+            // By default JavaFX sets anchorY to cursorY + 20.
+            // Subtracting 27px places the bottom of the tooltip ~7px right above the cursor,
+            // decreasing the space by more than half while mouse transparency prevents blinking.
+            tooltip.setAnchorY(tooltip.getAnchorY() - 27);
+        });
         tooltip.setStyle(
             "-fx-background-color: transparent; " +
             "-fx-padding: 0; " +
@@ -606,6 +629,7 @@ public class Dashboard2View extends BorderPane {
         );
 
         VBox box = new VBox(6);
+        box.setMouseTransparent(true);
         box.setStyle(
             "-fx-background-color: #070B12; " +
             "-fx-border-color: " + accentColorHex + "; " +

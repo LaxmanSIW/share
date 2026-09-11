@@ -2517,7 +2517,7 @@ Label {
    DARK THEME CHART STYLING (Dashboards & Reports)
    ========================================================================== */
 .chart {
-    -fx-padding: 6;
+    -fx-padding: 0 4 2 0;
 }
 
 .chart-plot-background {
@@ -2534,7 +2534,7 @@ Label {
 .axis {
     -fx-tick-label-fill: #64748B;
     -fx-tick-label-font-size: 10px;
-    -fx-tick-length: 4;
+    -fx-tick-length: 3;
 }
 
 .axis:left, .axis:bottom {
@@ -2553,7 +2553,7 @@ Label {
 
 .chart-legend {
     -fx-background-color: transparent;
-    -fx-padding: 6 0 0 0;
+    -fx-padding: 2 0 0 0;
 }
 
 .chart-legend-item {
@@ -2624,7 +2624,7 @@ Label {
     -fx-background-color: #070B12;
     -fx-border-color: #1A2333;
     -fx-border-width: 1 0 0 0;
-    -fx-padding: 5 14 5 14;
+    -fx-padding: 3 12 3 12;
     -fx-alignment: center-left;
 }
 
