@@ -3112,14 +3112,25 @@ public class TemplateDesigner extends BorderPane {
                 updateElementVisualInPlace(el);
             });
 
-            ComboBox<String> keyCombo = new ComboBox<>(FXCollections.observableArrayList(
-                    "sr", "desc", "hsn", "qty", "unit", "rate", "disc", "taxable", "gst", "amount",
-                    "batch_no", "exp_date", "mrp", "serial_no", "part_no"
-            ));
+            // Build a labelled combo that shows "Label (key)" for known columns
+            ComboBox<String> keyCombo = new ComboBox<>(buildColumnKeyList());
             keyCombo.setEditable(true);
             keyCombo.setValue(c.getKey() != null ? c.getKey() : "desc");
-            keyCombo.setPrefWidth(95);
-            keyCombo.setTooltip(new Tooltip("Data Field Binding (Pick preset or type custom key)"));
+            keyCombo.setPrefWidth(150);
+            keyCombo.setTooltip(new Tooltip("Data Field Binding — pick a column or type a custom key"));
+            // Display human-readable label in the list but store only the raw key
+            keyCombo.setCellFactory(lv -> new ListCell<>() {
+                @Override protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    setText(empty || item == null ? null : columnKeyToLabel(item));
+                }
+            });
+            keyCombo.setButtonCell(new ListCell<>() {
+                @Override protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    setText(empty || item == null ? null : columnKeyToLabel(item));
+                }
+            });
             keyCombo.valueProperty().addListener((obs, o, v) -> {
                 if (updatingProperties || v == null || Objects.equals(o, v)) return;
                 c.setKey(v);
@@ -3181,11 +3192,8 @@ public class TemplateDesigner extends BorderPane {
         }
 
         HBox colActions = new HBox(8);
-        Button addColBtn = createToolbarBtn("+ Add Column", "Add a new column to the table", () -> {
-            el.getColumns().add(new TableColumn("desc", "New Column", 15.0, "left"));
-            saveState();
-            updateElementVisualInPlace(el);
-            updatePropertiesPanel();
+        Button addColBtn = createToolbarBtn("+ Add Column", "Choose a column to add to the table", () -> {
+            showColumnPickerDialog(el);
         });
 
         Button presetGst = createToolbarBtn("GST Standard (8)", "Reset to standard 8-column GST table", () -> {
@@ -4780,6 +4788,202 @@ public class TemplateDesigner extends BorderPane {
         saveState();
         updateElementVisualInPlace(el);
         updatePropertiesPanel();
+    }
+
+    // ─── Column Picker helpers ─────────────────────────────────────────────────
+
+    /** Inner record describing one available table column option. */
+    private record ColumnOption(String key, String label, String group,
+                                double defaultWidth, String defaultAlign) {
+        @Override public String toString() { return label + "  (" + key + ")"; }
+    }
+
+    /**
+     * Returns an ordered list of all available column keys for the per-row
+     * keyCombo (built-ins first, then user table-scope custom vars).
+     */
+    private ObservableList<String> buildColumnKeyList() {
+        List<String> keys = new java.util.ArrayList<>(List.of(
+            "sr", "desc", "hsn", "qty", "unit", "rate",
+            "gst", "disc", "taxable", "amount",
+            "batch_no", "exp_date", "mrp", "serial_no", "part_no"
+        ));
+        if (variableDao != null) {
+            for (VariableDef v : variableDao.getTableScopeVariables()) {
+                if (!keys.contains(v.getKey())) keys.add(v.getKey());
+            }
+        }
+        return FXCollections.observableArrayList(keys);
+    }
+
+    /** Maps a raw column key to a human-readable display label. */
+    private String columnKeyToLabel(String key) {
+        if (key == null) return "";
+        return switch (key.toLowerCase().trim()) {
+            case "sr", "index", "#", "s_no", "sno" -> "Sr. No. (" + key + ")";
+            case "desc", "description", "name", "item_name" -> "Description (" + key + ")";
+            case "hsn", "sac", "hsn_sac"             -> "HSN / SAC (" + key + ")";
+            case "qty", "quantity"                    -> "Quantity (" + key + ")";
+            case "unit"                               -> "Unit (" + key + ")";
+            case "rate", "price", "unit_price"        -> "Rate / Price (" + key + ")";
+            case "gst", "tax"                         -> "GST % (" + key + ")";
+            case "disc", "discount"                   -> "Discount % (" + key + ")";
+            case "taxable", "taxable_value"           -> "Taxable Value (" + key + ")";
+            case "amount", "total", "total_amount"    -> "Amount (" + key + ")";
+            case "batch_no"                           -> "Batch No. (" + key + ")";
+            case "exp_date"                           -> "Expiry Date (" + key + ")";
+            case "mrp"                                -> "MRP (" + key + ")";
+            case "serial_no"                          -> "Serial No. (" + key + ")";
+            case "part_no"                            -> "Part No. (" + key + ")";
+            default -> {
+                // Check user custom vars for a label
+                if (variableDao != null) {
+                    for (VariableDef v : variableDao.getTableScopeVariables()) {
+                        if (key.equals(v.getKey())) yield v.getLabel() + " (" + key + ")";
+                    }
+                }
+                yield key;
+            }
+        };
+    }
+
+    /**
+     * Opens the Column Picker dialog for the given table element.
+     * Shows all available columns grouped by category. Columns already present
+     * in the table are shown but disabled (de-dup enforcement).
+     */
+    private void showColumnPickerDialog(TemplateElement el) {
+        // ── Build full column catalog ──
+        List<ColumnOption> catalog = new java.util.ArrayList<>();
+        // Core columns
+        catalog.add(new ColumnOption("sr",      "Sr. No.",         "Core",   7,  "center"));
+        catalog.add(new ColumnOption("desc",    "Description",     "Core",  37,  "left"));
+        catalog.add(new ColumnOption("hsn",     "HSN / SAC",       "Core",  12,  "center"));
+        catalog.add(new ColumnOption("qty",     "Quantity",        "Core",   9,  "right"));
+        catalog.add(new ColumnOption("unit",    "Unit",            "Core",   9,  "center"));
+        catalog.add(new ColumnOption("rate",    "Rate / Price",    "Core",  12,  "right"));
+        catalog.add(new ColumnOption("gst",     "GST %",           "Core",   7,  "right"));
+        catalog.add(new ColumnOption("disc",    "Discount %",      "Core",   7,  "right"));
+        catalog.add(new ColumnOption("taxable", "Taxable Value",   "Core",  12,  "right"));
+        catalog.add(new ColumnOption("amount",  "Amount",          "Core",  14,  "right"));
+        // Common custom columns
+        catalog.add(new ColumnOption("batch_no",   "Batch No.",    "Common",  12, "center"));
+        catalog.add(new ColumnOption("exp_date",   "Expiry Date",  "Common",  12, "center"));
+        catalog.add(new ColumnOption("mrp",        "MRP",          "Common",  10, "right"));
+        catalog.add(new ColumnOption("serial_no",  "Serial No.",   "Common",  12, "left"));
+        catalog.add(new ColumnOption("part_no",    "Part No.",     "Common",  12, "left"));
+        // User-defined table-scope custom variables
+        if (variableDao != null) {
+            for (VariableDef v : variableDao.getTableScopeVariables()) {
+                boolean already = catalog.stream().anyMatch(o -> o.key().equals(v.getKey()));
+                if (!already) {
+                    catalog.add(new ColumnOption(v.getKey(), v.getLabel(), "Your Custom", 12, "left"));
+                }
+            }
+        }
+
+        // ── Keys already in the table (for de-dup) ──
+        java.util.Set<String> usedKeys = new java.util.HashSet<>();
+        if (el.getColumns() != null) {
+            for (TableColumn tc : el.getColumns()) {
+                if (tc.getKey() != null) usedKeys.add(tc.getKey().toLowerCase().trim());
+            }
+        }
+
+        // ── Build picker UI ──
+        Dialog<ColumnOption> dlg = new Dialog<>();
+        dlg.setTitle("Add Table Column");
+        DialogHelper.styleDialog(dlg, 480, 520);
+
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+
+        VBox headerBox = new VBox(4);
+        Label headerTitle = new Label("Add Table Column");
+        headerTitle.getStyleClass().add("card-title");
+        Label headerSub = new Label("Select a column to add to the table. Already-added columns are shown but cannot be re-added.");
+        headerSub.getStyleClass().add("text-muted");
+        headerSub.setWrapText(true);
+        headerBox.getChildren().addAll(headerTitle, headerSub);
+
+        TextField search = new TextField();
+        search.setPromptText("Search columns…");
+
+        ObservableList<ColumnOption> allItems = FXCollections.observableArrayList(catalog);
+        FilteredList<ColumnOption> filtered = new FilteredList<>(allItems, p -> true);
+        search.textProperty().addListener((obs, o, v) -> {
+            String q = v == null ? "" : v.trim().toLowerCase();
+            filtered.setPredicate(opt -> q.isEmpty()
+                || opt.label().toLowerCase().contains(q)
+                || opt.key().toLowerCase().contains(q)
+                || opt.group().toLowerCase().contains(q));
+        });
+
+        ListView<ColumnOption> lv = new ListView<>(filtered);
+        lv.setPrefHeight(340);
+        lv.setCellFactory(list -> new ListCell<>() {
+            @Override
+            protected void updateItem(ColumnOption item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    setDisable(false);
+                    setOpacity(1.0);
+                    return;
+                }
+                boolean used = usedKeys.contains(item.key().toLowerCase().trim());
+                HBox row = new HBox(8);
+                row.setAlignment(Pos.CENTER_LEFT);
+
+                // Group badge
+                Label groupBadge = new Label(item.group());
+                groupBadge.getStyleClass().add("kpi-subtext");
+                groupBadge.setMinWidth(80);
+
+                Label nameLbl = new Label(item.label());
+                nameLbl.setMaxWidth(Double.MAX_VALUE);
+                HBox.setHgrow(nameLbl, Priority.ALWAYS);
+
+                Label keyLbl = new Label("{{" + item.key() + "}}");
+                keyLbl.getStyleClass().add("code-pill");
+
+                if (used) {
+                    Label usedBadge = new Label("✓ Added");
+                    usedBadge.getStyleClass().add("kpi-subtext");
+                    row.getChildren().addAll(groupBadge, nameLbl, keyLbl, usedBadge);
+                } else {
+                    row.getChildren().addAll(groupBadge, nameLbl, keyLbl);
+                }
+
+                setGraphic(row);
+                setText(null);
+                setDisable(used);
+                setOpacity(used ? 0.45 : 1.0);
+            }
+        });
+
+        content.getChildren().addAll(headerBox, search, lv);
+        dlg.getDialogPane().setContent(content);
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        // Disable OK if selection is null or already used
+        Button okBtn = (Button) dlg.getDialogPane().lookupButton(ButtonType.OK);
+        okBtn.setDisable(true);
+        lv.getSelectionModel().selectedItemProperty().addListener((obs, o, sel) -> {
+            boolean disabled = sel == null || usedKeys.contains(sel.key().toLowerCase().trim());
+            okBtn.setDisable(disabled);
+        });
+
+        dlg.setResultConverter(bt -> bt == ButtonType.OK ? lv.getSelectionModel().getSelectedItem() : null);
+        dlg.showAndWait().ifPresent(opt -> {
+            if (opt == null) return;
+            TableColumn newCol = new TableColumn(opt.key(), opt.label(), opt.defaultWidth(), opt.defaultAlign());
+            el.getColumns().add(newCol);
+            saveState();
+            updateElementVisualInPlace(el);
+            updatePropertiesPanel();
+        });
     }
 
     private String colorToHex(Color c) {

@@ -37,6 +37,10 @@ public class CreateBillView extends BorderPane {
     private final ItemDao itemDao;
     private final TemplateDao templateDao;
     private final SettingsDao settingsDao;
+    private final com.invoicestudio.db.VariableDao variableDao;
+
+    // Fixed-scope custom variable input fields keyed by variable key
+    private final java.util.Map<String, TextField> customFixedInputs = new java.util.LinkedHashMap<>();
 
     private Bill editingBill;
     private Template currentTemplate;
@@ -99,6 +103,7 @@ public class CreateBillView extends BorderPane {
         this.itemDao = new ItemDao(app.getDb());
         this.templateDao = new TemplateDao(app.getDb());
         this.settingsDao = new SettingsDao(app.getDb());
+        this.variableDao = new com.invoicestudio.db.VariableDao(app.getDb());
 
         this.currentSettings = settingsDao.getSettings();
         List<Template> templates = templateDao.getAllTemplates();
@@ -424,6 +429,10 @@ public class CreateBillView extends BorderPane {
         logisticsPane.setExpanded(false);
         form.getChildren().add(logisticsPane);
 
+        // 4b. Custom Bill Fields (fixed-scope variables) — only shown if any exist
+        Node customFieldsPane = createCustomBillFieldsPane();
+        if (customFieldsPane != null) form.getChildren().add(customFieldsPane);
+
         // 5. Line Items Editor
         VBox itemsSec = new VBox(8);
         HBox itTop = new HBox(8);
@@ -451,6 +460,9 @@ public class CreateBillView extends BorderPane {
         lineItemsHeaderContainer.getChildren().setAll(createLineItemsHeader());
         itemsSec.getChildren().addAll(itTop, lineItemsHeaderContainer, itemsBox);
         form.getChildren().add(itemsSec);
+
+        // Resize listener: cap description field growth so it never overflows the HBox
+        itemsBox.widthProperty().addListener((obs, oldW, newW) -> updateItemDescMaxWidth(newW.doubleValue()));
 
         // 6. Summary, Totals & Actions
         form.getChildren().add(createSummaryBox());
@@ -496,6 +508,74 @@ public class CreateBillView extends BorderPane {
         g.add(creditReasonField, 1, 3, 3, 1);
 
         return g;
+    }
+
+    /**
+     * Builds a collapsible 'Custom Bill Fields' section for all fixed-scope
+     * custom variables.  Returns null if there are no fixed-scope variables.
+     */
+    private Node createCustomBillFieldsPane() {
+        java.util.List<VariableDef> fixedVars;
+        try {
+            fixedVars = variableDao.getFixedScopeVariables();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+        if (fixedVars.isEmpty()) return null;
+
+        GridPane grid = new GridPane();
+        grid.setHgap(12); grid.setVgap(8); grid.setPadding(new Insets(10));
+
+        int col = 0, row = 0;
+        int cols = Math.min(3, fixedVars.size()); // max 3 columns
+        for (int i = 0; i < cols; i++) {
+            ColumnConstraints cc = new ColumnConstraints();
+            cc.setPercentWidth(100.0 / cols);
+            cc.setHgrow(Priority.ALWAYS);
+            grid.getColumnConstraints().add(cc);
+        }
+
+        for (VariableDef vd : fixedVars) {
+            VBox fieldBox = new VBox(4);
+            Label lbl = new Label(vd.getLabel().toUpperCase() + ":");
+            lbl.getStyleClass().add("field-label");
+            TextField tf = new TextField();
+            tf.setPromptText(vd.getDefaultValue().isEmpty() ? vd.getLabel() : vd.getDefaultValue());
+            tf.textProperty().addListener((obs, o, v) -> updateTotalsAndPreview());
+            fieldBox.getChildren().addAll(lbl, tf);
+            customFixedInputs.put(vd.getKey(), tf);
+            grid.add(fieldBox, col, row);
+            col++;
+            if (col >= cols) { col = 0; row++; }
+        }
+
+        TitledPane pane = new TitledPane("Custom Bill Fields (" + fixedVars.size() + ")", grid);
+        pane.setExpanded(true);
+        return pane;
+    }
+
+    /**
+     * Adjusts the description field's maxWidth on all item rows whenever the
+     * itemsBox container is resized, preventing horizontal overflow / clipping.
+     */
+    private void updateItemDescMaxWidth(double containerWidth) {
+        if (containerWidth <= 0) return;
+        // Fixed overhead: pick-btn(30) + save-btn(30) + delete-btn(30) + spacing
+        // We calculate the sum of all fixed-width columns via getColumnControlWidth
+        // from the active template columns and add spacers.
+        double fixedTotal = 30 + 30 + 30; // pick / save / delete buttons
+        List<TableColumn> cols = getActiveTableColumns();
+        for (TableColumn col : cols) {
+            String k = col.getKey() != null ? col.getKey().toLowerCase().trim() : "";
+            if (!k.equals("desc") && !k.equals("description") && !k.equals("name") && !k.equals("item_name")) {
+                fixedTotal += getColumnControlWidth(col) + 8; // +8 HBox spacing
+            }
+        }
+        double descMax = Math.max(140, containerWidth - fixedTotal - 24);
+        for (BillItemRow bir : itemRows) {
+            bir.descField.setMaxWidth(descMax);
+        }
     }
 
     private Node createSummaryBox() {
@@ -653,6 +733,11 @@ public class CreateBillView extends BorderPane {
             statusCombo.setValue(editingBill.getStatus());
             repeatCombo.setValue(editingBill.getRepeat());
 
+            // Restore fixed-scope custom variable values
+            for (Map.Entry<String, TextField> e : customFixedInputs.entrySet()) {
+                e.getValue().setText(editingBill.getVariables().getOrDefault(e.getKey(), ""));
+            }
+
             for (BillItem it : editingBill.getItems()) {
                 BillItemRow r = new BillItemRow(it);
                 itemRows.add(r);
@@ -660,6 +745,10 @@ public class CreateBillView extends BorderPane {
             }
         } else {
             billNoField.setText(BillingService.nextBillNo(currentSettings));
+            // Pre-fill custom fixed fields with their default values
+            for (Map.Entry<String, TextField> e : customFixedInputs.entrySet()) {
+                // default value already set as promptText; leave empty unless a real default
+            }
             BillItemRow r = new BillItemRow();
             itemRows.add(r);
             itemsBox.getChildren().add(r);
@@ -768,6 +857,12 @@ public class CreateBillView extends BorderPane {
 
         vars.put("ref_invoice_no", refInvoiceField.getText());
         vars.put("credit_reason", creditReasonField.getText());
+
+        // Include fixed-scope custom variable values
+        for (Map.Entry<String, TextField> e : customFixedInputs.entrySet()) {
+            vars.put(e.getKey(), e.getValue().getText());
+        }
+
         b.setVariables(vars);
 
         b.setItems(itemRows.stream().map(BillItemRow::getItem).collect(Collectors.toList()));

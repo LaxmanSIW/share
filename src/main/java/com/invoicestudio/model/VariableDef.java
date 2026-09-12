@@ -9,6 +9,19 @@ public class VariableDef {
     private String type = "text"; // text, number, date
     private boolean builtin;
 
+    /**
+     * "fixed"  — one value per bill (shown as an input field in CreateBillView).
+     * "table"  — one value per line-item (added as a table column in TemplateDesigner).
+     * Defaults to "fixed" for backward-compatibility with existing records.
+     */
+    private String scope = "fixed";
+
+    /**
+     * For fixed-scope variables: optional pre-filled default that appears in the
+     * CreateBillView input field when starting a new bill.  Empty = no pre-fill.
+     */
+    private String defaultValue = "";
+
     public VariableDef() {}
 
     public VariableDef(String key, String label, String type, boolean builtin) {
@@ -29,6 +42,12 @@ public class VariableDef {
 
     public boolean isBuiltin() { return builtin; }
     public void setBuiltin(boolean builtin) { this.builtin = builtin; }
+
+    public String getScope() { return scope != null ? scope : "fixed"; }
+    public void setScope(String scope) { this.scope = scope != null ? scope : "fixed"; }
+
+    public String getDefaultValue() { return defaultValue != null ? defaultValue : ""; }
+    public void setDefaultValue(String defaultValue) { this.defaultValue = defaultValue != null ? defaultValue : ""; }
 
     @Override
     public String toString() { return label + " (" + key + ")"; }

@@ -2489,28 +2489,33 @@ Label {
     -fx-alignment: center-left;
 }
 
-.btn-filter-pill {
+.btn-filter-pill, .button.btn-filter-pill {
     -fx-background-color: transparent;
     -fx-text-fill: #94A3B8;
     -fx-font-size: 11.5px;
     -fx-font-weight: 600;
-    -fx-padding: 5 12;
+    -fx-padding: 5 14;
     -fx-border-radius: 16;
     -fx-background-radius: 16;
     -fx-cursor: hand;
     -fx-border-color: transparent;
 }
 
-.btn-filter-pill:hover {
+.btn-filter-pill:hover, .button.btn-filter-pill:hover {
     -fx-text-fill: #F8FAFC;
     -fx-background-color: #1E293B;
 }
 
-.btn-filter-pill.active {
+.btn-filter-pill.active, .button.btn-filter-pill.active {
     -fx-background-color: #D9A13B;
-    -fx-text-fill: #0F172A !important;
+    -fx-text-fill: #0F172A;
     -fx-font-weight: bold;
     -fx-effect: dropshadow(gaussian, rgba(217, 161, 59, 0.35), 6, 0, 0, 1);
+}
+
+.btn-filter-pill.active:hover, .button.btn-filter-pill.active:hover {
+    -fx-background-color: #E2AD48;
+    -fx-text-fill: #0F172A;
 }
 
 /* ==========================================================================

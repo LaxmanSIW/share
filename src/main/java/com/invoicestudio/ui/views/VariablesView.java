@@ -16,45 +16,58 @@ import javafx.scene.layout.*;
 import java.util.List;
 
 /**
- * Variables — v3 redesign.
+ * Variables — v4 redesign.
  * Custom placeholder management with built-in variable reference,
- * buyer custom fields overview and the custom variables table.
- * Row hover is now pure CSS (previously two inline-styled mouse listeners per row).
+ * buyer custom fields overview, and the custom variables table.
+ *
+ * Custom variables now have two scopes:
+ *  - "fixed"  → one value per bill (input shown in CreateBillView)
+ *  - "table"  → one value per line item (add as a table column via TemplateDesigner)
  */
 public class VariablesView extends VBox {
 
     private final StudioApp app;
 
-    private final TextField labelInput = new TextField();
-    private final TextField keyInput = new TextField();
+    // Add form controls
+    private final TextField labelInput  = new TextField();
+    private final TextField keyInput    = new TextField();
     private final ComboBox<String> typeSelect = new ComboBox<>();
-    private final VBox customVarsContainer = new VBox();
+    private final TextField defaultValueInput = new TextField();
+
+    // Scope selection — uses btn-filter-pill pattern (matches app filter tabs)
+    private boolean scopeIsTable = false;  // false = fixed, true = table
+    private Button scopeFixedBtn;
+    private Button scopeTableBtn;
+    private VBox defaultValueRow;
+
+    // Containers rebuilt on reload
+    private final VBox customVarsContainer  = new VBox();
     private final VBox buyerFieldsContainer = new VBox();
 
     // Default built-in vars list
     private static final List<VarPair> BUILTIN_VARS = List.of(
-            new VarPair("Invoice Number", "invoice_no"),
-            new VarPair("Invoice Date", "invoice_date"),
-            new VarPair("Due Date", "due_date"),
-            new VarPair("PO Number", "po_no"),
-            new VarPair("Vehicle Number", "vehicle_no"),
-            new VarPair("Buyer Name", "buyer_name"),
-            new VarPair("Buyer Trade Name", "buyer_trade_name"),
-            new VarPair("Buyer GSTIN", "buyer_gstin"),
-            new VarPair("Buyer Address", "buyer_address"),
-            new VarPair("Buyer Phone", "buyer_phone"),
-            new VarPair("Buyer Email", "buyer_email"),
-            new VarPair("Buyer State", "buyer_state"),
-            new VarPair("Buyer State Code", "buyer_state_code"),
-            new VarPair("My Business Name", "business_name"),
-            new VarPair("My Business GSTIN", "business_gstin"),
-            new VarPair("My Business Phone", "business_phone"),
-            new VarPair("My Business State", "business_state"),
-            new VarPair("My Business State Code", "business_state_code"),
-            new VarPair("My Bank Name", "business_bank_name"),
-            new VarPair("My Account No", "business_account_no"),
-            new VarPair("My IFSC Code", "business_ifsc"),
-            new VarPair("My UPI ID", "business_upi")
+            new VarPair("Invoice Number",       "invoice_no"),
+            new VarPair("Invoice Date",         "invoice_date"),
+            new VarPair("Due Date",             "due_date"),
+            new VarPair("PO Number",            "po_no"),
+            new VarPair("Vehicle Number",       "vehicle_no"),
+            new VarPair("Buyer Name",           "buyer_name"),
+            new VarPair("Buyer Trade Name",     "buyer_trade_name"),
+            new VarPair("Buyer GSTIN",          "buyer_gstin"),
+            new VarPair("Buyer Address",        "buyer_address"),
+            new VarPair("Buyer Phone",          "buyer_phone"),
+            new VarPair("Buyer Email",          "buyer_email"),
+            new VarPair("Buyer State",          "buyer_state"),
+            new VarPair("Buyer State Code",     "buyer_state_code"),
+            new VarPair("My Business Name",     "business_name"),
+            new VarPair("My Business GSTIN",    "business_gstin"),
+            new VarPair("My Business Phone",    "business_phone"),
+            new VarPair("My Business State",    "business_state"),
+            new VarPair("My Business State Code","business_state_code"),
+            new VarPair("My Bank Name",         "business_bank_name"),
+            new VarPair("My Account No",        "business_account_no"),
+            new VarPair("My IFSC Code",         "business_ifsc"),
+            new VarPair("My UPI ID",            "business_upi")
     );
 
     private record VarPair(String label, String key) {}
@@ -75,6 +88,8 @@ public class VariablesView extends VBox {
         reload();
     }
 
+    // ─── Header ────────────────────────────────────────────────────────────────
+
     private void buildHeader() {
         VBox titleBox = new VBox(4);
         HBox titleRow = new HBox(10);
@@ -85,27 +100,57 @@ public class VariablesView extends VBox {
         title.getStyleClass().add("view-title");
         titleRow.getChildren().addAll(titleIcon, title);
 
-        Label sub = new Label("Variables are placeholders you drop into templates — they get filled with real values when a bill is generated.");
+        Label sub = new Label("Variables are placeholders you drop into templates — they get filled with real values when a bill is generated.\n" +
+                "• Bill Field (fixed) → one value per bill   • Table Column (per item) → one value per line item");
         sub.getStyleClass().add("view-subtitle");
+        sub.setWrapText(true);
         titleBox.getChildren().addAll(titleRow, sub);
         getChildren().add(titleBox);
     }
 
+    // ─── Add Form ──────────────────────────────────────────────────────────────
+
     private void buildAddForm() {
         VBox card = UiTheme.card(14);
 
+        // ── Section header ──
         HBox head = new HBox(8);
         head.setAlignment(Pos.CENTER_LEFT);
         Label secTitle = new Label("ADD CUSTOM VARIABLE");
         secTitle.getStyleClass().add("card-title");
-        Label subHint = new Label("· Create custom placeholders for your bill templates");
+        Label subHint  = new Label("· Create custom placeholders for your bill templates");
         subHint.getStyleClass().add("kpi-subtext");
         head.getChildren().addAll(secTitle, subHint);
 
+        // ── Scope selector — segmented pill bar (btn-filter-pill pattern) ──
+        HBox scopeBar = new HBox(4);
+        scopeBar.getStyleClass().add("toggle-group-container");
+        scopeBar.setAlignment(Pos.CENTER_LEFT);
+
+        scopeFixedBtn = new Button("🔖  Bill Field (fixed)");
+        scopeFixedBtn.getStyleClass().addAll("btn-filter-pill", "active");
+        scopeFixedBtn.setOnAction(e -> setScopeFixed());
+
+        scopeTableBtn = new Button("📋  Table Column (per item)");
+        scopeTableBtn.getStyleClass().add("btn-filter-pill");
+        scopeTableBtn.setOnAction(e -> setScopeTable());
+
+        scopeBar.getChildren().addAll(scopeFixedBtn, scopeTableBtn);
+
+        HBox scopeRow = new HBox(10);
+        scopeRow.setAlignment(Pos.CENTER_LEFT);
+        Label scopeLbl = new Label("SCOPE");
+        scopeLbl.getStyleClass().add("field-label");
+        scopeRow.getChildren().addAll(scopeLbl, scopeBar);
+
+        // Show / hide default value row when scope changes
+        // (handled in setScopeFixed / setScopeTable)
+
+        // ── Main form row: Label | Key | Type ──
         HBox formRow = new HBox(14);
         formRow.setAlignment(Pos.BOTTOM_LEFT);
 
-        // Label
+        // Label field
         VBox labelBox = new VBox(6);
         Label lbl = new Label("LABEL *");
         lbl.getStyleClass().add("field-label");
@@ -118,30 +163,26 @@ public class VariablesView extends VBox {
         labelBox.getChildren().addAll(lbl, labelInput);
         HBox.setHgrow(labelBox, Priority.ALWAYS);
 
-        // Key
+        // Key field
         VBox keyBox = new VBox(6);
         Label klbl = new Label("KEY (PLACEHOLDER)");
         klbl.getStyleClass().add("field-label");
-
         HBox keyGroup = new HBox(6);
         keyGroup.setAlignment(Pos.CENTER_LEFT);
-
         Label bra1 = new Label("{{");
-        bra1.getStyleClass().addAll("code-pill");
+        bra1.getStyleClass().add("code-pill");
         keyInput.setPromptText("delivery_date");
         keyInput.getStyleClass().add("code-input");
         HBox.setHgrow(keyInput, Priority.ALWAYS);
         keyInput.setMaxWidth(Double.MAX_VALUE);
-
         Label bra2 = new Label("}}");
-        bra2.getStyleClass().addAll("code-pill");
+        bra2.getStyleClass().add("code-pill");
         keyGroup.getChildren().addAll(bra1, keyInput, bra2);
         HBox.setHgrow(keyGroup, Priority.ALWAYS);
-
         keyBox.getChildren().addAll(klbl, keyGroup);
         HBox.setHgrow(keyBox, Priority.ALWAYS);
 
-        // Type
+        // Type field
         VBox typeBox = new VBox(6);
         Label tlbl = new Label("TYPE");
         tlbl.getStyleClass().add("field-label");
@@ -157,20 +198,47 @@ public class VariablesView extends VBox {
         addBtn.setOnAction(e -> handleAdd());
 
         formRow.getChildren().addAll(labelBox, keyBox, typeBox, addBtn);
-        card.getChildren().addAll(head, formRow);
+
+        // ── Default Value row (only visible for fixed scope) ──
+        defaultValueRow = new VBox(6);
+        Label defLbl = new Label("DEFAULT VALUE (optional)");
+        defLbl.getStyleClass().add("field-label");
+        defaultValueInput.setPromptText("Pre-filled when creating a new bill (e.g. Maharashtra)");
+        defaultValueInput.setMaxWidth(Double.MAX_VALUE);
+        defaultValueRow.getChildren().addAll(defLbl, defaultValueInput);
+
+        card.getChildren().addAll(head, scopeRow, formRow, defaultValueRow);
         getChildren().add(card);
+    }
+
+    private void setScopeFixed() {
+        scopeIsTable = false;
+        if (!scopeFixedBtn.getStyleClass().contains("active")) {
+            scopeFixedBtn.getStyleClass().add("active");
+        }
+        scopeTableBtn.getStyleClass().remove("active");
+        if (defaultValueRow != null) { defaultValueRow.setVisible(true); defaultValueRow.setManaged(true); }
+    }
+
+    private void setScopeTable() {
+        scopeIsTable = true;
+        if (!scopeTableBtn.getStyleClass().contains("active")) {
+            scopeTableBtn.getStyleClass().add("active");
+        }
+        scopeFixedBtn.getStyleClass().remove("active");
+        if (defaultValueRow != null) { defaultValueRow.setVisible(false); defaultValueRow.setManaged(false); }
     }
 
     private void handleAdd() {
         String label = labelInput.getText().trim();
-        String key = keyInput.getText().trim();
-        if (key.isEmpty()) {
-            key = slugify(label);
-        }
+        String key   = keyInput.getText().trim();
+        if (key.isEmpty()) key = slugify(label);
         if (label.isEmpty() || key.isEmpty()) {
             Toast.show(this, "Validation", "Please enter both a label and key.", true);
             return;
         }
+
+        String scope = scopeIsTable ? "table" : "fixed";
 
         try {
             VariableDef v = new VariableDef();
@@ -178,16 +246,24 @@ public class VariablesView extends VBox {
             v.setLabel(label);
             v.setType(typeSelect.getValue() != null ? typeSelect.getValue() : "text");
             v.setBuiltin(false);
+            v.setScope(scope);
+            v.setDefaultValue("fixed".equals(scope) ? defaultValueInput.getText().trim() : "");
             app.getData().variables().saveVariable(v);
-            Toast.show(this, "Variable Added", "Variable {{" + key + "}} created successfully.", false);
+
+            String scopeDesc = "table".equals(scope) ? "table column" : "bill field";
+            Toast.show(this, "Variable Added",
+                    "Variable {{" + key + "}} created as " + scopeDesc + ".", false);
             labelInput.clear();
             keyInput.clear();
+            defaultValueInput.clear();
             reload();
         } catch (Exception e) {
             e.printStackTrace();
             Toast.show(this, "Error", "Failed to add variable: " + e.getMessage(), true);
         }
     }
+
+    // ─── Built-in Section ──────────────────────────────────────────────────────
 
     private void buildBuiltinSection() {
         VBox card = UiTheme.card(14);
@@ -209,8 +285,7 @@ public class VariablesView extends VBox {
             grid.getColumnConstraints().add(cc);
         }
 
-        int col = 0;
-        int row = 0;
+        int col = 0, row = 0;
         for (VarPair vp : BUILTIN_VARS) {
             HBox item = new HBox(10);
             item.setAlignment(Pos.CENTER_LEFT);
@@ -222,15 +297,11 @@ public class VariablesView extends VBox {
             HBox.setHgrow(lbl, Priority.ALWAYS);
 
             Label keyPill = UiTheme.codePill("{{" + vp.key() + "}}");
-
             item.getChildren().addAll(lbl, keyPill);
             grid.add(item, col, row);
 
             col++;
-            if (col >= 3) {
-                col = 0;
-                row++;
-            }
+            if (col >= 3) { col = 0; row++; }
         }
 
         HBox footerBox = new HBox(8);
@@ -238,16 +309,20 @@ public class VariablesView extends VBox {
         footerBox.setPadding(new Insets(4, 4, 0, 4));
         Label footer = new Label("Plus automatic computed totals: {{subtotal}} {{cgst}} {{sgst}} {{igst}} {{grand_total}} {{amount_in_words}} {{balance_due}} {{paid_amount}} {{amount_paid_words}}...");
         footer.getStyleClass().add("kpi-subtext");
-        footerBox.getChildren().addAll(footer);
+        footerBox.getChildren().add(footer);
 
         card.getChildren().addAll(head, grid, footerBox);
         getChildren().add(card);
     }
 
+    // ─── Buyer Fields Section ─────────────────────────────────────────────────
+
     private void buildBuyerFieldsSection() {
         buyerFieldsContainer.setSpacing(14);
         getChildren().add(buyerFieldsContainer);
     }
+
+    // ─── Custom List Section ──────────────────────────────────────────────────
 
     private void buildCustomListSection() {
         VBox card = UiTheme.card(14);
@@ -261,10 +336,11 @@ public class VariablesView extends VBox {
         head.getChildren().addAll(title, subHint);
 
         customVarsContainer.setSpacing(6);
-
         card.getChildren().addAll(head, customVarsContainer);
         getChildren().add(card);
     }
+
+    // ─── Reload ───────────────────────────────────────────────────────────────
 
     public void reload() {
         renderBuyerFields();
@@ -289,16 +365,14 @@ public class VariablesView extends VBox {
             head.getChildren().addAll(title, count);
 
             GridPane grid = new GridPane();
-            grid.setHgap(14);
-            grid.setVgap(8);
+            grid.setHgap(14); grid.setVgap(8);
             for (int i = 0; i < 3; i++) {
                 ColumnConstraints cc = new ColumnConstraints();
                 cc.setPercentWidth(33.333);
                 grid.getColumnConstraints().add(cc);
             }
 
-            int col = 0;
-            int row = 0;
+            int col = 0, row = 0;
             for (BuyerFieldDef bf : fields) {
                 HBox item = new HBox(10);
                 item.setAlignment(Pos.CENTER_LEFT);
@@ -307,22 +381,18 @@ public class VariablesView extends VBox {
 
                 HBox left = new HBox(6);
                 left.setAlignment(Pos.CENTER_LEFT);
-                Label lbl = new Label(bf.getLabel());
+                Label lbl      = new Label(bf.getLabel());
                 Label typeBadge = UiTheme.pill(bf.getType() != null ? bf.getType().toUpperCase() : "TEXT");
                 left.getChildren().addAll(lbl, typeBadge);
                 left.setMaxWidth(Double.MAX_VALUE);
                 HBox.setHgrow(left, Priority.ALWAYS);
 
                 Label keyPill = UiTheme.codePill("{{buyer_" + bf.getKey() + "}}");
-
                 item.getChildren().addAll(left, keyPill);
                 grid.add(item, col, row);
 
                 col++;
-                if (col >= 3) {
-                    col = 0;
-                    row++;
-                }
+                if (col >= 3) { col = 0; row++; }
             }
 
             card.getChildren().addAll(head, grid);
@@ -351,73 +421,74 @@ public class VariablesView extends VBox {
 
             Label hLabel = new Label("VARIABLE LABEL");
             hLabel.getStyleClass().add("table-th");
-            hLabel.setMinWidth(180);
-            hLabel.setMaxWidth(Double.MAX_VALUE);
+            hLabel.setMinWidth(180); hLabel.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(hLabel, Priority.ALWAYS);
 
             Label hKey = new Label("PLACEHOLDER KEY");
             hKey.getStyleClass().add("table-th");
-            hKey.setPrefWidth(260);
-            hKey.setMinWidth(260);
-            hKey.setMaxWidth(260);
+            hKey.setPrefWidth(220); hKey.setMinWidth(220); hKey.setMaxWidth(220);
+
+            Label hScope = new Label("SCOPE");
+            hScope.getStyleClass().add("table-th");
+            hScope.setPrefWidth(110); hScope.setMinWidth(110); hScope.setMaxWidth(110);
 
             Label hType = new Label("DATA TYPE");
             hType.getStyleClass().add("table-th");
-            hType.setPrefWidth(110);
-            hType.setMinWidth(110);
-            hType.setMaxWidth(110);
+            hType.setPrefWidth(100); hType.setMinWidth(100); hType.setMaxWidth(100);
 
             Label hAct = new Label("ACTION");
             hAct.getStyleClass().add("table-th");
-            hAct.setPrefWidth(80);
-            hAct.setMinWidth(80);
-            hAct.setMaxWidth(80);
+            hAct.setPrefWidth(80); hAct.setMinWidth(80); hAct.setMaxWidth(80);
             hAct.setAlignment(Pos.CENTER_RIGHT);
 
-            th.getChildren().addAll(hLabel, hKey, hType, hAct);
+            th.getChildren().addAll(hLabel, hKey, hScope, hType, hAct);
             customVarsContainer.getChildren().add(th);
 
             for (VariableDef vd : list) {
-                HBox row = new HBox(16);
-                row.setAlignment(Pos.CENTER_LEFT);
-                row.getStyleClass().add("table-data-row");
-                row.setPadding(new Insets(10, 16, 10, 16));
+                HBox rowBox = new HBox(16);
+                rowBox.setAlignment(Pos.CENTER_LEFT);
+                rowBox.getStyleClass().add("table-data-row");
+                rowBox.setPadding(new Insets(10, 16, 10, 16));
 
                 // Column 1: Label
                 Label lbl = new Label(vd.getLabel());
                 lbl.getStyleClass().add("table-cell-title");
-                lbl.setMinWidth(180);
-                lbl.setMaxWidth(Double.MAX_VALUE);
+                lbl.setMinWidth(180); lbl.setMaxWidth(Double.MAX_VALUE);
                 HBox.setHgrow(lbl, Priority.ALWAYS);
 
-                // Column 2: Placeholder Key (fixed width)
+                // Column 2: Key
                 HBox keyCol = new HBox();
                 keyCol.setAlignment(Pos.CENTER_LEFT);
-                keyCol.setPrefWidth(260);
-                keyCol.setMinWidth(260);
-                keyCol.setMaxWidth(260);
+                keyCol.setPrefWidth(220); keyCol.setMinWidth(220); keyCol.setMaxWidth(220);
                 keyCol.getChildren().add(UiTheme.codePill("{{" + vd.getKey() + "}}"));
 
-                // Column 3: Type (fixed width)
+                // Column 3: Scope badge
+                HBox scopeCol = new HBox();
+                scopeCol.setAlignment(Pos.CENTER_LEFT);
+                scopeCol.setPrefWidth(110); scopeCol.setMinWidth(110); scopeCol.setMaxWidth(110);
+                boolean isTable = "table".equalsIgnoreCase(vd.getScope());
+                Label scopeBadge = UiTheme.pill(isTable ? "TABLE" : "FIXED");
+                // Subtle colour hint: table = blue-ish style, fixed = default gold
+                scopeBadge.getStyleClass().add(isTable ? "pill-info" : "pill-accent");
+                scopeCol.getChildren().add(scopeBadge);
+
+                // Column 4: Type
                 HBox typeCol = new HBox();
                 typeCol.setAlignment(Pos.CENTER_LEFT);
-                typeCol.setPrefWidth(110);
-                typeCol.setMinWidth(110);
-                typeCol.setMaxWidth(110);
+                typeCol.setPrefWidth(100); typeCol.setMinWidth(100); typeCol.setMaxWidth(100);
                 typeCol.getChildren().add(UiTheme.pill(vd.getType() != null ? vd.getType().toUpperCase() : "TEXT"));
 
-                // Column 4: Action (fixed width)
+                // Column 5: Delete action
                 HBox actCol = new HBox();
                 actCol.setAlignment(Pos.CENTER_RIGHT);
-                actCol.setPrefWidth(80);
-                actCol.setMinWidth(80);
-                actCol.setMaxWidth(80);
+                actCol.setPrefWidth(80); actCol.setMinWidth(80); actCol.setMaxWidth(80);
 
                 Button del = new Button("🗑");
                 del.getStyleClass().add("button-icon-subtle");
                 del.setTooltip(new Tooltip("Delete variable"));
                 del.setOnAction(e -> {
-                    Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "Delete variable {{" + vd.getKey() + "}}?", ButtonType.YES, ButtonType.NO);
+                    Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                            "Delete variable {{" + vd.getKey() + "}}?", ButtonType.YES, ButtonType.NO);
                     confirm.setTitle("Delete Variable");
                     confirm.setHeaderText("Delete Variable: " + vd.getLabel());
                     confirm.setContentText("Are you sure you want to delete placeholder {{" + vd.getKey() + "}}?");
@@ -426,7 +497,8 @@ public class VariablesView extends VBox {
                         if (res == ButtonType.YES) {
                             try {
                                 app.getData().variables().deleteVariable(vd.getKey());
-                                Toast.show(this, "Variable Deleted", "Variable {{" + vd.getKey() + "}} was removed.", false);
+                                Toast.show(this, "Variable Deleted",
+                                        "Variable {{" + vd.getKey() + "}} was removed.", false);
                                 reload();
                             } catch (Exception ex) {
                                 Toast.show(this, "Delete Failed", ex.getMessage(), true);
@@ -436,13 +508,15 @@ public class VariablesView extends VBox {
                 });
                 actCol.getChildren().add(del);
 
-                row.getChildren().addAll(lbl, keyCol, typeCol, actCol);
-                customVarsContainer.getChildren().add(row);
+                rowBox.getChildren().addAll(lbl, keyCol, scopeCol, typeCol, actCol);
+                customVarsContainer.getChildren().add(rowBox);
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
+    // ─── Utility ─────────────────────────────────────────────────────────────
 
     private static String slugify(String s) {
         if (s == null) return "";

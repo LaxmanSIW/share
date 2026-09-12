@@ -62,6 +62,9 @@ public class DatabaseManager {
             // Alter column migrations
             try { stmt.execute("ALTER TABLE items ADD COLUMN category_id TEXT"); } catch (Exception ignored) {}
             try { stmt.execute("ALTER TABLE items ADD COLUMN category_name TEXT"); } catch (Exception ignored) {}
+            // v4.1 — variable scope + default value support
+            try { stmt.execute("ALTER TABLE variables ADD COLUMN scope TEXT DEFAULT 'fixed'"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE variables ADD COLUMN default_value TEXT DEFAULT ''"); } catch (Exception ignored) {}
         } catch (SQLException e) {
             e.printStackTrace();
         }
