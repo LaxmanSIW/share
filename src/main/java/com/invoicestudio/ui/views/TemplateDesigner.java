@@ -22,6 +22,8 @@ import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.Group;
 import javafx.scene.Node;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -67,6 +69,27 @@ public class TemplateDesigner extends BorderPane {
     private final TemplateDao templateDao;
     private final SettingsDao settingsDao;
     private final VariableDao variableDao;
+
+    // Session cache for template variables: loaded fresh once when opening the design page
+    private final List<VariableDef> cachedTableScopeVariables = new ArrayList<>();
+    private final Map<String, String> cachedVariableLabels = new HashMap<>();
+    private final List<VariableDef> cachedAllVariables = new ArrayList<>();
+    private final ObservableList<String> cachedColumnKeys = FXCollections.observableArrayList();
+    private final List<Node> propBuffer = new ArrayList<>();
+
+    private void addPropertyNode(Node node) {
+        if (node != null) {
+            propBuffer.add(node);
+        }
+    }
+
+    private void addPropertyNodes(Node... nodes) {
+        if (nodes != null) {
+            for (Node n : nodes) {
+                if (n != null) propBuffer.add(n);
+            }
+        }
+    }
 
     private Template template;
     private TemplateElement selectedElement;
@@ -139,6 +162,7 @@ public class TemplateDesigner extends BorderPane {
         this.templateDao = new TemplateDao(app.getDb());
         this.settingsDao = new SettingsDao(app.getDb());
         this.variableDao = new VariableDao(app.getDb());
+        loadSessionVariables();
         this.template = template != null ? template : PresetTemplates.buildClassic();
 
         getStyleClass().add("bg-app");
@@ -168,6 +192,49 @@ public class TemplateDesigner extends BorderPane {
         refreshCanvas();
         updatePropertiesPanel();
         refreshLayersList();
+    }
+
+    /**
+     * Loads fresh table-scope and all template variables from SQLite once upon opening the design page.
+     * Caches keys, labels, and definitions in memory for instant O(1) lookups during the design session.
+     */
+    private void loadSessionVariables() {
+        cachedTableScopeVariables.clear();
+        cachedVariableLabels.clear();
+        cachedAllVariables.clear();
+        if (variableDao != null) {
+            try {
+                List<VariableDef> tableVars = variableDao.getTableScopeVariables();
+                if (tableVars != null) {
+                    cachedTableScopeVariables.addAll(tableVars);
+                    for (VariableDef v : tableVars) {
+                        if (v != null && v.getKey() != null) {
+                            String keyNorm = v.getKey().toLowerCase().trim();
+                            String label = v.getLabel() != null && !v.getLabel().isBlank() ? v.getLabel() : v.getKey();
+                            cachedVariableLabels.put(keyNorm, label + " (" + v.getKey() + ")");
+                        }
+                    }
+                }
+                List<VariableDef> allVars = variableDao.getAllVariables();
+                if (allVars != null) {
+                    cachedAllVariables.addAll(allVars);
+                }
+            } catch (Exception e) {
+                // Fallback gracefully on DB read error
+            }
+        }
+
+        List<String> keys = new java.util.ArrayList<>(List.of(
+            "sr", "desc", "hsn", "qty", "unit", "rate",
+            "gst", "disc", "taxable", "amount",
+            "batch_no", "exp_date", "mrp", "serial_no", "part_no"
+        ));
+        for (VariableDef v : cachedTableScopeVariables) {
+            if (v != null && v.getKey() != null && !keys.contains(v.getKey())) {
+                keys.add(v.getKey());
+            }
+        }
+        cachedColumnKeys.setAll(keys);
     }
 
     private Node createToolbar() {
@@ -638,6 +705,9 @@ public class TemplateDesigner extends BorderPane {
         // Deselect when clicking on empty canvas in Select mode
         canvas.setOnMousePressed(e -> {
             if (e.isPrimaryButtonDown() && !isPanMode && !isSpaceDown && !isPenToolMode) {
+                if (activeInlineEditor != null) {
+                    commitInlineTextEdit(true);
+                }
                 selectedElement = null;
                 updateSelectionOverlay();
                 updatePropertiesPanel();
@@ -986,22 +1056,22 @@ public class TemplateDesigner extends BorderPane {
         buildRulers(pageW, pageH);
         updateCenterWrapperSize();
 
-        // 1. Background Grid
+        // 1. Background Grid (rendered on a single Canvas for maximum layout performance)
         gridPane.getChildren().clear();
         gridPane.setPrefSize(pageW, pageH);
         if (showGrid) {
+            Canvas gridCanvas = new Canvas(pageW, pageH);
+            GraphicsContext gc = gridCanvas.getGraphicsContext2D();
+            gc.setStroke(Color.web("#ececec"));
+            gc.setLineWidth(0.5);
             for (double x = 10 * MM_PX; x < pageW; x += 10 * MM_PX) {
-                Line l = new Line(x, 0, x, pageH);
-                l.setStroke(Color.web("#ececec"));
-                l.setStrokeWidth(0.5);
-                gridPane.getChildren().add(l);
+                gc.strokeLine(Math.round(x) + 0.5, 0, Math.round(x) + 0.5, pageH);
             }
             for (double y = 10 * MM_PX; y < pageH; y += 10 * MM_PX) {
-                Line l = new Line(0, y, pageW, y);
-                l.setStroke(Color.web("#ececec"));
-                l.setStrokeWidth(0.5);
-                gridPane.getChildren().add(l);
+                gc.strokeLine(0, Math.round(y) + 0.5, pageW, Math.round(y) + 0.5);
             }
+            gridCanvas.setMouseTransparent(true);
+            gridPane.getChildren().add(gridCanvas);
         }
 
         // Margin Guides (Printable Boundary)
@@ -1181,6 +1251,97 @@ public class TemplateDesigner extends BorderPane {
         return new double[]{newX, newY};
     }
 
+    private TextArea activeInlineEditor = null;
+    private TemplateElement activeInlineEditingElement = null;
+
+    private void startInlineTextEdit(TemplateElement el) {
+        if (el == null || (el.getType() != ElementType.TEXT && el.getType() != ElementType.PAGENO)) return;
+        if (activeInlineEditor != null) {
+            commitInlineTextEdit(true);
+        }
+
+        if (selectedElement != el) {
+            selectedElement = el;
+            updatePropertiesPanel();
+            syncLayersListSelection();
+        }
+
+        double x = el.getX() * MM_PX;
+        double y = el.getY() * MM_PX;
+        double w = Math.max(60.0, el.getW() * MM_PX);
+        double h = Math.max(30.0, el.getH() * MM_PX);
+
+        TextArea editor = new TextArea(el.getText() != null ? el.getText() : "");
+        editor.setWrapText(true);
+        editor.setLayoutX(x);
+        editor.setLayoutY(y);
+        editor.setPrefSize(w, h);
+        editor.setMinSize(w, h);
+        editor.setRotate(el.getRotation());
+
+        String colorHex = el.getColor() != null && !el.getColor().isBlank() ? el.getColor() : "#1a1a1a";
+        String family = el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI";
+        int weight = el.getFontWeight() > 0 ? el.getFontWeight() : (el.isBold() ? 700 : 400);
+        String fs = el.isItalic() ? "italic" : "normal";
+        double fontSize = el.getFontSize() > 0 ? el.getFontSize() * 1.3 : 14.0;
+        String bg = (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) ? el.getBg() : "#ffffff";
+
+        editor.setStyle(String.format(java.util.Locale.US,
+                "-fx-font-family: '%s'; -fx-font-size: %.1fpx; -fx-font-weight: %d; -fx-font-style: %s; "
+                + "-fx-text-fill: %s; -fx-background-color: %s; -fx-border-color: #D9A13B; -fx-border-width: 2px; "
+                + "-fx-border-radius: 3px; -fx-background-radius: 3px; -fx-padding: 3px 6px;",
+                family, fontSize, weight, fs, colorHex, bg));
+
+        editor.setOnKeyPressed(ke -> {
+            if (ke.getCode() == KeyCode.ESCAPE) {
+                commitInlineTextEdit(false);
+                ke.consume();
+            } else if (ke.getCode() == KeyCode.ENTER && !ke.isShiftDown()) {
+                commitInlineTextEdit(true);
+                ke.consume();
+            }
+        });
+
+        editor.focusedProperty().addListener((obs, wasFocused, isFocused) -> {
+            if (!isFocused && activeInlineEditor == editor) {
+                commitInlineTextEdit(true);
+            }
+        });
+
+        activeInlineEditor = editor;
+        activeInlineEditingElement = el;
+
+        selectionPane.getChildren().add(editor);
+
+        javafx.application.Platform.runLater(() -> {
+            if (activeInlineEditor == editor) {
+                editor.requestFocus();
+                editor.selectAll();
+            }
+        });
+    }
+
+    private void commitInlineTextEdit(boolean save) {
+        if (activeInlineEditor == null) return;
+        TextArea editor = activeInlineEditor;
+        TemplateElement el = activeInlineEditingElement;
+        activeInlineEditor = null;
+        activeInlineEditingElement = null;
+
+        if (selectionPane != null) {
+            selectionPane.getChildren().remove(editor);
+        }
+
+        if (save && el != null) {
+            String text = editor.getText();
+            el.setText(text != null ? text : "");
+            updateElementVisualInPlace(el);
+            updatePropertiesPanel();
+            saveState();
+        }
+        updateSelectionOverlay();
+    }
+
     private Node createInteractiveElementNode(TemplateElement el, RenderContext ctx) {
         double x = el.getX() * MM_PX;
         double y = el.getY() * MM_PX;
@@ -1196,14 +1357,14 @@ public class TemplateDesigner extends BorderPane {
         wrapper.setMaxSize(w, h);
         wrapper.setRotate(el.getRotation());
         wrapper.setPickOnBounds(true);
-        wrapper.setCursor(Cursor.MOVE);
+        wrapper.setCursor(Cursor.DEFAULT);
         wrapper.setStyle("-fx-background-color: rgba(255, 255, 255, 0.005);");
 
         // Explicit geometric hitArea so tables and transparent shapes capture clicks reliably
         Rectangle hitArea = new Rectangle(w, h);
         hitArea.setFill(Color.web("#FFFFFF", 0.005));
         hitArea.setPickOnBounds(true);
-        hitArea.setCursor(Cursor.MOVE);
+        hitArea.setCursor(Cursor.DEFAULT);
         wrapper.getChildren().add(hitArea);
 
         Node visual = renderVisualElement(el, ctx, w, h);
@@ -1219,6 +1380,11 @@ public class TemplateDesigner extends BorderPane {
 
         wrapper.setOnMousePressed(e -> {
             if (isPanMode || isSpaceDown || e.getButton() == MouseButton.MIDDLE) return;
+            if (e.getClickCount() == 2 && e.getButton() == MouseButton.PRIMARY && (el.getType() == ElementType.TEXT || el.getType() == ElementType.PAGENO)) {
+                startInlineTextEdit(el);
+                e.consume();
+                return;
+            }
             if (e.isPrimaryButtonDown()) {
                 moveStart[0] = e.getScreenX();
                 moveStart[1] = e.getScreenY();
@@ -1485,11 +1651,19 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void updateSelectionOverlay() {
+        if (activeInlineEditor != null && activeInlineEditingElement != selectedElement) {
+            commitInlineTextEdit(true);
+        }
         selectionPane.getChildren().clear();
         activeSelectionBox = null;
         updateStatusBarCoords();
 
         if (selectedElement == null || selectedElement.isHidden()) {
+            return;
+        }
+
+        if (activeInlineEditor != null && activeInlineEditingElement == selectedElement) {
+            selectionPane.getChildren().add(activeInlineEditor);
             return;
         }
 
@@ -1520,6 +1694,11 @@ public class TemplateDesigner extends BorderPane {
 
         moveHitArea.setOnMousePressed(e -> {
             if (isPanMode || isSpaceDown || e.getButton() == MouseButton.MIDDLE) return;
+            if (e.getClickCount() == 2 && e.getButton() == MouseButton.PRIMARY && (el.getType() == ElementType.TEXT || el.getType() == ElementType.PAGENO)) {
+                startInlineTextEdit(el);
+                e.consume();
+                return;
+            }
             if (e.isPrimaryButtonDown()) {
                 moveStart[0] = e.getScreenX();
                 moveStart[1] = e.getScreenY();
@@ -2034,7 +2213,7 @@ public class TemplateDesigner extends BorderPane {
     private void updatePropertiesPanel() {
         updatingProperties = true;
         try {
-            propBox.getChildren().clear();
+            propBuffer.clear();
             geoXSpin = null;
             geoYSpin = null;
             geoWSpin = null;
@@ -2045,6 +2224,7 @@ public class TemplateDesigner extends BorderPane {
             if (selectedElement == null) {
                 updateStatusBarCoords();
                 buildPageAndMarginProperties();
+                propBox.getChildren().setAll(propBuffer);
                 return;
             }
             updateStatusBarCoords();
@@ -2084,7 +2264,7 @@ public class TemplateDesigner extends BorderPane {
             });
             nameRow.getChildren().addAll(namePrompt, objNameField);
 
-            propBox.getChildren().addAll(headerRow, nameRow);
+            addPropertyNodes(headerRow, nameRow);
 
             // Position & Size Grid
             TitledPane geoPane = new TitledPane();
@@ -2200,7 +2380,7 @@ public class TemplateDesigner extends BorderPane {
             posGrid.add(hSpin, 3, 2);
 
             geoPane.setContent(posGrid);
-            propBox.getChildren().add(geoPane);
+            addPropertyNode(geoPane);
 
             // Specific Type Editors
             if (el.getType() == ElementType.TEXT || el.getType() == ElementType.PAGENO) {
@@ -2252,7 +2432,8 @@ public class TemplateDesigner extends BorderPane {
             lockCb.selectedProperty().addListener((obs, o, v) -> el.setLocked(v));
 
             toggles.getChildren().addAll(repeatCb, blankCb, lockCb);
-            propBox.getChildren().add(toggles);
+            addPropertyNode(toggles);
+            propBox.getChildren().setAll(propBuffer);
         } finally {
             updatingProperties = false;
         }
@@ -2558,7 +2739,7 @@ public class TemplateDesigner extends BorderPane {
         spacingPane.setContent(spacingGrid);
 
         sec.getChildren().addAll(textLbl, ta, varSec, fontRow, styleRow, colorGrid, spacingPane);
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private void buildRectProperties(TemplateElement el) {
@@ -2700,12 +2881,12 @@ public class TemplateDesigner extends BorderPane {
             rBox.setAlignment(Pos.CENTER_LEFT);
 
             sec.getChildren().addAll(title, grid, sidesBox, rBox);
-            propBox.getChildren().add(sec);
+            addPropertyNode(sec);
             return;
         }
 
         sec.getChildren().addAll(title, grid);
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private void buildLineProperties(TemplateElement el) {
@@ -2739,7 +2920,7 @@ public class TemplateDesigner extends BorderPane {
         grid.add(thickSpin, 1, 2);
 
         sec.getChildren().addAll(title, grid);
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private void buildImageProperties(TemplateElement el) {
@@ -2875,7 +3056,7 @@ public class TemplateDesigner extends BorderPane {
         sizeHint.getStyleClass().add("text-dim");
 
         sec.getChildren().addAll(title, previewContainer, logoCb, uploadBtn, logoButtons, fitRow, sizeHint);
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private Image decodeFxImage(String src) {
@@ -2926,7 +3107,7 @@ public class TemplateDesigner extends BorderPane {
         customTf.textProperty().addListener((obs, o, v) -> { el.setQrCustom(v); refreshCanvas(); });
 
         sec.getChildren().addAll(title, new Label("Data Source:"), srcCb, new Label("Custom URL:"), customTf);
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private void buildBarcodeProperties(TemplateElement el) {
@@ -2943,7 +3124,7 @@ public class TemplateDesigner extends BorderPane {
         textCb.setOnAction(e -> { el.setBarcodeShowText(textCb.isSelected()); refreshCanvas(); });
 
         sec.getChildren().addAll(title, new Label("Payload:"), tf, textCb);
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private void buildTableProperties(TemplateElement el) {
@@ -3219,7 +3400,7 @@ public class TemplateDesigner extends BorderPane {
         colActions.getChildren().addAll(addColBtn, presetGst, presetSimple);
 
         sec.getChildren().addAll(title, grid, zebraCb, colHeader, colHint, colsList, colActions);
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private boolean isShapeType(ElementType type) {
@@ -3372,7 +3553,7 @@ public class TemplateDesigner extends BorderPane {
         if (el.getType() == ElementType.POLYGON || el.getType() == ElementType.POLYLINE || el.getType() == ElementType.PATH || el.getType() == ElementType.FREEHAND) {
             sec.getChildren().add(buildCurveAndAnchorPropertiesPane(el));
         }
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private void buildShapeGeometryProperties(TemplateElement el, VBox sec) {
@@ -4226,7 +4407,7 @@ public class TemplateDesigner extends BorderPane {
 
         sec.getChildren().addAll(title, guideLbl, loadSvgBtn, new Label("SVG Source XML:"), svgArea, colRow);
         sec.getChildren().add(buildCurveAndAnchorPropertiesPane(el));
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private void buildIconProperties(TemplateElement el) {
@@ -4255,7 +4436,7 @@ public class TemplateDesigner extends BorderPane {
         g.add(new Label("Color:"), 0, 1); g.add(colNode, 1, 1);
 
         sec.getChildren().addAll(title, g);
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private void buildWatermarkProperties(TemplateElement el) {
@@ -4289,7 +4470,7 @@ public class TemplateDesigner extends BorderPane {
         g.add(new Label("Color:"), 0, 3); g.add(colNode, 1, 3);
 
         sec.getChildren().addAll(title, g);
-        propBox.getChildren().add(sec);
+        addPropertyNode(sec);
     }
 
     private void buildEffectsAndTransformsProperties(TemplateElement el) {
@@ -4403,12 +4584,70 @@ public class TemplateDesigner extends BorderPane {
         clipShape.setTooltip(new Tooltip("Clipping container shape"));
         clipShape.valueProperty().addListener((obs, o, v) -> { el.setClipShape(v); refreshCanvas(); });
 
-        HBox clipRow = new HBox(8, clipCb, clipShape);
+        Button clipHelpBtn = new Button("?");
+        clipHelpBtn.setStyle("-fx-background-color: rgba(245, 158, 11, 0.15); -fx-text-fill: #FBBF24; -fx-font-weight: bold; -fx-background-radius: 12; -fx-min-width: 24; -fx-pref-width: 24; -fx-min-height: 24; -fx-pref-height: 24; -fx-cursor: hand; -fx-border-color: rgba(245, 158, 11, 0.4); -fx-border-radius: 12; -fx-font-size: 11px;");
+        clipHelpBtn.setTooltip(new Tooltip("Learn how Clip to Container works (Guide & Examples)"));
+        clipHelpBtn.setOnAction(e -> showClipHelpDialog());
+
+        HBox clipRow = new HBox(8, clipCb, clipShape, clipHelpBtn);
         clipRow.setAlignment(Pos.CENTER_LEFT);
         fxBox.getChildren().add(clipRow);
 
         fxPane.setContent(fxBox);
-        propBox.getChildren().add(fxPane);
+        addPropertyNode(fxPane);
+    }
+
+    private void showClipHelpDialog() {
+        Dialog<Void> dlg = new Dialog<>();
+        dlg.setTitle("Clip to Container — Guide & Examples");
+        DialogHelper.styleDialog(dlg, 540, 520);
+
+        VBox content = new VBox(14);
+        content.setPadding(new Insets(20));
+
+        VBox headerBox = new VBox(4);
+        Label headerTitle = new Label("✂ Clip to Container");
+        headerTitle.getStyleClass().add("card-title");
+        headerTitle.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #FBBF24;");
+
+        Label headerSub = new Label("Constrain element rendering and sub-content strictly inside a geometric boundary.");
+        headerSub.getStyleClass().add("text-muted");
+        headerSub.setWrapText(true);
+        headerBox.getChildren().addAll(headerTitle, headerSub);
+
+        VBox body = new VBox(12);
+        body.getChildren().addAll(
+            createClipHelpSection("What is Clipping?",
+                "When enabled, any visual drawing that extends beyond the element bounds is neatly masked off. It applies identically on canvas and in high-resolution PDF exports."),
+            createClipHelpSection("Available Shapes:",
+                "• RECTANGLE: Masks strictly to element width and height (useful for overflowing text or tables).\n" +
+                "• CIRCLE: Masks the element inside an ellipse/circle centered at element bounds (perfect for circular company logos, user avatars, or round badges).\n" +
+                "• ROUNDED_RECT: Clips with smooth corner curvature matching the element's Border Radius."),
+            createClipHelpSection("Practical Examples:",
+                "1. Circular Business Logo: Add an Image element with your logo, turn on 'Clip to Container', and choose 'CIRCLE'.\n" +
+                "2. Clean Rounded Badges: Create a colored rectangle with text or barcode, enable clipping as 'ROUNDED_RECT' to ensure child highlights don't bleed outside rounded corners.\n" +
+                "3. Table / Text Overflow Protection: Prevent lengthy variable descriptions or table rows from spilling beyond allocated container boundaries.")
+        );
+
+        ScrollPane sp = new ScrollPane(body);
+        sp.setFitToWidth(true);
+        sp.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 4 0;");
+
+        content.getChildren().addAll(headerBox, new Separator(), sp);
+        dlg.getDialogPane().setContent(content);
+        dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dlg.showAndWait();
+    }
+
+    private VBox createClipHelpSection(String title, String desc) {
+        VBox sec = new VBox(4);
+        Label t = new Label(title);
+        t.setStyle("-fx-font-weight: bold; -fx-text-fill: #E2E8F0; -fx-font-size: 12px;");
+        Label d = new Label(desc);
+        d.setWrapText(true);
+        d.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-line-spacing: 2px;");
+        sec.getChildren().addAll(t, d);
+        return sec;
     }
 
     private void buildDataBindingProperties(TemplateElement el) {
@@ -4487,7 +4726,7 @@ public class TemplateDesigner extends BorderPane {
 
         contentBox.getChildren().addAll(helpBanner, g);
         bindPane.setContent(contentBox);
-        propBox.getChildren().add(bindPane);
+        addPropertyNode(bindPane);
     }
 
     private void addComponent(ComponentPreset.PresetType type) {
@@ -4803,23 +5042,14 @@ public class TemplateDesigner extends BorderPane {
      * keyCombo (built-ins first, then user table-scope custom vars).
      */
     private ObservableList<String> buildColumnKeyList() {
-        List<String> keys = new java.util.ArrayList<>(List.of(
-            "sr", "desc", "hsn", "qty", "unit", "rate",
-            "gst", "disc", "taxable", "amount",
-            "batch_no", "exp_date", "mrp", "serial_no", "part_no"
-        ));
-        if (variableDao != null) {
-            for (VariableDef v : variableDao.getTableScopeVariables()) {
-                if (!keys.contains(v.getKey())) keys.add(v.getKey());
-            }
-        }
-        return FXCollections.observableArrayList(keys);
+        return FXCollections.observableArrayList(cachedColumnKeys);
     }
 
-    /** Maps a raw column key to a human-readable display label. */
+    /** Maps a raw column key to a human-readable display label without repeated SQL calls. */
     private String columnKeyToLabel(String key) {
         if (key == null) return "";
-        return switch (key.toLowerCase().trim()) {
+        String lower = key.toLowerCase().trim();
+        return switch (lower) {
             case "sr", "index", "#", "s_no", "sno" -> "Sr. No. (" + key + ")";
             case "desc", "description", "name", "item_name" -> "Description (" + key + ")";
             case "hsn", "sac", "hsn_sac"             -> "HSN / SAC (" + key + ")";
@@ -4836,13 +5066,8 @@ public class TemplateDesigner extends BorderPane {
             case "serial_no"                          -> "Serial No. (" + key + ")";
             case "part_no"                            -> "Part No. (" + key + ")";
             default -> {
-                // Check user custom vars for a label
-                if (variableDao != null) {
-                    for (VariableDef v : variableDao.getTableScopeVariables()) {
-                        if (key.equals(v.getKey())) yield v.getLabel() + " (" + key + ")";
-                    }
-                }
-                yield key;
+                String cached = cachedVariableLabels.get(lower);
+                yield cached != null ? cached : key;
             }
         };
     }
@@ -4873,8 +5098,8 @@ public class TemplateDesigner extends BorderPane {
         catalog.add(new ColumnOption("serial_no",  "Serial No.",   "Common",  12, "left"));
         catalog.add(new ColumnOption("part_no",    "Part No.",     "Common",  12, "left"));
         // User-defined table-scope custom variables
-        if (variableDao != null) {
-            for (VariableDef v : variableDao.getTableScopeVariables()) {
+        for (VariableDef v : cachedTableScopeVariables) {
+            if (v != null && v.getKey() != null) {
                 boolean already = catalog.stream().anyMatch(o -> o.key().equals(v.getKey()));
                 if (!already) {
                     catalog.add(new ColumnOption(v.getKey(), v.getLabel(), "Your Custom", 12, "left"));
@@ -5226,19 +5451,14 @@ public class TemplateDesigner extends BorderPane {
         map.put("parcels", new VariableDef("parcels", "Parcels / Packages", "LOGISTICS", true));
         map.put("e_way_bill", new VariableDef("e_way_bill", "E-Way Bill Number", "LOGISTICS", true));
 
-        // User custom variables from DB
-        try {
-            if (variableDao != null) {
-                List<VariableDef> userVars = variableDao.getAllVariables();
-                if (userVars != null) {
-                    for (VariableDef uv : userVars) {
-                        if (uv != null && uv.getKey() != null && !uv.getKey().isBlank()) {
-                            map.putIfAbsent(uv.getKey(), uv);
-                        }
-                    }
+        // User custom variables from cached session load
+        if (cachedAllVariables != null) {
+            for (VariableDef uv : cachedAllVariables) {
+                if (uv != null && uv.getKey() != null && !uv.getKey().isBlank()) {
+                    map.putIfAbsent(uv.getKey(), uv);
                 }
             }
-        } catch (Exception ignored) {}
+        }
         return new ArrayList<>(map.values());
     }
 
@@ -5377,7 +5597,7 @@ public class TemplateDesigner extends BorderPane {
         Label badge = new Label("CANVAS");
         badge.getStyleClass().add("type-badge");
         headerRow.getChildren().addAll(titleLbl, spacer, badge);
-        propBox.getChildren().add(headerRow);
+        addPropertyNode(headerRow);
 
         // Section 1: Dimensions
         TitledPane dimPane = new TitledPane();
@@ -5435,7 +5655,7 @@ public class TemplateDesigner extends BorderPane {
         dimGrid.add(autoHCb, 0, 2, 4, 1);
 
         dimPane.setContent(dimGrid);
-        propBox.getChildren().add(dimPane);
+        addPropertyNode(dimPane);
 
         // Section 2: Page Margins
         TitledPane mgPane = new TitledPane();
@@ -5530,7 +5750,7 @@ public class TemplateDesigner extends BorderPane {
         mgBox.getChildren().add(guideNote);
 
         mgPane.setContent(mgBox);
-        propBox.getChildren().add(mgPane);
+        addPropertyNode(mgPane);
     }
 
     private void updateMargin(String side, double val, boolean shift) {
@@ -5960,9 +6180,10 @@ public class TemplateDesigner extends BorderPane {
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
         root.getStyleClass().addAll("bg-base", "root-container");
-        root.setPrefWidth(540);
+        root.setPrefWidth(620);
+        root.setMaxHeight(700);
 
-        Label titleLbl = new Label("InvoiceStudio 3.0 Designer Reference");
+        Label titleLbl = new Label("InvoiceStudio 4.0 Designer Reference & Shortcuts");
         titleLbl.getStyleClass().add("heading-l");
 
         GridPane grid = new GridPane();
@@ -5971,20 +6192,25 @@ public class TemplateDesigner extends BorderPane {
         grid.setPadding(new Insets(8, 0, 8, 0));
 
         String[][] shortcuts = {
+                {"Double-Click (Text)", "Enter inline text editing mode directly on canvas"},
+                {"Enter (Editing)", "Commit and save inline text changes"},
+                {"Shift + Enter (Editing)", "Insert newline in text editor"},
+                {"Escape", "Cancel text edit / Cancel pen tool / Deselect element"},
+                {"V", "Switch to Select & Move tool"},
+                {"H  /  Space (Hold)", "Pan canvas freely with Hand tool"},
+                {"P", "Switch to Vector Pen tool (plot points / curves)"},
+                {"Ctrl + Mouse Wheel", "Zoom canvas in and out"},
+                {"Ctrl + +  /  Ctrl + -", "Zoom in / Zoom out"},
+                {"Ctrl + 0", "Reset canvas zoom to 100%"},
                 {"Ctrl + S", "Save template changes to database"},
                 {"Ctrl + Z", "Undo last designer action"},
-                {"Ctrl + Y / Ctrl + Shift + Z", "Redo previously undone action"},
-                {"Ctrl + C / Ctrl + V", "Copy and paste selected element"},
-                {"Ctrl + D", "Duplicate selected element"},
+                {"Ctrl + Y  /  Ctrl + Shift + Z", "Redo previously undone action"},
+                {"Ctrl + C  /  Ctrl + V", "Copy and paste selected element"},
+                {"Ctrl + D", "Duplicate selected element with offset"},
                 {"Ctrl + G", "Group selected elements together"},
                 {"Ctrl + Shift + G", "Ungroup selected elements"},
-                {"Delete / Backspace", "Delete selected canvas element (safe while typing)"},
-                {"Space (Hold) / H", "Pan canvas freely with hand tool"},
-                {"V", "Switch to select & move tool"},
-                {"Ctrl + Mouse Wheel", "Zoom canvas in and out"},
-                {"Ctrl + 0", "Reset canvas zoom to 100%"},
-                {"Arrow Keys", "Nudge selected element by 1 mm (Shift + Arrow for 5 mm)"},
-                {"Escape", "Deselect active element"}
+                {"Delete  /  Backspace", "Delete selected canvas element (safe while typing)"},
+                {"Arrow Keys", "Nudge selected element by 1 mm (Shift + Arrow for 5 mm)"}
         };
 
         int r = 0;
@@ -6000,18 +6226,27 @@ public class TemplateDesigner extends BorderPane {
 
         VBox featuresBox = new VBox(6);
         featuresBox.setStyle("-fx-background-color: #151B25; -fx-padding: 12; -fx-background-radius: 6; -fx-border-color: #232B38; -fx-border-radius: 6;");
-        Label featTitle = new Label("What's New in v3.0:");
+        Label featTitle = new Label("Designer Features & Capabilities (v4.0):");
         featTitle.setStyle("-fx-font-weight: bold; -fx-text-fill: #D9A13B; -fx-font-size: 13px;");
-        Label f1 = new Label("• Metric Canvas Rulers: Millimeter scale on top and left axes.");
-        Label f2 = new Label("• Magnetic Border Snapping (🧲): Snaps and collapses object borders directly onto other objects and margins.");
-        Label f3 = new Label("• 8-Point Resize Handles: Resize any element from all 8 directions including left-side scaling (W handle).");
-        Label f4 = new Label("• Interactive Layers: Direct hide/show (👁), lock/unlock (🔒), and custom object naming.");
-        Label f5 = new Label("• Individual Shape Borders: Configure per-side border width, color, and stroke style (solid, dashed, dotted).");
-        Label f6 = new Label("• Precision Print Engine: Automatic paper matching and coordinate scaling preventing print clipping.");
-        for (Label fl : new Label[]{f1, f2, f3, f4, f5, f6}) {
+        Label f1 = new Label("• Inline Canvas Text Editing: Double-click any text element to type and edit text directly on canvas with live preview.");
+        Label f2 = new Label("• Selection-Aware Cursors: Default arrow pointer for clean hovering; move & directional resize handles activate upon selection.");
+        Label f3 = new Label("• Container Clipping (✂): Geometric masking into Rectangles, Circles (for logos/badges), and Rounded Rectangles in both Canvas and PDF export.");
+        Label f4 = new Label("• Modern Web Range Bars: Dark slate slider tracks with amber-gold glowing thumbs across all controls.");
+        Label f5 = new Label("• Vector Pen Tool (P): Draw custom polygons and smooth bezier curves with interactive vertex handles.");
+        Label f6 = new Label("• Metric Canvas Rulers & Snapping (🧲): Millimeter scale with magnetic alignment to element borders and page margins.");
+        Label f7 = new Label("• 8-Point Resize Handles: Full 8-direction scaling including left-side scaling (W handle).");
+        Label f8 = new Label("• Interactive Layers: Direct hide/show (👁), lock/unlock (🔒), and custom element naming.");
+        for (Label fl : new Label[]{f1, f2, f3, f4, f5, f6, f7, f8}) {
+            fl.setWrapText(true);
             fl.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
         }
-        featuresBox.getChildren().addAll(featTitle, f1, f2, f3, f4, f5, f6);
+        featuresBox.getChildren().addAll(featTitle, f1, f2, f3, f4, f5, f6, f7, f8);
+
+        VBox scrollContent = new VBox(14, grid, featuresBox);
+        ScrollPane sp = new ScrollPane(scrollContent);
+        sp.setFitToWidth(true);
+        sp.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 2;");
+        VBox.setVgrow(sp, Priority.ALWAYS);
 
         Button closeBtn = new Button("Close");
         closeBtn.getStyleClass().addAll("button-primary");
@@ -6019,7 +6254,7 @@ public class TemplateDesigner extends BorderPane {
         HBox btnBox = new HBox(closeBtn);
         btnBox.setAlignment(Pos.CENTER_RIGHT);
 
-        root.getChildren().addAll(titleLbl, grid, featuresBox, btnBox);
+        root.getChildren().addAll(titleLbl, sp, btnBox);
 
         Scene scene = new Scene(root);
         if (getScene() != null) {

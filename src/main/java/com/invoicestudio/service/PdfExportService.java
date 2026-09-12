@@ -238,6 +238,7 @@ public class PdfExportService {
 
         AffineTransform origTx = g2.getTransform();
         Composite origComp = g2.getComposite();
+        Shape origClip = g2.getClip();
 
         if (el.getRotation() != 0) {
             g2.rotate(Math.toRadians(el.getRotation()), x + w / 2.0, y + h / 2.0);
@@ -253,6 +254,20 @@ public class PdfExportService {
 
         if (el.getOpacity() < 1.0 && el.getOpacity() >= 0.0) {
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) el.getOpacity()));
+        }
+
+        if (el.isClipEnabled()) {
+            String shape = el.getClipShape() != null ? el.getClipShape().toUpperCase() : "RECTANGLE";
+            Shape clipShape;
+            if ("CIRCLE".equals(shape)) {
+                clipShape = new Ellipse2D.Double(x, y, Math.min(w, h), Math.min(w, h));
+            } else if ("ROUNDED_RECT".equals(shape)) {
+                double r = el.getBorderRadius() > 0 ? el.getBorderRadius() * PX_PER_MM : Math.min(w, h) * 0.15;
+                clipShape = new RoundRectangle2D.Double(x, y, w, h, r * 2, r * 2);
+            } else {
+                clipShape = new Rectangle2D.Double(x, y, w, h);
+            }
+            g2.clip(clipShape);
         }
 
         switch (el.getType()) {
@@ -592,6 +607,7 @@ public class PdfExportService {
             }
         }
 
+        g2.setClip(origClip);
         g2.setComposite(origComp);
         g2.setTransform(origTx);
     }

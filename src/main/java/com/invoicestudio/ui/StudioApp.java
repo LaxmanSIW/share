@@ -564,6 +564,10 @@ public class StudioApp extends Application {
         return new RecurringEngine(data.getDb());
     }
 
+    public ExecutorService getDbExecutor() {
+        return dbExecutor;
+    }
+
     public Stage getPrimaryStage() {
         return primaryStage;
     }

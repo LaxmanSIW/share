@@ -40,23 +40,29 @@ jobs:
       - name: Package MSI (desktop + start-menu shortcuts, bundled Java 21)
         shell: pwsh
         run: |
+          [xml]$pom = Get-Content pom.xml
+          $version = $pom.project.version
+          $artifactId = $pom.project.artifactId
+          $jarName = "$artifactId-$version.jar"
+          Write-Host "Packaging version: $version (jar: $jarName)"
           New-Item -ItemType Directory -Force packaging/input | Out-Null
-          Copy-Item target/invoice-studio-desktop-2.0.1.jar packaging/input/
+          Copy-Item "target/$jarName" packaging/input/
           jpackage --type msi `
             --name InvoiceStudio `
             --description "Billing & Invoice Design Studio" `
-            --app-version 2.0.1 --vendor InvoiceStudio `
+            --app-version $version --vendor InvoiceStudio `
             --icon packaging/InvoiceStudio.ico `
             --input packaging/input `
-            --main-jar invoice-studio-desktop-2.0.1.jar `
+            --main-jar $jarName `
             --main-class com.invoicestudio.Launcher `
             --win-shortcut --win-menu --win-dir-chooser `
             --dest packaging/dist
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: InvoiceStudio-2.0.1-windows-installer
+          name: InvoiceStudio-${{ env.APP_VERSION }}-windows-installer
           path: packaging/dist/*.msi
           if-no-files-found: error
 

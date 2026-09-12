@@ -41,7 +41,12 @@ try {
 } finally {
     Pop-Location
 }
-$Jar = Join-Path $Root "target\invoice-studio-desktop-3.0.0.jar"
+# Dynamically resolve project version and fat jar from pom.xml
+[xml]$pom = Get-Content (Join-Path $Root "pom.xml")
+$AppVersion = $pom.project.version
+$ArtifactId = $pom.project.artifactId
+$JarName = "$ArtifactId-$AppVersion.jar"
+$Jar = Join-Path $Root "target\$JarName"
 if (-not (Test-Path $Jar)) { throw "fat jar missing: $Jar" }
 
 # --- 2) Stage jpackage input: ONLY the shaded jar (target/ holds originals) --
@@ -53,11 +58,11 @@ Copy-Item $Jar $InputDir
 $Common = @(
     "--name", "InvoiceStudio",
     "--description", "Billing & Invoice Design Studio",
-    "--app-version", "3.0.0",
+    "--app-version", $AppVersion,
     "--vendor", "InvoiceStudio",
     "--icon", (Join-Path $PSScriptRoot "InvoiceStudio.ico"),
     "--input", $InputDir,
-    "--main-jar", "invoice-studio-desktop-3.0.0.jar",
+    "--main-jar", $JarName,
     "--main-class", "com.invoicestudio.Launcher"
 )
 

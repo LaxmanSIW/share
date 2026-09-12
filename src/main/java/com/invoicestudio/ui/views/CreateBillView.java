@@ -12,6 +12,8 @@ import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
 import com.invoicestudio.ui.UiTheme;
+import javafx.animation.PauseTransition;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
@@ -21,6 +23,7 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
+import javafx.util.Duration;
 import javafx.util.StringConverter;
 
 import java.io.File;
@@ -30,6 +33,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class CreateBillView extends BorderPane {
+
+    private final PauseTransition previewDebounce = new PauseTransition(Duration.millis(150));
 
     private final StudioApp app;
     private final BillDao billDao;
@@ -811,9 +816,14 @@ public class CreateBillView extends BorderPane {
         grandTotalLbl.setText(String.format("₹%.2f", totals.getGrandTotal()));
         amountInWordsLbl.setText(words);
 
-        // Update preview
-        Bill b = buildBillObject(totals, words);
-        previewPane.render(currentTemplate, b, currentSettings, 0, 1);
+        // Debounced visual preview to eliminate scene-graph rebuild lag while typing
+        previewDebounce.setOnFinished(e -> {
+            if (currentTemplate != null) {
+                Bill b = buildBillObject(totals, words);
+                previewPane.render(currentTemplate, b, currentSettings, 0, 1);
+            }
+        });
+        previewDebounce.playFromStart();
     }
 
     private Bill buildBillObject(BillTotals totals, String words) {
@@ -893,63 +903,87 @@ public class CreateBillView extends BorderPane {
         BillTotals totals = BillingService.computeTotals(items, disc, interState);
         String words = BillingService.amountInWords(totals.getGrandTotal());
 
-        Bill bill = buildBillObject(totals, words);
-        app.getData().saveBill(bill);
+        final Bill bill = buildBillObject(totals, words);
+        final boolean isNew = (editingBill == null);
+        final boolean saveBuyer = saveBuyerCb.isSelected() && !buyerNameField.getText().isBlank();
+        final String buyerName = buyerNameField.getText();
+        final String buyerAddress = buyerAddressField.getText();
+        final String buyerGst = buyerGstField.getText();
+        final String buyerPhone = buyerPhoneField.getText();
+        final String buyerState = buyerStateField.getText();
+        final String buyerStateCode = buyerStateCodeField.getText().trim();
 
-        // Auto increment counter in settings if new bill
-        if (editingBill == null) {
-            currentSettings.setBillNoNext(currentSettings.getBillNoNext() + 1);
-            app.getData().saveSettings(currentSettings);
-        }
+        // Immediate responsive toast
+        Toast.show(app.getRootPane(), "Saving...", "Writing bill " + bill.getBillNo() + "...", false);
 
-        // Save buyer to directory if enabled
-        if (saveBuyerCb.isSelected() && !buyerNameField.getText().isBlank()) {
-            Buyer existing = buyerDao.findByName(buyerNameField.getText());
-            if (existing == null) {
-                Buyer nb = new Buyer(
-                        "byr_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
-                        buyerNameField.getText(),
-                        buyerAddressField.getText(),
-                        buyerGstField.getText(),
-                        buyerPhoneField.getText(),
-                        buyerStateField.getText(),
-                        buyerStateCodeField.getText().trim()
-                );
-                buyerDao.saveBuyer(nb);
-            }
-        }
-
-        app.getData().invalidateBills();
-        app.reloadAllData();
-        Toast.show(app.getRootPane(), "Bill Saved", bill.getBillNo() + " saved successfully.", false);
-
-        if (printAfter) {
-            double prevZoom = previewPane.getZoom();
-            previewPane.setZoom(1.0);
+        // Perform database operations in background thread
+        app.getDbExecutor().execute(() -> {
             try {
-                PrintingService.printTemplate(previewPane, currentTemplate, app.getPrimaryStage(), 1, bill.getBillNo());
-            } finally {
-                previewPane.setZoom(prevZoom);
-            }
-        }
+                app.getData().saveBill(bill);
 
-        if (pdfAfter) {
-            FileChooser fc = new FileChooser();
-            fc.setTitle("Export Invoice PDF");
-            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Document (*.pdf)", "*.pdf"));
-            fc.setInitialFileName(bill.getBillNo() + ".pdf");
-            File dest = fc.showSaveDialog(app.getPrimaryStage());
-            if (dest != null) {
-                try {
-                    PdfExportService.exportBillPdf(bill, currentTemplate, currentSettings, dest, 1);
-                    Toast.show(app.getRootPane(), "PDF Exported", "Saved to " + dest.getName(), false);
-                } catch (Exception ex) {
-                    Toast.show(app.getRootPane(), "PDF Export Failed", ex.getMessage(), true);
+                // Auto increment counter in settings if new bill
+                if (isNew) {
+                    currentSettings.setBillNoNext(currentSettings.getBillNoNext() + 1);
+                    app.getData().saveSettings(currentSettings);
                 }
-            }
-        }
 
-        app.showHistory();
+                // Save buyer to directory if enabled
+                if (saveBuyer) {
+                    Buyer existing = buyerDao.findByName(buyerName);
+                    if (existing == null) {
+                        Buyer nb = new Buyer(
+                                "byr_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
+                                buyerName,
+                                buyerAddress,
+                                buyerGst,
+                                buyerPhone,
+                                buyerState,
+                                buyerStateCode
+                        );
+                        buyerDao.saveBuyer(nb);
+                    }
+                }
+
+                app.getData().invalidateBills();
+
+                Platform.runLater(() -> {
+                    app.reloadAllData();
+                    Toast.show(app.getRootPane(), "Bill Saved", bill.getBillNo() + " saved successfully.", false);
+
+                    if (printAfter) {
+                        double prevZoom = previewPane.getZoom();
+                        previewPane.setZoom(1.0);
+                        try {
+                            PrintingService.printTemplate(previewPane, currentTemplate, app.getPrimaryStage(), 1, bill.getBillNo());
+                        } finally {
+                            previewPane.setZoom(prevZoom);
+                        }
+                    }
+
+                    if (pdfAfter) {
+                        FileChooser fc = new FileChooser();
+                        fc.setTitle("Export Invoice PDF");
+                        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Document (*.pdf)", "*.pdf"));
+                        fc.setInitialFileName(bill.getBillNo() + ".pdf");
+                        File dest = fc.showSaveDialog(app.getPrimaryStage());
+                        if (dest != null) {
+                            app.getDbExecutor().execute(() -> {
+                                try {
+                                    PdfExportService.exportBillPdf(bill, currentTemplate, currentSettings, dest, 1);
+                                    Platform.runLater(() -> Toast.show(app.getRootPane(), "PDF Exported", "Saved to " + dest.getName(), false));
+                                } catch (Exception ex) {
+                                    Platform.runLater(() -> Toast.show(app.getRootPane(), "PDF Export Failed", ex.getMessage(), true));
+                                }
+                            });
+                        }
+                    }
+
+                    app.showHistory();
+                });
+            } catch (Exception ex) {
+                Platform.runLater(() -> Toast.show(app.getRootPane(), "Save Failed", "Error saving bill: " + ex.getMessage(), true));
+            }
+        });
     }
 
     private List<TableColumn> getActiveTableColumns() {

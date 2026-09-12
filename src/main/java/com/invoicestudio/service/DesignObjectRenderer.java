@@ -52,7 +52,7 @@ public class DesignObjectRenderer {
         };
 
         if (node != null) {
-            applyEffectsAndTransforms(node, el);
+            applyEffectsAndTransforms(node, el, w, h);
         }
         return node != null ? node : new Pane();
     }
@@ -502,11 +502,6 @@ public class DesignObjectRenderer {
         StackPane sp = new StackPane(iv);
         sp.setPrefSize(w, h);
         sp.setAlignment(Pos.CENTER);
-
-        if (el.isClipEnabled() && "circle".equalsIgnoreCase(el.getClipShape())) {
-            Circle clip = new Circle(w / 2.0, h / 2.0, Math.min(w, h) / 2.0);
-            sp.setClip(clip);
-        }
         return sp;
     }
 
@@ -630,6 +625,12 @@ public class DesignObjectRenderer {
     }
 
     public static void applyEffectsAndTransforms(Node node, TemplateElement el) {
+        applyEffectsAndTransforms(node, el, el != null ? el.getW() * MM_PX : 0, el != null ? el.getH() * MM_PX : 0);
+    }
+
+    public static void applyEffectsAndTransforms(Node node, TemplateElement el, double w, double h) {
+        if (node == null || el == null) return;
+
         if (el.isShadowEnabled()) {
             DropShadow ds = new DropShadow();
             ds.setBlurType(BlurType.GAUSSIAN);
@@ -660,6 +661,26 @@ public class DesignObjectRenderer {
             node.setScaleY(-el.getScaleY());
         } else if (el.getScaleY() != 1.0) {
             node.setScaleY(el.getScaleY());
+        }
+
+        // Geometric container clipping
+        if (el.isClipEnabled()) {
+            String shape = el.getClipShape() != null ? el.getClipShape().toUpperCase() : "RECTANGLE";
+            Shape clipShape;
+            if ("CIRCLE".equals(shape)) {
+                clipShape = new Circle(w / 2.0, h / 2.0, Math.min(w, h) / 2.0);
+            } else if ("ROUNDED_RECT".equals(shape)) {
+                Rectangle rr = new Rectangle(0, 0, w, h);
+                double r = el.getBorderRadius() > 0 ? el.getBorderRadius() * MM_PX : Math.min(w, h) * 0.15;
+                rr.setArcWidth(r * 2);
+                rr.setArcHeight(r * 2);
+                clipShape = rr;
+            } else {
+                clipShape = new Rectangle(0, 0, w, h);
+            }
+            node.setClip(clipShape);
+        } else {
+            node.setClip(null);
         }
     }
 

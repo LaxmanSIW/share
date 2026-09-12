@@ -9,7 +9,9 @@
 ; desktop-icon task, start-menu group, uninstaller, launch-after-install.
 
 #define AppName "InvoiceStudio"
-#define AppVersion "3.0.0"
+#ifndef AppVersion
+  #define AppVersion "4.0.0"
+#endif
 #define AppExe "InvoiceStudio.exe"
 
 [Setup]

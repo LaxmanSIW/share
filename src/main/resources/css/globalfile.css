@@ -2708,5 +2708,44 @@ Label {
     -fx-alignment: center-right;
 }
 
+/* ============================================================
+   MODERN WEB-THEME RANGE BARS / SLIDERS (GLOBAL)
+   ============================================================ */
+.slider {
+    -fx-padding: 4px 0;
+}
 
+.slider .track {
+    -fx-background-color: #1E293B;
+    -fx-background-radius: 4px;
+    -fx-pref-height: 6px;
+    -fx-border-color: rgba(255, 255, 255, 0.08);
+    -fx-border-radius: 4px;
+    -fx-border-width: 1px;
+}
 
+.slider .thumb {
+    -fx-background-color: linear-gradient(to bottom, #FBBF24, #D97706);
+    -fx-background-radius: 12px;
+    -fx-pref-width: 14px;
+    -fx-pref-height: 14px;
+    -fx-border-color: #FFFFFF;
+    -fx-border-width: 1.5px;
+    -fx-border-radius: 12px;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.35), 4, 0, 0, 1.5);
+}
+
+.slider .thumb:hover {
+    -fx-background-color: linear-gradient(to bottom, #FDE68A, #F59E0B);
+    -fx-effect: dropshadow(gaussian, rgba(245, 158, 11, 0.6), 8, 0.2, 0, 0);
+}
+
+.slider .thumb:pressed {
+    -fx-background-color: #B45309;
+    -fx-effect: dropshadow(gaussian, rgba(245, 158, 11, 0.8), 10, 0.3, 0, 0);
+}
+
+.slider:focused .thumb {
+    -fx-border-color: #FDE68A;
+}

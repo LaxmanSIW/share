@@ -15,9 +15,26 @@ import java.awt.image.BufferedImage;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class BarcodeService {
+
+    private static final int MAX_CACHE_SIZE = 150;
+
+    private static final Map<String, Image> QR_FX_CACHE = new LinkedHashMap<>(MAX_CACHE_SIZE, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Image> eldest) {
+            return size() > MAX_CACHE_SIZE;
+        }
+    };
+
+    private static final Map<String, Image> BARCODE_FX_CACHE = new LinkedHashMap<>(MAX_CACHE_SIZE, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Image> eldest) {
+            return size() > MAX_CACHE_SIZE;
+        }
+    };
 
     public static BufferedImage generateQrBufferedImage(String payload, int size) {
         if (payload == null || payload.isBlank()) payload = "InvoiceStudio";
@@ -37,8 +54,17 @@ public class BarcodeService {
     }
 
     public static Image generateQrFxImage(String payload, int size) {
+        String key = size + ":" + (payload != null ? payload : "InvoiceStudio");
+        synchronized (QR_FX_CACHE) {
+            Image cached = QR_FX_CACHE.get(key);
+            if (cached != null) return cached;
+        }
         BufferedImage bi = generateQrBufferedImage(payload, size);
-        return SwingFXUtils.toFXImage(bi, null);
+        Image img = SwingFXUtils.toFXImage(bi, null);
+        synchronized (QR_FX_CACHE) {
+            QR_FX_CACHE.put(key, img);
+        }
+        return img;
     }
 
     public static BufferedImage generateBarcodeBufferedImage(String payload, int width, int height, boolean showText) {
@@ -74,8 +100,19 @@ public class BarcodeService {
     }
 
     public static Image generateBarcodeFxImage(String payload, int width, int height, boolean showText) {
+        String clean = (payload != null ? payload : "INV-0001").replaceAll("[^\\x20-\\x7e]", "").trim();
+        if (clean.isBlank()) clean = "INV";
+        String key = width + "x" + height + ":" + showText + ":" + clean;
+        synchronized (BARCODE_FX_CACHE) {
+            Image cached = BARCODE_FX_CACHE.get(key);
+            if (cached != null) return cached;
+        }
         BufferedImage bi = generateBarcodeBufferedImage(payload, width, height, showText);
-        return SwingFXUtils.toFXImage(bi, null);
+        Image img = SwingFXUtils.toFXImage(bi, null);
+        synchronized (BARCODE_FX_CACHE) {
+            BARCODE_FX_CACHE.put(key, img);
+        }
+        return img;
     }
 
     public static String buildUpiPayload(String upiId, String merchantName, double amount, String invoiceNo) {
