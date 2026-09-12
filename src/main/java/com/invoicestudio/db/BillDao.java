@@ -21,15 +21,25 @@ public class BillDao {
         this.db = db;
     }
 
+    private String getEffectiveUserId() {
+        return com.invoicestudio.service.AuthSessionManager.getCurrentUserId();
+    }
+
     public List<Bill> getAllBills() {
         List<Bill> list = new ArrayList<>();
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty()) {
+            return list;
+        }
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT json_data FROM bills ORDER BY date DESC, bill_no DESC");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                String json = rs.getString("json_data");
-                if (json != null) {
-                    list.add(mapper.readValue(json, Bill.class));
+             PreparedStatement ps = conn.prepareStatement("SELECT json_data FROM bills WHERE user_id = ? ORDER BY date DESC, bill_no DESC")) {
+            ps.setString(1, uid);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String json = rs.getString("json_data");
+                    if (json != null) {
+                        list.add(mapper.readValue(json, Bill.class));
+                    }
                 }
             }
         } catch (Exception e) {
@@ -39,9 +49,12 @@ public class BillDao {
     }
 
     public Bill getBillById(String id) {
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || id == null || id.isBlank()) return null;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT json_data FROM bills WHERE id = ?")) {
+             PreparedStatement ps = conn.prepareStatement("SELECT json_data FROM bills WHERE id = ? AND user_id = ?")) {
             ps.setString(1, id);
+            ps.setString(2, uid);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return mapper.readValue(rs.getString("json_data"), Bill.class);
@@ -54,9 +67,12 @@ public class BillDao {
     }
 
     public Bill getBillByNo(String billNo) {
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || billNo == null || billNo.isBlank()) return null;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT json_data FROM bills WHERE bill_no = ?")) {
+             PreparedStatement ps = conn.prepareStatement("SELECT json_data FROM bills WHERE bill_no = ? AND user_id = ?")) {
             ps.setString(1, billNo);
+            ps.setString(2, uid);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return mapper.readValue(rs.getString("json_data"), Bill.class);
@@ -69,8 +85,16 @@ public class BillDao {
     }
 
     public void saveBill(Bill bill) {
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || bill == null) return;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("INSERT INTO bills (id, bill_no, date, doc_type, status, buyer_name, grand_total, due_amount, json_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET bill_no = excluded.bill_no, date = excluded.date, doc_type = excluded.doc_type, status = excluded.status, buyer_name = excluded.buyer_name, grand_total = excluded.grand_total, due_amount = excluded.due_amount, json_data = excluded.json_data, updated_at = excluded.updated_at")) {
+             PreparedStatement ps = conn.prepareStatement(
+                 "INSERT INTO bills (id, user_id, bill_no, date, doc_type, status, buyer_name, grand_total, due_amount, json_data, created_at, updated_at) " +
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                 "ON CONFLICT(id) DO UPDATE SET user_id = excluded.user_id, bill_no = excluded.bill_no, date = excluded.date, " +
+                 "doc_type = excluded.doc_type, status = excluded.status, buyer_name = excluded.buyer_name, " +
+                 "grand_total = excluded.grand_total, due_amount = excluded.due_amount, json_data = excluded.json_data, " +
+                 "updated_at = excluded.updated_at WHERE bills.user_id = excluded.user_id")) {
             String now = Instant.now().toString();
             if (bill.getCreatedAt() == null) bill.setCreatedAt(now);
             bill.setUpdatedAt(now);
@@ -84,16 +108,17 @@ public class BillDao {
             String buyer = bill.getVariables() != null ? bill.getVariables().getOrDefault("buyer_name", "") : "";
 
             ps.setString(1, bill.getId());
-            ps.setString(2, bill.getBillNo());
-            ps.setString(3, bill.getDate());
-            ps.setString(4, bill.getDocType().getCode());
-            ps.setString(5, bill.getStatus().getCode());
-            ps.setString(6, buyer);
-            ps.setDouble(7, grand);
-            ps.setDouble(8, due);
-            ps.setString(9, mapper.writeValueAsString(bill));
-            ps.setString(10, bill.getCreatedAt());
-            ps.setString(11, bill.getUpdatedAt());
+            ps.setString(2, uid);
+            ps.setString(3, bill.getBillNo());
+            ps.setString(4, bill.getDate());
+            ps.setString(5, bill.getDocType().getCode());
+            ps.setString(6, bill.getStatus().getCode());
+            ps.setString(7, buyer);
+            ps.setDouble(8, grand);
+            ps.setDouble(9, due);
+            ps.setString(10, mapper.writeValueAsString(bill));
+            ps.setString(11, bill.getCreatedAt());
+            ps.setString(12, bill.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();
@@ -101,9 +126,12 @@ public class BillDao {
     }
 
     public void deleteBill(String id) {
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || id == null || id.isBlank()) return;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("DELETE FROM bills WHERE id = ?")) {
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM bills WHERE id = ? AND user_id = ?")) {
             ps.setString(1, id);
+            ps.setString(2, uid);
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();

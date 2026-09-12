@@ -2206,7 +2206,29 @@ public class TemplateDesigner extends BorderPane {
             });
         });
 
-        box.getChildren().addAll(swatch, btn);
+        Button dropperBtn = new Button();
+        dropperBtn.getStyleClass().addAll("button-sm", "button-icon-subtle");
+        dropperBtn.setStyle("-fx-padding: 3 6; -fx-cursor: hand;");
+        dropperBtn.setTooltip(new Tooltip("Pick Color from Screen / Image (Eyedropper)"));
+        SVGPath dropIcon = new SVGPath();
+        dropIcon.setContent(CustomColorChooserDialog.DROPPER_ICON_PATH);
+        dropIcon.setFill(Color.web("#94A3B8"));
+        dropIcon.setScaleX(0.65);
+        dropIcon.setScaleY(0.65);
+        dropperBtn.setGraphic(dropIcon);
+        dropperBtn.setOnMouseEntered(ev -> dropIcon.setFill(Color.web("#F2CA6B")));
+        dropperBtn.setOnMouseExited(ev -> dropIcon.setFill(Color.web("#94A3B8")));
+        dropperBtn.setOnAction(e -> {
+            Window win = getScene() != null ? getScene().getWindow() : app.getPrimaryStage();
+            CustomColorChooserDialog.pickColorFromScreen(win, pickedColor -> {
+                String hex = CustomColorChooserDialog.colorToHex(pickedColor);
+                btn.setText(hex.toUpperCase());
+                swatch.setStyle(String.format("-fx-background-color: %s; -fx-border-color: #475569; -fx-border-width: 1.5; -fx-background-radius: 4; -fx-border-radius: 4;", hex));
+                onColorSelected.accept(hex);
+            });
+        });
+
+        box.getChildren().addAll(swatch, btn, dropperBtn);
         return box;
     }
 

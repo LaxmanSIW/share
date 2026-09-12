@@ -2,24 +2,34 @@ package com.invoicestudio.ui;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.geometry.Rectangle2D;
+import javafx.scene.Cursor;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.shape.SVGPath;
 import javafx.stage.Modality;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.stage.Window;
 
+import java.awt.MouseInfo;
+import java.awt.Point;
+import java.awt.Robot;
 import java.util.function.Consumer;
 
 /**
  * Modern, dark-themed custom color chooser dialog with visual sliders,
- * direct hex input, preset swatches, and rock-solid window focus retention
- * on Windows OS.
+ * direct hex input, preset swatches, desktop screen eyedropper, and rock-solid
+ * window focus retention on Windows OS.
  */
 public class CustomColorChooserDialog extends Stage {
+
+    public static final String DROPPER_ICON_PATH = "M20.71 5.63l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-3.12 3.12-1.93-1.91-1.41 1.41 1.42 1.42L3 16.25V21h4.75l8.92-8.92 1.42 1.42 1.41-1.41-1.92-1.92 3.12-3.12c.4-.4.4-1.03.01-1.42zM6.92 19L5 17.08l8.06-8.06 1.92 1.92L6.92 19z";
 
     private Color currentColor;
     private final Consumer<String> onColorChosen;
@@ -93,8 +103,8 @@ public class CustomColorChooserDialog extends Stage {
         root.getStyleClass().add("custom-color-dialog");
         root.setStyle("-fx-background-color: #0E131B; -fx-text-fill: #E2E8F0;");
 
-        // 1. Top Preview & Hex Row
-        HBox previewRow = new HBox(16);
+        // 1. Top Preview & Hex Row with Dropper
+        HBox previewRow = new HBox(14);
         previewRow.setAlignment(Pos.CENTER_LEFT);
 
         previewRect.setArcWidth(8);
@@ -105,7 +115,11 @@ public class CustomColorChooserDialog extends Stage {
         VBox hexBox = new VBox(4);
         Label hexLabel = new Label("Hex Color Code:");
         hexLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-font-weight: bold;");
-        hexField.setPrefWidth(120);
+
+        HBox hexInputRow = new HBox(8);
+        hexInputRow.setAlignment(Pos.CENTER_LEFT);
+
+        hexField.setPrefWidth(105);
         hexField.setStyle("-fx-background-color: #1A2433; -fx-text-fill: #F8FAFC; -fx-border-color: #334155; -fx-border-radius: 6; -fx-padding: 6 10; -fx-font-family: monospace; -fx-font-weight: bold;");
         hexField.textProperty().addListener((obs, old, val) -> {
             if (updatingInternally) return;
@@ -117,7 +131,35 @@ public class CustomColorChooserDialog extends Stage {
             } catch (Exception ignored) {}
         });
 
-        hexBox.getChildren().addAll(hexLabel, hexField);
+        Button dropperBtn = new Button();
+        dropperBtn.getStyleClass().add("button-icon-subtle");
+        dropperBtn.setStyle("-fx-background-color: #1A2433; -fx-border-color: #334155; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 6 9; -fx-cursor: hand;");
+        dropperBtn.setTooltip(new Tooltip("Pick Color from Screen / Desktop / Image (Eyedropper)"));
+
+        SVGPath dropperIcon = new SVGPath();
+        dropperIcon.setContent(DROPPER_ICON_PATH);
+        dropperIcon.setFill(Color.web("#F2CA6B"));
+        dropperIcon.setScaleX(0.7);
+        dropperIcon.setScaleY(0.7);
+        dropperBtn.setGraphic(dropperIcon);
+
+        dropperBtn.setOnMouseEntered(e -> {
+            dropperBtn.setStyle("-fx-background-color: #243042; -fx-border-color: #F2CA6B; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 6 9; -fx-cursor: hand;");
+            dropperIcon.setFill(Color.web("#FFD700"));
+        });
+        dropperBtn.setOnMouseExited(e -> {
+            dropperBtn.setStyle("-fx-background-color: #1A2433; -fx-border-color: #334155; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 6 9; -fx-cursor: hand;");
+            dropperIcon.setFill(Color.web("#F2CA6B"));
+        });
+
+        dropperBtn.setOnAction(e -> {
+            pickColorFromScreen(this, pickedColor -> {
+                setColor(pickedColor, true);
+            });
+        });
+
+        hexInputRow.getChildren().addAll(hexField, dropperBtn);
+        hexBox.getChildren().addAll(hexLabel, hexInputRow);
         previewRow.getChildren().addAll(previewRect, hexBox);
         root.getChildren().add(previewRow);
 
@@ -257,7 +299,125 @@ public class CustomColorChooserDialog extends Stage {
         }
     }
 
-    private static Color parseColor(String hex) {
+    public static void pickColorFromScreen(Window owner, Consumer<Color> onColorPicked) {
+        try {
+            Robot awtRobot = new Robot();
+
+            double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE;
+            double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE;
+            for (Screen screen : Screen.getScreens()) {
+                Rectangle2D b = screen.getBounds();
+                minX = Math.min(minX, b.getMinX());
+                minY = Math.min(minY, b.getMinY());
+                maxX = Math.max(maxX, b.getMaxX());
+                maxY = Math.max(maxY, b.getMaxY());
+            }
+            double totalW = maxX - minX;
+            double totalH = maxY - minY;
+
+            Stage pickerStage = new Stage(StageStyle.TRANSPARENT);
+            if (owner != null) {
+                pickerStage.initOwner(owner);
+            }
+            pickerStage.initModality(Modality.APPLICATION_MODAL);
+            pickerStage.setAlwaysOnTop(true);
+            pickerStage.setX(minX);
+            pickerStage.setY(minY);
+            pickerStage.setWidth(totalW);
+            pickerStage.setHeight(totalH);
+
+            Pane overlay = new Pane();
+            overlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.005);");
+            overlay.setCursor(Cursor.CROSSHAIR);
+
+            // Floating Magnifier / Color Inspector HUD
+            VBox loupe = new VBox(4);
+            loupe.setStyle(
+                "-fx-background-color: #0E131B; " +
+                "-fx-border-color: #F2CA6B; " +
+                "-fx-border-width: 1.5; " +
+                "-fx-border-radius: 8; " +
+                "-fx-background-radius: 8; " +
+                "-fx-padding: 8 12; " +
+                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.75), 14, 0, 0, 4);"
+            );
+            loupe.setMouseTransparent(true);
+
+            HBox topRow = new HBox(8);
+            topRow.setAlignment(Pos.CENTER_LEFT);
+
+            Region swatch = new Region();
+            swatch.setPrefSize(24, 24);
+            swatch.setMinSize(24, 24);
+            swatch.setMaxSize(24, 24);
+            swatch.setStyle("-fx-border-radius: 4; -fx-background-radius: 4; -fx-border-color: #475569; -fx-border-width: 1;");
+
+            VBox labels = new VBox(1);
+            Label hexLbl = new Label("#FFFFFF");
+            hexLbl.setStyle("-fx-font-family: monospace; -fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #F8FAFC;");
+
+            Label rgbLbl = new Label("RGB(255, 255, 255)");
+            rgbLbl.setStyle("-fx-font-family: monospace; -fx-font-size: 10.5px; -fx-text-fill: #94A3B8;");
+
+            labels.getChildren().addAll(hexLbl, rgbLbl);
+            topRow.getChildren().addAll(swatch, labels);
+
+            Label hintLbl = new Label("Click to pick • ESC to cancel");
+            hintLbl.setStyle("-fx-font-size: 9.5px; -fx-text-fill: #F2CA6B; -fx-font-weight: bold;");
+
+            loupe.getChildren().addAll(topRow, hintLbl);
+            overlay.getChildren().add(loupe);
+
+            Scene scene = new Scene(overlay, totalW, totalH, Color.TRANSPARENT);
+
+            scene.setOnMouseMoved(e -> {
+                try {
+                    Point pt = MouseInfo.getPointerInfo().getLocation();
+                    java.awt.Color awtCol = awtRobot.getPixelColor(pt.x, pt.y);
+                    Color fxCol = Color.rgb(awtCol.getRed(), awtCol.getGreen(), awtCol.getBlue());
+                    String hex = colorToHex(fxCol);
+
+                    swatch.setStyle("-fx-background-color: " + hex + "; -fx-border-radius: 4; -fx-background-radius: 4; -fx-border-color: #475569; -fx-border-width: 1;");
+                    hexLbl.setText(hex);
+                    rgbLbl.setText(String.format("RGB(%d, %d, %d)", awtCol.getRed(), awtCol.getGreen(), awtCol.getBlue()));
+
+                    double lx = e.getSceneX() + 22;
+                    double ly = e.getSceneY() + 22;
+                    if (lx + 170 > totalW) lx = e.getSceneX() - 180;
+                    if (ly + 70 > totalH) ly = e.getSceneY() - 80;
+                    loupe.setLayoutX(lx);
+                    loupe.setLayoutY(ly);
+                } catch (Exception ignored) {}
+            });
+
+            scene.setOnMouseClicked(e -> {
+                try {
+                    Point pt = MouseInfo.getPointerInfo().getLocation();
+                    java.awt.Color awtCol = awtRobot.getPixelColor(pt.x, pt.y);
+                    Color fxCol = Color.rgb(awtCol.getRed(), awtCol.getGreen(), awtCol.getBlue());
+                    pickerStage.close();
+                    if (onColorPicked != null) {
+                        onColorPicked.accept(fxCol);
+                    }
+                } catch (Exception ex) {
+                    pickerStage.close();
+                }
+            });
+
+            scene.setOnKeyPressed(e -> {
+                if (e.getCode() == KeyCode.ESCAPE) {
+                    pickerStage.close();
+                }
+            });
+
+            pickerStage.setScene(scene);
+            pickerStage.show();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static Color parseColor(String hex) {
         if (hex == null || hex.isBlank() || "transparent".equalsIgnoreCase(hex)) {
             return Color.BLACK;
         }
@@ -268,7 +428,7 @@ public class CustomColorChooserDialog extends Stage {
         }
     }
 
-    private static String colorToHex(Color c) {
+    public static String colorToHex(Color c) {
         if (c == null) return "#000000";
         int r = (int) Math.round(c.getRed() * 255);
         int g = (int) Math.round(c.getGreen() * 255);

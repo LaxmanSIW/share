@@ -56,6 +56,13 @@ public class IconHelper {
     public static final String ICON_CODE = "code";
     public static final String ICON_CODE_QR = "code-qr";
     public static final String ICON_CODE_BARCODE = "code-barcode";
+    public static final String ICON_BUSINESS = "business";
+    public static final String ICON_BANK = "bank";
+    public static final String ICON_BILLING = "billing";
+    public static final String ICON_FIELDS = "tag";
+    public static final String ICON_FONT = "font";
+    public static final String ICON_PRINT = "print";
+    public static final String ICON_BACKUP = "backup";
 
     public static Node getIcon(String name, double size, String colorHex) {
         String path = getSvgPath(name);
@@ -108,6 +115,50 @@ public class IconHelper {
         return getIcon(iconName, 14, colorHex);
     }
 
+    public static Node createTabGraphic(String name, javafx.beans.value.ObservableValue<Boolean> selectedProp) {
+        String path = getSvgPath(name);
+        if (path != null) {
+            SVGPath svg = new SVGPath();
+            svg.setContent(path);
+            String normalColor = "#94A3B8";
+            String activeColor = "#F2CA6B";
+            svg.setFill(Color.web(normalColor));
+            svg.setScaleX(13.0 / 24.0);
+            svg.setScaleY(13.0 / 24.0);
+            javafx.scene.Group grp = new javafx.scene.Group(svg);
+            javafx.scene.layout.StackPane box = new javafx.scene.layout.StackPane(grp);
+            box.setPrefSize(14, 14);
+            box.setMinSize(14, 14);
+            box.setMaxSize(14, 14);
+            box.setAlignment(javafx.geometry.Pos.CENTER);
+            if (selectedProp != null) {
+                selectedProp.addListener((obs, wasSelected, isSelected) -> {
+                    svg.setFill(Color.web(isSelected ? activeColor : normalColor));
+                });
+                if (Boolean.TRUE.equals(selectedProp.getValue())) {
+                    svg.setFill(Color.web(activeColor));
+                }
+            }
+            return box;
+        }
+        Label lbl = new Label(getFallbackGlyph(name));
+        lbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8; -fx-alignment: center;");
+        if (selectedProp != null) {
+            selectedProp.addListener((obs, wasSelected, isSelected) -> {
+                lbl.setStyle("-fx-font-size: 11px; -fx-text-fill: " + (isSelected ? "#F2CA6B" : "#94A3B8") + "; -fx-alignment: center;");
+            });
+            if (Boolean.TRUE.equals(selectedProp.getValue())) {
+                lbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #F2CA6B; -fx-alignment: center;");
+            }
+        }
+        javafx.scene.layout.StackPane box = new javafx.scene.layout.StackPane(lbl);
+        box.setPrefSize(14, 14);
+        box.setMinSize(14, 14);
+        box.setMaxSize(14, 14);
+        box.setAlignment(javafx.geometry.Pos.CENTER);
+        return box;
+    }
+
     private static String getFallbackGlyph(String name) {
         if (name == null) return "•";
         switch (name.toLowerCase()) {
@@ -142,6 +193,11 @@ public class IconHelper {
             case "transport": return "🚚";
             case "categories": return "🗂";
             case "dashboard2": return "📈";
+            case "business": return "🏢";
+            case "bank": return "🏛";
+            case "billing": return "📄";
+            case "font": return "🔤";
+            case "backup": return "💾";
             default: return "•";
         }
     }
@@ -243,6 +299,18 @@ public class IconHelper {
                 return "M2 4h3v16H2V4zm5 0h1v16H7V4zm3 0h3v16h-3V4zm5 0h2v16h-2V4zm4 0h1v16h-1V4zm3 0h2v16h-2V4z";
             case "code-qr":
                 return "M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm13-2h3v2h-3v-2zm-5 0h3v2h-3v-2zm2 2h2v3h-2v-3zm3 0h3v3h-3v-3zm-5 3h2v3h-2v-3zm3 2h5v2h-5v-2z";
+            case "business":
+                return "M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z";
+            case "bank":
+                return "M4 10v7h3v-7H4zm6 0v7h3v-7h-3zM2 22h19v-3H2v3zm14-12v7h3v-7h-3zm-4.5-9L2 6v2h19V6l-9.5-5z";
+            case "billing":
+                return "M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z";
+            case "tag":
+                return "M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z";
+            case "font":
+                return "M9 4v3h5v12h3V7h5V4H9zm-6 8h3v7h3v-7h3V9H3v3z";
+            case "backup":
+                return "M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z";
             default:
                 return null;
         }

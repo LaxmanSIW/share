@@ -34,6 +34,11 @@ public class RecurringEngine {
 
     public SweepResult runSweep(boolean force) {
         SweepResult res = new SweepResult();
+        if (!AuthSessionManager.isLoggedIn() || AuthSessionManager.getCurrentUserId().isEmpty()) {
+            res.ran = false;
+            res.reason = "User not authenticated";
+            return res;
+        }
         Settings settings = settingsDao.getSettings();
         if (!settings.isAutoRecurring() && !force) {
             res.ran = false;
@@ -103,9 +108,12 @@ public class RecurringEngine {
     }
 
     private String getMeta(String key) {
+        String uid = AuthSessionManager.getCurrentUserId();
+        if (uid.isEmpty()) return null;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT val FROM meta WHERE key = ?")) {
+             PreparedStatement ps = conn.prepareStatement("SELECT val FROM meta WHERE key = ? AND user_id = ?")) {
             ps.setString(1, key);
+            ps.setString(2, uid);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) return rs.getString("val");
             }
@@ -116,10 +124,13 @@ public class RecurringEngine {
     }
 
     private void setMeta(String key, String val) {
+        String uid = AuthSessionManager.getCurrentUserId();
+        if (uid.isEmpty()) return;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("INSERT INTO meta (key, val) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET val = excluded.val")) {
+             PreparedStatement ps = conn.prepareStatement("INSERT INTO meta (key, user_id, val) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET user_id = excluded.user_id, val = excluded.val")) {
             ps.setString(1, key);
-            ps.setString(2, val);
+            ps.setString(2, uid);
+            ps.setString(3, val);
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();

@@ -16,14 +16,24 @@ public class TransactionDao {
         this.db = db;
     }
 
+    private String getEffectiveUserId() {
+        return com.invoicestudio.service.AuthSessionManager.getCurrentUserId();
+    }
+
     public List<Transaction> getAllTransactions() {
         List<Transaction> list = new ArrayList<>();
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty()) {
+            return list;
+        }
+        String sql = "SELECT * FROM transactions WHERE deleted = 0 AND user_id = ? ORDER BY transaction_date DESC, created_at DESC";
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "SELECT * FROM transactions WHERE deleted = 0 ORDER BY transaction_date DESC, created_at DESC");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                list.add(mapRow(rs));
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, uid);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapRow(rs));
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -33,8 +43,13 @@ public class TransactionDao {
 
     public List<Transaction> getTransactions(String bookType, String transactionType) {
         List<Transaction> list = new ArrayList<>();
-        StringBuilder sql = new StringBuilder("SELECT * FROM transactions WHERE deleted = 0");
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty()) {
+            return list;
+        }
+        StringBuilder sql = new StringBuilder("SELECT * FROM transactions WHERE deleted = 0 AND user_id = ?");
         List<String> params = new ArrayList<>();
+        params.add(uid);
         if (bookType != null && !bookType.equalsIgnoreCase("ALL")) {
             sql.append(" AND UPPER(book_type) = ?");
             params.add(bookType.toUpperCase());
@@ -64,10 +79,13 @@ public class TransactionDao {
     public List<Transaction> getTransactionsByBuyer(String buyerId) {
         List<Transaction> list = new ArrayList<>();
         if (buyerId == null || buyerId.isBlank()) return list;
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty()) return list;
+        String sql = "SELECT * FROM transactions WHERE buyer_id = ? AND deleted = 0 AND user_id = ? ORDER BY transaction_date ASC, id ASC";
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "SELECT * FROM transactions WHERE buyer_id = ? AND deleted = 0 ORDER BY transaction_date ASC, id ASC")) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, buyerId);
+            ps.setString(2, uid);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     list.add(mapRow(rs));
@@ -80,10 +98,12 @@ public class TransactionDao {
     }
 
     public Transaction getTransactionById(String id) {
-        if (id == null || id.isBlank()) return null;
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || id == null || id.isBlank()) return null;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT * FROM transactions WHERE id = ?")) {
+             PreparedStatement ps = conn.prepareStatement("SELECT * FROM transactions WHERE id = ? AND user_id = ?")) {
             ps.setString(1, id);
+            ps.setString(2, uid);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return mapRow(rs);
@@ -96,44 +116,46 @@ public class TransactionDao {
     }
 
     public void saveTransaction(Transaction t) {
-        if (t == null) return;
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || t == null) return;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "INSERT INTO transactions (id, buyer_id, buyer_name, book_type, transaction_type, " +
+                 "INSERT INTO transactions (id, user_id, buyer_id, buyer_name, book_type, transaction_type, " +
                  "transaction_date, due_date, amount, total_quantity, check_number, include_in_reporting, " +
                  "parcel, bill_id, bill_no, deleted, deleted_reason, deleted_at, created_at, updated_at) " +
-                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
-                 "ON CONFLICT(id) DO UPDATE SET buyer_id = excluded.buyer_id, buyer_name = excluded.buyer_name, " +
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                 "ON CONFLICT(id) DO UPDATE SET user_id = excluded.user_id, buyer_id = excluded.buyer_id, buyer_name = excluded.buyer_name, " +
                  "book_type = excluded.book_type, transaction_type = excluded.transaction_type, " +
                  "transaction_date = excluded.transaction_date, due_date = excluded.due_date, " +
                  "amount = excluded.amount, total_quantity = excluded.total_quantity, " +
                  "check_number = excluded.check_number, include_in_reporting = excluded.include_in_reporting, " +
                  "parcel = excluded.parcel, bill_id = excluded.bill_id, bill_no = excluded.bill_no, " +
                  "deleted = excluded.deleted, deleted_reason = excluded.deleted_reason, " +
-                 "deleted_at = excluded.deleted_at, updated_at = excluded.updated_at")) {
+                 "deleted_at = excluded.deleted_at, updated_at = excluded.updated_at WHERE transactions.user_id = excluded.user_id")) {
             String now = Instant.now().toString();
             if (t.getCreatedAt() == null || t.getCreatedAt().isBlank()) t.setCreatedAt(now);
             t.setUpdatedAt(now);
 
             ps.setString(1, t.getId());
-            ps.setString(2, t.getBuyerId());
-            ps.setString(3, t.getBuyerName());
-            ps.setString(4, t.getBookType());
-            ps.setString(5, t.getTransactionType());
-            ps.setString(6, t.getTransactionDate());
-            ps.setString(7, t.getDueDate());
-            ps.setDouble(8, t.getAmount());
-            ps.setInt(9, t.getTotalQuantity());
-            ps.setString(10, t.getCheckNumber());
-            ps.setInt(11, t.isIncludeInReporting() ? 1 : 0);
-            ps.setInt(12, t.getParcel());
-            ps.setString(13, t.getBillId());
-            ps.setString(14, t.getBillNo());
-            ps.setInt(15, t.isDeleted() ? 1 : 0);
-            ps.setString(16, t.getDeletedReason());
-            ps.setString(17, t.getDeletedAt());
-            ps.setString(18, t.getCreatedAt());
-            ps.setString(19, t.getUpdatedAt());
+            ps.setString(2, uid);
+            ps.setString(3, t.getBuyerId());
+            ps.setString(4, t.getBuyerName());
+            ps.setString(5, t.getBookType());
+            ps.setString(6, t.getTransactionType());
+            ps.setString(7, t.getTransactionDate());
+            ps.setString(8, t.getDueDate());
+            ps.setDouble(9, t.getAmount());
+            ps.setInt(10, t.getTotalQuantity());
+            ps.setString(11, t.getCheckNumber());
+            ps.setInt(12, t.isIncludeInReporting() ? 1 : 0);
+            ps.setInt(13, t.getParcel());
+            ps.setString(14, t.getBillId());
+            ps.setString(15, t.getBillNo());
+            ps.setInt(16, t.isDeleted() ? 1 : 0);
+            ps.setString(17, t.getDeletedReason());
+            ps.setString(18, t.getDeletedAt());
+            ps.setString(19, t.getCreatedAt());
+            ps.setString(20, t.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();
@@ -141,15 +163,17 @@ public class TransactionDao {
     }
 
     public void deleteTransaction(String id, String reason) {
-        if (id == null || id.isBlank()) return;
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || id == null || id.isBlank()) return;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "UPDATE transactions SET deleted = 1, deleted_reason = ?, deleted_at = ?, updated_at = ? WHERE id = ?")) {
+                 "UPDATE transactions SET deleted = 1, deleted_reason = ?, deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ?")) {
             String now = Instant.now().toString();
             ps.setString(1, reason != null ? reason : "Archived by user");
             ps.setString(2, now);
             ps.setString(3, now);
             ps.setString(4, id);
+            ps.setString(5, uid);
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();
@@ -157,10 +181,12 @@ public class TransactionDao {
     }
 
     public void hardDelete(String id) {
-        if (id == null || id.isBlank()) return;
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || id == null || id.isBlank()) return;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("DELETE FROM transactions WHERE id = ?")) {
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM transactions WHERE id = ? AND user_id = ?")) {
             ps.setString(1, id);
+            ps.setString(2, uid);
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();

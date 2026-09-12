@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 import java.time.LocalDate;
 import com.invoicestudio.model.BillItem;
 import com.invoicestudio.model.Buyer;
+import com.invoicestudio.model.ItemCategory;
+import com.invoicestudio.model.ItemRecord;
 import com.invoicestudio.model.Transaction;
 
 /**
@@ -42,6 +44,7 @@ public final class DataManager {
     private final TransportDao transportDao;
     private final CategoryDao categoryDao;
     private final TransactionDao transactionDao;
+    private final AuthDao authDao;
 
     /** Cache invalidated on any bill write. Guarded by the monitor of this list. */
     private List<Bill> billsCache;
@@ -63,6 +66,9 @@ public final class DataManager {
         this.transportDao = new TransportDao(db);
         this.categoryDao = new CategoryDao(db);
         this.transactionDao = new TransactionDao(db);
+        this.authDao = new AuthDao(db);
+
+        com.invoicestudio.service.AuthSessionManager.addSessionChangeListener(session -> onUserSwitched());
     }
 
     public static synchronized DataManager init(DatabaseManager db) {
@@ -91,6 +97,18 @@ public final class DataManager {
     public TransportDao transports() { return transportDao; }
     public CategoryDao categories() { return categoryDao; }
     public TransactionDao transactions() { return transactionDao; }
+    public AuthDao auth() { return authDao; }
+
+    public void onUserSwitched() {
+        synchronized (this) {
+            billsCache = null;
+            transportsCache = null;
+            categoriesCache = null;
+            transactionsCache = null;
+            settingsCache = null;
+        }
+        notifyBillsChanged();
+    }
 
     // ---------- Cached reads ----------
 
@@ -438,11 +456,33 @@ public final class DataManager {
     }
 
     public void seedIfEmpty() {
+        String uid = com.invoicestudio.service.AuthSessionManager.getCurrentUserId();
+        if (uid.isEmpty()) {
+            return;
+        }
+        // 1. Settings: seed if empty for this user
+        if (settingsDao.hasNoSettingsForUser(uid)) {
+            settingsDao.saveSettings(new Settings());
+        }
+        // 2. Templates: seed presets if empty for this user
         List<Template> existing = templateDao.getAllTemplates();
         if (existing.isEmpty()) {
             for (Template t : PresetTemplates.getAllPresets()) {
                 templateDao.saveTemplate(t);
             }
+        }
+        // 3. Category: seed default 'cat_trouser' ("Trouser") if empty for this user
+        List<ItemCategory> existingCats = categoryDao.getAllCategories();
+        if (existingCats.isEmpty()) {
+            categoryDao.saveCategory(new ItemCategory("cat_trouser", "Trouser"));
+        }
+        // 4. Item: seed default item 'item_pent' ("PENT") if empty for this user
+        List<ItemRecord> existingItems = itemDao.getAllItems();
+        if (existingItems.isEmpty()) {
+            ItemRecord defItem = new ItemRecord("item_pent", "PENT", "6203", "PCS", 550.0, 5.0);
+            defItem.setCategoryId("cat_trouser");
+            defItem.setCategoryName("Trouser");
+            itemDao.saveItem(defItem);
         }
         syncBillsToTransactions();
     }

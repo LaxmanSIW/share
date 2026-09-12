@@ -32,8 +32,6 @@ public class DatabaseManager {
     public DatabaseManager(String dbUrl) {
         this.dbUrl = dbUrl;
         initSchema();
-        seedIfEmpty();
-        ensureDefaults();
     }
 
     public Connection getConnection() throws SQLException {
@@ -50,6 +48,7 @@ public class DatabaseManager {
             stmt.execute("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, name TEXT, hsn TEXT, unit TEXT, rate REAL, gst REAL, created_at TEXT, updated_at TEXT)");
             stmt.execute("CREATE TABLE IF NOT EXISTS variables (key TEXT PRIMARY KEY, label TEXT, type TEXT, builtin INTEGER)");
             stmt.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, val TEXT)");
+            stmt.execute("CREATE TABLE IF NOT EXISTS auth_session (id INTEGER PRIMARY KEY, user_id TEXT, email TEXT, display_name TEXT, id_token TEXT, refresh_token TEXT, expires_at INTEGER, remember_me INTEGER, created_at TEXT)");
 
             // v4.0.0 Financial Web Integration Schema
             stmt.execute("CREATE TABLE IF NOT EXISTS transports (id TEXT PRIMARY KEY, name TEXT, phone TEXT, vehicle_number TEXT, created_at TEXT, updated_at TEXT)");
@@ -65,212 +64,38 @@ public class DatabaseManager {
             // v4.1 — variable scope + default value support
             try { stmt.execute("ALTER TABLE variables ADD COLUMN scope TEXT DEFAULT 'fixed'"); } catch (Exception ignored) {}
             try { stmt.execute("ALTER TABLE variables ADD COLUMN default_value TEXT DEFAULT ''"); } catch (Exception ignored) {}
+
+            // v4.2 — user_id multi-user local data partitioning
+            try { stmt.execute("ALTER TABLE bills ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE buyers ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE items ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE templates ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE categories ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE transports ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE transactions ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE settings ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE variables ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE meta ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_bills_user ON bills(user_id)"); } catch (Exception ignored) {}
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_buyers_user ON buyers(user_id)"); } catch (Exception ignored) {}
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id)"); } catch (Exception ignored) {}
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id)"); } catch (Exception ignored) {}
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id)"); } catch (Exception ignored) {}
+
+            // Purge unauthenticated legacy orphan records created by earlier pre-auth runs
+            try { stmt.execute("DELETE FROM categories WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM items WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM templates WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM settings WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM variables WHERE builtin = 0 AND (user_id = '' OR user_id IS NULL)"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM transports WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM buyers WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM transactions WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+
+            // Ensure built-in system variables exist
+            seedVariables(conn);
         } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void seedIfEmpty() {
-        try (Connection conn = getConnection()) {
-            // Check settings
-            try (Statement s = conn.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM settings")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    seedSettings(conn);
-                }
-            }
-            // Check templates
-            try (Statement s = conn.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM templates")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    seedTemplates(conn);
-                }
-            }
-            // Check buyers
-            try (Statement s = conn.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM buyers")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    seedBuyers(conn);
-                }
-            }
-            // Check items
-            try (Statement s = conn.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM items")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    seedItems(conn);
-                }
-            }
-            // Check categories
-            try (Statement s = conn.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM categories")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    seedCategories(conn);
-                }
-            }
-            // Check transports
-            try (Statement s = conn.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM transports")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    seedTransports(conn);
-                }
-            }
-            // Check bills
-            try (Statement s = conn.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM bills")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    seedBills(conn);
-                }
-            }
-            // Check variables
-            try (Statement s = conn.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM variables")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    seedVariables(conn);
-                }
-            }
-            // Check transactions
-            try (Statement s = conn.createStatement(); ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM transactions")) {
-                if (rs.next() && rs.getInt(1) == 0) {
-                    seedTransactions(conn);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void seedSettings(Connection conn) {
-        try {
-            Settings settings = null;
-            InputStream is = getClass().getResourceAsStream("/seed/settings.json");
-            if (is != null) {
-                settings = mapper.readValue(is, Settings.class);
-            } else {
-                File f = new File("nextjs_source/db/settings.json");
-                if (f.exists()) settings = mapper.readValue(f, Settings.class);
-            }
-            if (settings == null) settings = new Settings();
-
-            try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO settings (id, json_data) VALUES (1, ?)")) {
-                ps.setString(1, mapper.writeValueAsString(settings));
-                ps.executeUpdate();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void seedTemplates(Connection conn) {
-        try {
-            List<Template> list = null;
-            InputStream is = getClass().getResourceAsStream("/seed/templates.json");
-            if (is != null) {
-                list = mapper.readValue(is, new TypeReference<List<Template>>() {});
-            } else {
-                File f = new File("nextjs_source/db/templates.json");
-                if (f.exists()) list = mapper.readValue(f, new TypeReference<List<Template>>() {});
-            }
-            if (list == null || list.isEmpty()) {
-                list = PresetTemplates.getAllPresets();
-            }
-            try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO templates (id, name, json_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")) {
-                for (Template t : list) {
-                    ps.setString(1, t.getId());
-                    ps.setString(2, t.getName());
-                    ps.setString(3, mapper.writeValueAsString(t));
-                    ps.setString(4, t.getCreatedAt());
-                    ps.setString(5, t.getUpdatedAt());
-                    ps.executeUpdate();
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void seedBuyers(Connection conn) {
-        try {
-            List<Buyer> list = null;
-            InputStream is = getClass().getResourceAsStream("/seed/buyers.json");
-            if (is != null) {
-                list = mapper.readValue(is, new TypeReference<List<Buyer>>() {});
-            } else {
-                File f = new File("nextjs_source/db/buyers.json");
-                if (f.exists()) list = mapper.readValue(f, new TypeReference<List<Buyer>>() {});
-            }
-            if (list != null) {
-                try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO buyers (id, name, phone, gst, state, json_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
-                    for (Buyer b : list) {
-                        ps.setString(1, b.getId());
-                        ps.setString(2, b.getName());
-                        ps.setString(3, b.getPhone());
-                        ps.setString(4, b.getGst());
-                        ps.setString(5, b.getState());
-                        ps.setString(6, mapper.writeValueAsString(b));
-                        ps.setString(7, b.getCreatedAt());
-                        ps.setString(8, b.getUpdatedAt());
-                        ps.executeUpdate();
-                    }
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void seedItems(Connection conn) {
-        try {
-            List<ItemRecord> list = null;
-            InputStream is = getClass().getResourceAsStream("/seed/items.json");
-            if (is != null) {
-                list = mapper.readValue(is, new TypeReference<List<ItemRecord>>() {});
-            } else {
-                File f = new File("nextjs_source/db/items.json");
-                if (f.exists()) list = mapper.readValue(f, new TypeReference<List<ItemRecord>>() {});
-            }
-            if (list != null) {
-                try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO items (id, name, hsn, unit, rate, gst, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
-                    for (ItemRecord it : list) {
-                        ps.setString(1, it.getId());
-                        ps.setString(2, it.getName());
-                        ps.setString(3, it.getHsn());
-                        ps.setString(4, it.getUnit());
-                        ps.setDouble(5, it.getRate());
-                        ps.setDouble(6, it.getGst());
-                        ps.setString(7, it.getCreatedAt());
-                        ps.setString(8, it.getUpdatedAt());
-                        ps.executeUpdate();
-                    }
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void seedBills(Connection conn) {
-        try {
-            List<Bill> list = null;
-            InputStream is = getClass().getResourceAsStream("/seed/bills.json");
-            if (is != null) {
-                list = mapper.readValue(is, new TypeReference<List<Bill>>() {});
-            } else {
-                File f = new File("nextjs_source/db/bills.json");
-                if (f.exists()) list = mapper.readValue(f, new TypeReference<List<Bill>>() {});
-            }
-            if (list != null) {
-                try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO bills (id, bill_no, date, doc_type, status, buyer_name, grand_total, due_amount, json_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-                    for (Bill b : list) {
-                        ps.setString(1, b.getId());
-                        ps.setString(2, b.getBillNo());
-                        ps.setString(3, b.getDate());
-                        ps.setString(4, b.getDocType().getCode());
-                        ps.setString(5, b.getStatus().getCode());
-                        ps.setString(6, b.getVariables().getOrDefault("buyer_name", ""));
-                        ps.setDouble(7, b.getTotals() != null ? b.getTotals().getGrandTotal() : 0);
-                        double paid = b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
-                        if (paid == 0 && b.getStatus() == BillStatus.PAID) paid = b.getTotals().getGrandTotal();
-                        ps.setDouble(8, Math.max(0, (b.getTotals() != null ? b.getTotals().getGrandTotal() : 0) - paid));
-                        ps.setString(9, mapper.writeValueAsString(b));
-                        ps.setString(10, b.getCreatedAt());
-                        ps.setString(11, b.getUpdatedAt());
-                        ps.executeUpdate();
-                    }
-                }
-            }
-        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -308,114 +133,4 @@ public class DatabaseManager {
             e.printStackTrace();
         }
     }
-
-    private void seedCategories(Connection conn) {
-        try {
-            List<String[]> defaultCats = List.of(
-                new String[]{"cat_trousers", "Trousers"},
-                new String[]{"cat_shirts", "Formal Shirts"},
-                new String[]{"cat_denim", "Denim Wear"},
-                new String[]{"cat_casual", "Casuals"},
-                new String[]{"cat_accessories", "Accessories"}
-            );
-            String now = java.time.Instant.now().toString();
-            try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO categories (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)")) {
-                for (String[] c : defaultCats) {
-                    ps.setString(1, c[0]);
-                    ps.setString(2, c[1]);
-                    ps.setString(3, now);
-                    ps.setString(4, now);
-                    ps.executeUpdate();
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void seedTransports(Connection conn) {
-        try {
-            List<String[]> defaultTransports = List.of(
-                new String[]{"trp_safex", "Safe Express Logistics", "9820011223", "MH-12-AB-1234"},
-                new String[]{"trp_vrl", "VRL Logistics Ltd", "9820044556", "KA-25-CD-5678"},
-                new String[]{"trp_delhivery", "Delhivery Surface", "9820077889", "DL-01-EF-9012"},
-                new String[]{"trp_tci", "TCI Freight Express", "9820099001", "MH-04-GH-3456"}
-            );
-            String now = java.time.Instant.now().toString();
-            try (PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO transports (id, name, phone, vehicle_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")) {
-                for (String[] t : defaultTransports) {
-                    ps.setString(1, t[0]);
-                    ps.setString(2, t[1]);
-                    ps.setString(3, t[2]);
-                    ps.setString(4, t[3]);
-                    ps.setString(5, now);
-                    ps.setString(6, now);
-                    ps.executeUpdate();
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void seedTransactions(Connection conn) {
-        try {
-            // Check if bills exist; if so, create initial synchronized transactions from existing bills
-            try (Statement s = conn.createStatement();
-                 ResultSet rs = s.executeQuery("SELECT id, bill_no, date, buyer_name, grand_total, json_data FROM bills WHERE doc_type = 'INV' LIMIT 20")) {
-                String now = java.time.Instant.now().toString();
-                try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT OR IGNORE INTO transactions (id, buyer_id, buyer_name, book_type, transaction_type, transaction_date, due_date, amount, total_quantity, check_number, include_in_reporting, parcel, bill_id, bill_no, deleted, deleted_reason, deleted_at, created_at, updated_at) " +
-                    "VALUES (?, ?, ?, 'CC', 'sale', ?, ?, ?, ?, '', 1, 1, ?, ?, 0, '', '', ?, ?)")) {
-                    while (rs.next()) {
-                        String billId = rs.getString("id");
-                        String billNo = rs.getString("bill_no");
-                        String date = rs.getString("date");
-                        String buyer = rs.getString("buyer_name");
-                        double amount = rs.getDouble("grand_total");
-                        String txId = "tx_inv_" + billId.replace("-", "").substring(0, Math.min(10, billId.length()));
-
-                        ps.setString(1, txId);
-                        ps.setString(2, "byr_linked");
-                        ps.setString(3, buyer != null ? buyer : "Walk-in Customer");
-                        ps.setString(4, date != null && !date.isBlank() ? date : java.time.LocalDate.now().toString());
-                        ps.setString(5, date != null && !date.isBlank() ? date : java.time.LocalDate.now().toString());
-                        ps.setDouble(6, amount);
-                        ps.setInt(7, 50); // Sample qty
-                        ps.setString(8, billId);
-                        ps.setString(9, billNo);
-                        ps.setString(10, now);
-                        ps.setString(11, now);
-                        ps.executeUpdate();
-                    }
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void ensureDefaults() {
-        try (Connection conn = getConnection()) {
-            String now = java.time.Instant.now().toString();
-            // Ensure default category 'Trouser' exists
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT OR IGNORE INTO categories (id, name, created_at, updated_at) VALUES ('cat_trouser', 'Trouser', ?, ?)")) {
-                ps.setString(1, now);
-                ps.setString(2, now);
-                ps.executeUpdate();
-            }
-            // Ensure default item 'PENT' exists
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT OR IGNORE INTO items (id, name, hsn, unit, rate, gst, category_id, category_name, created_at, updated_at) " +
-                    "VALUES ('item_pent', 'PENT', '6203', 'PCS', 550.0, 5.0, 'cat_trouser', 'Trouser', ?, ?)")) {
-                ps.setString(1, now);
-                ps.setString(2, now);
-                ps.executeUpdate();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
 }
-

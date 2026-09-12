@@ -15,14 +15,38 @@ public class SettingsDao {
         this.db = db;
     }
 
-    public Settings getSettings() {
+    private String getEffectiveUserId() {
+        return com.invoicestudio.service.AuthSessionManager.getCurrentUserId();
+    }
+
+    public boolean hasNoSettingsForUser(String uid) {
+        if (uid == null || uid.isBlank()) return true;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT json_data FROM settings WHERE id = 1");
-             ResultSet rs = ps.executeQuery()) {
-            if (rs.next()) {
-                String json = rs.getString("json_data");
-                if (json != null && !json.isBlank()) {
-                    return mapper.readValue(json, Settings.class);
+             PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM settings WHERE user_id = ? LIMIT 1")) {
+            ps.setString(1, uid);
+            try (ResultSet rs = ps.executeQuery()) {
+                return !rs.next();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return true;
+        }
+    }
+
+    public Settings getSettings() {
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty()) {
+            return new Settings();
+        }
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT json_data FROM settings WHERE user_id = ? LIMIT 1")) {
+            ps.setString(1, uid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String json = rs.getString("json_data");
+                    if (json != null && !json.isBlank()) {
+                        return mapper.readValue(json, Settings.class);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -32,10 +56,31 @@ public class SettingsDao {
     }
 
     public void saveSettings(Settings settings) {
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("INSERT INTO settings (id, json_data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET json_data = excluded.json_data")) {
-            ps.setString(1, mapper.writeValueAsString(settings));
-            ps.executeUpdate();
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || settings == null) {
+            return;
+        }
+        try (Connection conn = db.getConnection()) {
+            boolean exists = false;
+            try (PreparedStatement ps = conn.prepareStatement("SELECT id FROM settings WHERE user_id = ? LIMIT 1")) {
+                ps.setString(1, uid);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) exists = true;
+                }
+            }
+            if (exists) {
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE settings SET json_data = ? WHERE user_id = ?")) {
+                    ps.setString(1, mapper.writeValueAsString(settings));
+                    ps.setString(2, uid);
+                    ps.executeUpdate();
+                }
+            } else {
+                try (PreparedStatement ps = conn.prepareStatement("INSERT INTO settings (user_id, json_data) VALUES (?, ?)")) {
+                    ps.setString(1, uid);
+                    ps.setString(2, mapper.writeValueAsString(settings));
+                    ps.executeUpdate();
+                }
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }

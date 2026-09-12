@@ -3,10 +3,13 @@ package com.invoicestudio.ui;
 import com.invoicestudio.db.DatabaseManager;
 import com.invoicestudio.model.*;
 import com.invoicestudio.service.*;
+import com.invoicestudio.ui.auth.AuthView;
+import com.invoicestudio.ui.auth.LogoutDialog;
 import com.invoicestudio.ui.views.*;
 import javafx.animation.FadeTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
@@ -16,6 +19,8 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.SVGPath;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
@@ -54,6 +59,11 @@ public class StudioApp extends Application {
     private final Map<String, Button> navButtons = new HashMap<>();
     private final Map<String, Node> viewCache = new HashMap<>();
     private boolean sidebarCollapsed = false;
+
+    private HBox userProfilePill;
+    private Label userAvatarLabel;
+    private Label userNameLabel;
+    private Label userEmailLabel;
 
     /** Single background worker for DB-touching tasks (SQLite is single-writer anyway). */
     private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -108,18 +118,41 @@ public class StudioApp extends Application {
         new WindowStateManager().applyAndTrack(stage, 1440, 900, 1024, 640);
         stage.show();
 
-        // Build an empty shell immediately, then hydrate data in background:
-        // the window appears instantly instead of blocking on SQLite + seeding.
+        // Build an empty shell immediately, then verify session & hydrate data in background:
         showLoading();
         dbExecutor.execute(() -> {
             try {
-                data.seedIfEmpty();
+                UserSession session = data.auth().getActiveSession();
+                if (session != null && session.isExpired()) {
+                    try {
+                        session = FirebaseAuthService.getInstance().refreshSession(session);
+                        data.auth().updateTokens(session.getUserId(), session.getIdToken(), session.getRefreshToken(), session.getExpiresAtMillis());
+                    } catch (Exception e) {
+                        if (!session.isRememberMe()) {
+                            session = null;
+                        }
+                    }
+                }
+
+                final UserSession finalSession = session;
                 Platform.runLater(() -> {
-                    showDashboardInternal();
-                    checkRecurringSweepAsync();
+                    if (finalSession != null) {
+                        AuthSessionManager.setActiveSession(finalSession);
+                        updateUserProfilePill();
+                        // Seeding only runs once the user is authenticated with their userId context
+                        dbExecutor.execute(() -> {
+                            try {
+                                data.seedIfEmpty();
+                            } catch (Exception ignored) {}
+                        });
+                        showDashboardInternal();
+                        checkRecurringSweepAsync();
+                    } else {
+                        showAuthScreen(AuthView.AuthState.SIGN_IN);
+                    }
                 });
             } catch (Exception e) {
-                Platform.runLater(this::showDashboardInternal);
+                Platform.runLater(() -> showAuthScreen(AuthView.AuthState.SIGN_IN));
             }
         });
     }
@@ -135,11 +168,6 @@ public class StudioApp extends Application {
         data = DataManager.init(db);
         backupService = new BackupRestoreService(db);
         printingService = new PrintingService();
-
-        // Seed default settings row synchronously (a single tiny query).
-        if (data.settingsDao().getSettings() == null) {
-            data.saveSettings(new Settings());
-        }
     }
 
     // ------------------------------------------------------------------
@@ -193,7 +221,6 @@ public class StudioApp extends Application {
 
         nav.getChildren().add(sectionMain);
         addNavButton(nav, "dashboard", "Dashboard", IconHelper.ICON_DASHBOARD, this::showDashboard);
-        addNavButton(nav, "new", "Create Bill", IconHelper.ICON_RECEIPT, this::showCreateBill);
         addNavButton(nav, "history", "History", IconHelper.ICON_HISTORY, this::showHistory);
 
         nav.getChildren().add(sectionFinance);
@@ -213,7 +240,7 @@ public class StudioApp extends Application {
         Region filler = new Region();
         VBox.setVgrow(filler, Priority.ALWAYS);
 
-        // Footer: collapse toggle + new bill CTA
+        // Footer: + New Bill button + user profile pill (sidebar-footer border provides single divider above)
         VBox footer = new VBox(10);
         footer.getStyleClass().add("sidebar-footer");
 
@@ -222,7 +249,14 @@ public class StudioApp extends Application {
         newBillBtn.setMaxWidth(Double.MAX_VALUE);
         newBillBtn.setTooltip(new Tooltip("Create a new invoice (Ctrl+N)"));
         newBillBtn.setOnAction(e -> showCreateBill());
-        footer.getChildren().add(newBillBtn);
+
+        HBox userPill = buildUserProfilePill();
+
+        Region midDivider = new Region();
+        midDivider.setStyle("-fx-background-color: -color-border; -fx-pref-height: 1px; -fx-max-height: 1px;");
+        VBox.setMargin(midDivider, new Insets(14, 0, 14, 0));
+
+        footer.getChildren().addAll(newBillBtn, midDivider, userPill);
 
         side.getChildren().addAll(brand, nav, filler, footer);
         return side;
@@ -574,6 +608,109 @@ public class StudioApp extends Application {
 
     public Pane getRootPane() {
         return rootPane;
+    }
+
+    private HBox buildUserProfilePill() {
+        HBox pill = new HBox(10);
+        pill.setAlignment(Pos.CENTER_LEFT);
+        pill.setStyle("-fx-background-color: #121721; -fx-background-radius: 8px; -fx-padding: 8px 10px; -fx-border-color: #1E2738; -fx-border-radius: 8px; -fx-border-width: 1px;");
+
+        userAvatarLabel = new Label("IS");
+        userAvatarLabel.setStyle("-fx-background-color: linear-gradient(to bottom right, #D4AF37, #AA820A); -fx-background-radius: 50%; -fx-min-width: 30px; -fx-min-height: 30px; -fx-max-width: 30px; -fx-max-height: 30px; -fx-alignment: center; -fx-font-size: 11px; -fx-font-weight: 800; -fx-text-fill: #0B0E13;");
+
+        VBox textBox = new VBox(1);
+        HBox.setHgrow(textBox, Priority.ALWAYS);
+
+        userNameLabel = new Label("Account");
+        userNameLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 11.5px; -fx-font-weight: 600;");
+
+        userEmailLabel = new Label("");
+        userEmailLabel.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px;");
+
+        textBox.getChildren().addAll(userNameLabel, userEmailLabel);
+
+        Button logoutBtn = new Button();
+        logoutBtn.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 4px;");
+        SVGPath logoutIcon = new SVGPath();
+        logoutIcon.setContent("M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z");
+        logoutIcon.setFill(Color.web("#94A3B8"));
+        logoutIcon.setScaleX(0.7);
+        logoutIcon.setScaleY(0.7);
+        logoutBtn.setGraphic(logoutIcon);
+        logoutBtn.setTooltip(new Tooltip("Log Out"));
+
+        logoutBtn.setOnMouseEntered(e -> logoutIcon.setFill(Color.web("#EF4444")));
+        logoutBtn.setOnMouseExited(e -> logoutIcon.setFill(Color.web("#94A3B8")));
+        logoutBtn.setOnAction(e -> promptLogout());
+
+        pill.getChildren().addAll(userAvatarLabel, textBox, logoutBtn);
+        userProfilePill = pill;
+        updateUserProfilePill();
+        return pill;
+    }
+
+    private void updateUserProfilePill() {
+        if (userNameLabel == null || userEmailLabel == null) return;
+        String name = AuthSessionManager.getCurrentUserDisplayName();
+        String email = AuthSessionManager.getCurrentUserEmail();
+
+        userNameLabel.setText(name.isBlank() ? "Account" : name);
+        userEmailLabel.setText(email);
+
+        String initials = "IS";
+        if (!name.isBlank() && !name.equalsIgnoreCase("User")) {
+            String[] parts = name.trim().split("\\s+");
+            if (parts.length >= 2) {
+                initials = ("" + parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+            } else if (!parts[0].isEmpty()) {
+                initials = parts[0].substring(0, Math.min(2, parts[0].length())).toUpperCase();
+            }
+        } else if (!email.isBlank()) {
+            initials = email.substring(0, Math.min(2, email.length())).toUpperCase();
+        }
+        userAvatarLabel.setText(initials);
+    }
+
+    private void promptLogout() {
+        LogoutDialog dialog = new LogoutDialog(
+                () -> {
+                    rootPane.getChildren().removeIf(node -> node instanceof LogoutDialog);
+                    performLogout();
+                },
+                () -> rootPane.getChildren().removeIf(node -> node instanceof LogoutDialog)
+        );
+        rootPane.getChildren().add(dialog);
+    }
+
+    private void performLogout() {
+        dbExecutor.execute(() -> {
+            try {
+                data.auth().clearSession();
+            } catch (Exception ignored) {}
+            AuthSessionManager.clear();
+            Platform.runLater(() -> {
+                viewCache.clear();
+                showAuthScreen(AuthView.AuthState.LOGGED_OUT);
+            });
+        });
+    }
+
+    private void showAuthScreen(AuthView.AuthState state) {
+        rootPane.getChildren().clear();
+        AuthView authView = new AuthView(state, this::onAuthenticationSuccess);
+        rootPane.getChildren().add(authView);
+    }
+
+    private void onAuthenticationSuccess() {
+        updateUserProfilePill();
+        rootPane.getChildren().clear();
+        rootPane.getChildren().add(mainLayout);
+        dbExecutor.execute(() -> {
+            try {
+                data.seedIfEmpty();
+            } catch (Exception ignored) {}
+            Platform.runLater(this::showDashboard);
+        });
     }
 
     public static void main(String[] args) {

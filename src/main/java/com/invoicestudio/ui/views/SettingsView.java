@@ -1,17 +1,26 @@
 package com.invoicestudio.ui.views;
 
 import com.invoicestudio.model.*;
+import com.invoicestudio.service.AuthSessionManager;
 import com.invoicestudio.service.BackupRestoreService;
+import com.invoicestudio.service.FirebaseAuthService;
 import com.invoicestudio.ui.DialogHelper;
+import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
 import com.invoicestudio.ui.UiTheme;
+import com.invoicestudio.ui.auth.PasswordFieldWithToggle;
+import com.invoicestudio.ui.auth.PasswordStrengthMeter;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 
@@ -23,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executors;
 import javafx.scene.text.Font;
 
 /**
@@ -38,6 +48,9 @@ public class SettingsView extends VBox {
     private final StudioApp app;
 
     private Settings currentSettings;
+
+    // Firebase details section
+    private final VBox firebaseAccountSection = new VBox();
 
     // Business inputs
     private final TextField busName = new TextField();
@@ -87,27 +100,61 @@ public class SettingsView extends VBox {
     private final ComboBox<String> googleFontCat = new ComboBox<>();
     private final List<CustomFontDef> editableFonts = new ArrayList<>();
 
+    private final TabPane tabPane = new TabPane();
+
     public SettingsView(StudioApp app) {
         this.app = app;
 
-        setSpacing(24);
-        setPadding(new Insets(24));
+        setSpacing(16);
+        setPadding(new Insets(20, 24, 20, 24));
         getStyleClass().add("view-page");
 
-        buildHeader();
-        buildBusinessSection();
-        buildBankSection();
-        buildBillingPrefsSection();
-        buildBuyerFieldsSection();
-        buildCustomFontsSection();
-        buildPrintCalibrationSection();
-        buildBackupRestoreSection();
-        buildStorageInfoSection();
+        Node header = buildHeader();
+
+        tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        tabPane.getStyleClass().add("settings-tab-pane");
+        VBox.setVgrow(tabPane, Priority.ALWAYS);
+
+        buildTabs();
+
+        getChildren().addAll(header, tabPane);
+
+        AuthSessionManager.addSessionChangeListener(s -> Platform.runLater(this::refreshFirebaseAccountSection));
 
         reload();
     }
 
-    private void buildHeader() {
+    private void buildTabs() {
+        tabPane.getTabs().clear();
+        tabPane.getTabs().addAll(
+            createTab("Profile", IconHelper.ICON_BUSINESS, buildProfileTabContent()),
+            createTab("Bank", IconHelper.ICON_BANK, buildBankSection()),
+            createTab("Billing", IconHelper.ICON_BILLING, buildBillingPrefsSection()),
+            createTab("Fields", IconHelper.ICON_FIELDS, buildBuyerFieldsSection()),
+            createTab("Fonts", IconHelper.ICON_FONT, buildCustomFontsSection()),
+            createTab("Print", IconHelper.ICON_PRINT, buildPrintCalibrationSection()),
+            createTab("Backup", IconHelper.ICON_BACKUP, buildBackupStorageSection())
+        );
+    }
+
+    private Tab createTab(String title, String iconName, Node content) {
+        Tab tab = new Tab(title);
+        tab.setGraphic(IconHelper.createTabGraphic(iconName, tab.selectedProperty()));
+
+        VBox wrapper = new VBox(content);
+        wrapper.setPadding(new Insets(4, 6, 20, 4));
+        VBox.setVgrow(content, Priority.NEVER);
+
+        ScrollPane sp = new ScrollPane(wrapper);
+        sp.setFitToWidth(true);
+        sp.getStyleClass().add("settings-scroll-pane");
+        VBox.setVgrow(sp, Priority.ALWAYS);
+
+        tab.setContent(sp);
+        return tab;
+    }
+
+    private Node buildHeader() {
         HBox header = new HBox(16);
         header.setAlignment(Pos.CENTER_LEFT);
 
@@ -131,10 +178,286 @@ public class SettingsView extends VBox {
         saveBtn.setOnAction(e -> saveSettings());
 
         header.getChildren().addAll(titleBox, saveBtn);
-        getChildren().add(header);
+        return header;
     }
 
-    private void buildBusinessSection() {
+    private VBox buildProfileTabContent() {
+        VBox container = new VBox(20);
+        container.getChildren().addAll(
+            buildFirebaseAccountSection(),
+            buildBusinessSection()
+        );
+        return container;
+    }
+
+    private VBox buildFirebaseAccountSection() {
+        refreshFirebaseAccountSection();
+        return firebaseAccountSection;
+    }
+
+    private void refreshFirebaseAccountSection() {
+        firebaseAccountSection.getChildren().clear();
+        VBox card = UiTheme.card(16);
+
+        UserSession session = AuthSessionManager.getActiveSession();
+        if (session == null || !AuthSessionManager.isLoggedIn()) {
+            Label secTitle = new Label("FIREBASE ACCOUNT & AUTHENTICATION");
+            secTitle.getStyleClass().add("card-title");
+
+            HBox guestBox = new HBox(12);
+            guestBox.setAlignment(Pos.CENTER_LEFT);
+            guestBox.getStyleClass().add("card-pane-subtle");
+            guestBox.setPadding(new Insets(14));
+
+            Label guestIcon = new Label("🔒");
+            guestIcon.getStyleClass().add("icon-lg");
+
+            VBox guestInfo = new VBox(4);
+            Label guestTitle = new Label("Local Offline Guest Mode");
+            guestTitle.getStyleClass().add("table-cell-title");
+            Label guestSub = new Label("No authenticated Firebase account is currently active. Sign in to link your invoices and account profile.");
+            guestSub.getStyleClass().add("muted-label");
+            guestInfo.getChildren().addAll(guestTitle, guestSub);
+
+            guestBox.getChildren().addAll(guestIcon, guestInfo);
+            card.getChildren().addAll(secTitle, guestBox);
+            firebaseAccountSection.getChildren().add(card);
+            return;
+        }
+
+        // Header / title
+        HBox titleRow = new HBox(10);
+        titleRow.setAlignment(Pos.CENTER_LEFT);
+        Label secIcon = new Label("👤");
+        secIcon.getStyleClass().add("icon-accent");
+        Label secTitle = new Label("FIREBASE ACCOUNT & AUTHENTICATION");
+        secTitle.getStyleClass().add("card-title");
+        titleRow.getChildren().addAll(secIcon, secTitle);
+
+        // Profile banner row
+        HBox banner = new HBox(16);
+        banner.setAlignment(Pos.CENTER_LEFT);
+        banner.getStyleClass().add("card-pane-subtle");
+        banner.setPadding(new Insets(16));
+
+        // Avatar circle
+        StackPane avatar = new StackPane();
+        avatar.setPrefSize(50, 50);
+        avatar.setMinSize(50, 50);
+        avatar.setMaxSize(50, 50);
+        avatar.setStyle("-fx-background-color: #F2CA6B; -fx-background-radius: 25px;");
+
+        String dName = session.getDisplayName();
+        if (dName == null || dName.isBlank()) {
+            dName = session.getEmail() != null && session.getEmail().contains("@")
+                    ? session.getEmail().substring(0, session.getEmail().indexOf("@"))
+                    : "User";
+        }
+        String initial = !dName.isEmpty() ? dName.substring(0, 1).toUpperCase() : "U";
+        Label initialLbl = new Label(initial);
+        initialLbl.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #0D1117;");
+        avatar.getChildren().add(initialLbl);
+
+        // User info
+        VBox userInfo = new VBox(4);
+        HBox nameAndStatus = new HBox(10);
+        nameAndStatus.setAlignment(Pos.CENTER_LEFT);
+
+        Label nameLbl = new Label(dName);
+        nameLbl.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #F1F5F9;");
+
+        Label statusPill = UiTheme.statusPill("Active Session", "success");
+        nameAndStatus.getChildren().addAll(nameLbl, statusPill);
+
+        Label emailLbl = new Label(session.getEmail() != null ? session.getEmail() : "No email registered");
+        emailLbl.getStyleClass().add("muted-label");
+
+        userInfo.getChildren().addAll(nameAndStatus, emailLbl);
+        HBox.setHgrow(userInfo, Priority.ALWAYS);
+
+        // Change password button
+        Button changePassBtn = UiTheme.secondaryBtn("Change Password");
+        changePassBtn.setGraphic(new Label("🔑"));
+        changePassBtn.setTooltip(new Tooltip("Update your Firebase account login password"));
+        changePassBtn.setOnAction(e -> openChangePasswordDialog(session));
+
+        banner.getChildren().addAll(avatar, userInfo, changePassBtn);
+
+        // Details grid
+        GridPane detailsGrid = new GridPane();
+        detailsGrid.setHgap(20);
+        detailsGrid.setVgap(12);
+
+        ColumnConstraints c1 = new ColumnConstraints();
+        c1.setPercentWidth(50);
+        ColumnConstraints c2 = new ColumnConstraints();
+        c2.setPercentWidth(50);
+        detailsGrid.getColumnConstraints().addAll(c1, c2);
+
+        // Email address field (read only)
+        TextField emailDisplay = new TextField(session.getEmail() != null ? session.getEmail() : "—");
+        emailDisplay.setEditable(false);
+        emailDisplay.setFocusTraversable(false);
+        emailDisplay.setStyle("-fx-opacity: 0.9;");
+        detailsGrid.add(UiTheme.labeled("Registered Firebase Email", emailDisplay), 0, 0);
+
+        // User ID (UID) with Copy button
+        HBox uidBox = new HBox(8);
+        uidBox.setAlignment(Pos.CENTER_LEFT);
+        TextField uidDisplay = new TextField(session.getUserId() != null ? session.getUserId() : "—");
+        uidDisplay.setEditable(false);
+        uidDisplay.setFocusTraversable(false);
+        uidDisplay.setStyle("-fx-font-family: 'Consolas', monospace; -fx-opacity: 0.9;");
+        HBox.setHgrow(uidDisplay, Priority.ALWAYS);
+
+        Button copyUidBtn = UiTheme.iconBtn("📋", "Copy Firebase UID");
+        copyUidBtn.setOnAction(e -> {
+            if (session.getUserId() != null && !session.getUserId().isBlank()) {
+                ClipboardContent content = new ClipboardContent();
+                content.putString(session.getUserId());
+                Clipboard.getSystemClipboard().setContent(content);
+                Toast.show(this, "Copied", "Firebase UID copied to clipboard", false);
+            }
+        });
+        uidBox.getChildren().addAll(uidDisplay, copyUidBtn);
+        detailsGrid.add(UiTheme.labeled("Firebase User UID", uidBox), 1, 0);
+
+        // Auth Provider
+        TextField providerDisplay = new TextField("Firebase Identity Toolkit (Google Cloud)");
+        providerDisplay.setEditable(false);
+        providerDisplay.setFocusTraversable(false);
+        providerDisplay.setStyle("-fx-opacity: 0.9;");
+        detailsGrid.add(UiTheme.labeled("Authentication Provider", providerDisplay), 0, 1);
+
+        // Session Persistence
+        String mode = session.isRememberMe() ? "Persistent (Remember Me enabled)" : "Session Only";
+        TextField sessionModeDisplay = new TextField(mode);
+        sessionModeDisplay.setEditable(false);
+        sessionModeDisplay.setFocusTraversable(false);
+        sessionModeDisplay.setStyle("-fx-opacity: 0.9;");
+        detailsGrid.add(UiTheme.labeled("Session Mode", sessionModeDisplay), 1, 1);
+
+        card.getChildren().addAll(titleRow, banner, detailsGrid);
+        firebaseAccountSection.getChildren().add(card);
+    }
+
+    private void openChangePasswordDialog(UserSession session) {
+        if (session == null || session.getIdToken() == null || session.getIdToken().isBlank()) {
+            Toast.show(this, "Authentication Error", "You must be logged in with a valid session to change password.", true);
+            return;
+        }
+
+        Dialog<Boolean> dlg = new Dialog<>();
+        dlg.setTitle("Change Password");
+        dlg.setHeaderText("UPDATE ACCOUNT PASSWORD");
+
+        VBox content = new VBox(14);
+        content.setPrefWidth(380);
+
+        Label desc = new Label("Enter your new password below. It will be securely updated in Firebase.");
+        desc.getStyleClass().add("muted-label");
+        desc.setWrapText(true);
+
+        Label emailLabel = new Label("Account: " + (session.getEmail() != null ? session.getEmail() : "Current User"));
+        emailLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #F2CA6B; -fx-font-size: 13px;");
+
+        PasswordFieldWithToggle newPassField = new PasswordFieldWithToggle("Enter new password (min 6 chars)");
+        PasswordStrengthMeter meter = new PasswordStrengthMeter();
+        meter.bindToPassword(newPassField.textProperty());
+
+        PasswordFieldWithToggle confirmPassField = new PasswordFieldWithToggle("Confirm new password");
+
+        Label errorLbl = new Label();
+        errorLbl.setStyle("-fx-text-fill: #EF4444; -fx-font-size: 12px;");
+        errorLbl.setWrapText(true);
+        errorLbl.setVisible(false);
+        errorLbl.setManaged(false);
+
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setPrefSize(20, 20);
+        spinner.setVisible(false);
+        spinner.setManaged(false);
+
+        HBox statusRow = new HBox(8, spinner, errorLbl);
+        statusRow.setAlignment(Pos.CENTER_LEFT);
+
+        content.getChildren().addAll(
+            desc,
+            emailLabel,
+            UiTheme.labeled("New Password *", newPassField),
+            meter,
+            UiTheme.labeled("Confirm Password *", confirmPassField),
+            statusRow
+        );
+
+        dlg.getDialogPane().setContent(content);
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        Button okBtn = (Button) dlg.getDialogPane().lookupButton(ButtonType.OK);
+        okBtn.setText("Update Password");
+        okBtn.getStyleClass().add("gold-btn");
+
+        Button cancelBtn = (Button) dlg.getDialogPane().lookupButton(ButtonType.CANCEL);
+        cancelBtn.getStyleClass().add("button-secondary");
+
+        okBtn.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            event.consume();
+
+            String np = newPassField.getText();
+            String cp = confirmPassField.getText();
+
+            if (np == null || np.trim().length() < 6) {
+                errorLbl.setText("Password must be at least 6 characters long.");
+                errorLbl.setVisible(true);
+                errorLbl.setManaged(true);
+                return;
+            }
+
+            if (!np.equals(cp)) {
+                errorLbl.setText("Passwords do not match.");
+                errorLbl.setVisible(true);
+                errorLbl.setManaged(true);
+                return;
+            }
+
+            okBtn.setDisable(true);
+            cancelBtn.setDisable(true);
+            spinner.setVisible(true);
+            spinner.setManaged(true);
+            errorLbl.setVisible(false);
+            errorLbl.setManaged(false);
+
+            Executors.newSingleThreadExecutor().submit(() -> {
+                try {
+                    UserSession updated = FirebaseAuthService.getInstance().updatePassword(session.getIdToken(), np.trim());
+                    if (updated != null) {
+                        AuthSessionManager.setActiveSession(updated);
+                    }
+                    Platform.runLater(() -> {
+                        dlg.setResult(true);
+                        dlg.close();
+                        Toast.show(this, "Success", "Password updated successfully!", false);
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        okBtn.setDisable(false);
+                        cancelBtn.setDisable(false);
+                        spinner.setVisible(false);
+                        spinner.setManaged(false);
+                        String msg = ex.getMessage() != null ? ex.getMessage() : "Failed to update password.";
+                        errorLbl.setText(msg);
+                        errorLbl.setVisible(true);
+                        errorLbl.setManaged(true);
+                    });
+                }
+            });
+        });
+
+        DialogHelper.styleDialog(dlg, 420, 380);
+        dlg.showAndWait();
+    }
+
+    private VBox buildBusinessSection() {
         VBox card = UiTheme.card(14);
 
         Label secTitle = new Label("MY BUSINESS PROFILE");
@@ -208,10 +531,10 @@ public class SettingsView extends VBox {
         logoRow.getChildren().addAll(logoContainer, logoInfo);
 
         card.getChildren().addAll(secTitle, grid, logoRow);
-        getChildren().add(card);
+        return card;
     }
 
-    private void buildBankSection() {
+    private VBox buildBankSection() {
         VBox card = UiTheme.card(14);
 
         Label secTitle = new Label("BANK & PAYMENT DETAILS");
@@ -233,10 +556,10 @@ public class SettingsView extends VBox {
         grid.add(UiTheme.labeled("UPI ID (e.g. business@okaxis)", bankUpi), 1, 1);
 
         card.getChildren().addAll(secTitle, grid);
-        getChildren().add(card);
+        return card;
     }
 
-    private void buildBillingPrefsSection() {
+    private VBox buildBillingPrefsSection() {
         VBox card = UiTheme.card(14);
 
         HBox secTitleRow = new HBox(8);
@@ -312,7 +635,7 @@ public class SettingsView extends VBox {
         toggles.getChildren().addAll(interStateBox, autoRecurringBox, monochromePrintBox);
 
         card.getChildren().addAll(secTitleRow, grid, previewRow, toggles);
-        getChildren().add(card);
+        return card;
     }
 
     private void showBillNumberingHelp() {
@@ -351,7 +674,7 @@ public class SettingsView extends VBox {
         dlg.showAndWait();
     }
 
-    private void buildBuyerFieldsSection() {
+    private VBox buildBuyerFieldsSection() {
         VBox card = UiTheme.card(14);
 
         HBox head = new HBox(8);
@@ -382,7 +705,7 @@ public class SettingsView extends VBox {
         addRow.getChildren().addAll(newBuyerFieldLabel, newBuyerFieldType, addBtn);
 
         card.getChildren().addAll(head, sub, buyerFieldsList, addRow);
-        getChildren().add(card);
+        return card;
     }
 
     private void renderBuyerFieldsList() {
@@ -449,7 +772,7 @@ public class SettingsView extends VBox {
         renderBuyerFieldsList();
     }
 
-    private void buildCustomFontsSection() {
+    private VBox buildCustomFontsSection() {
         VBox card = UiTheme.card(14);
 
         HBox head = new HBox(8);
@@ -503,7 +826,7 @@ public class SettingsView extends VBox {
         addRow.getChildren().addAll(googleFontInput, googleFontCat, addBtn, sep, browseFileBtn);
 
         card.getChildren().addAll(head, sub, guideBox, customFontsList, addRow);
-        getChildren().add(card);
+        return card;
     }
 
     private void renderCustomFontsList() {
@@ -653,7 +976,7 @@ public class SettingsView extends VBox {
         }
     }
 
-    private void buildPrintCalibrationSection() {
+    private VBox buildPrintCalibrationSection() {
         VBox card = UiTheme.card(14);
 
         Label secTitle = new Label("PRINT CALIBRATION & HARDWARE OFFSETS");
@@ -686,7 +1009,7 @@ public class SettingsView extends VBox {
         bottomRow.getChildren().addAll(statusStampBox, calibSheetBtn);
 
         card.getChildren().addAll(secTitle, sub, grid, bottomRow);
-        getChildren().add(card);
+        return card;
     }
 
     private void runCalibrationPrint() {
@@ -707,7 +1030,16 @@ public class SettingsView extends VBox {
         }
     }
 
-    private void buildBackupRestoreSection() {
+    private Node buildBackupStorageSection() {
+        VBox container = new VBox(16);
+        container.getChildren().addAll(
+            buildBackupRestoreSection(),
+            buildStorageInfoSection()
+        );
+        return container;
+    }
+
+    private VBox buildBackupRestoreSection() {
         VBox card = UiTheme.card(14);
 
         Label secTitle = new Label("DATABASE BACKUP & RESTORE");
@@ -731,7 +1063,7 @@ public class SettingsView extends VBox {
         btnRow.getChildren().addAll(exportBtn, importBtn);
 
         card.getChildren().addAll(secTitle, sub, btnRow);
-        getChildren().add(card);
+        return card;
     }
 
     private void handleExportBackup() {
@@ -780,7 +1112,7 @@ public class SettingsView extends VBox {
         }
     }
 
-    private void buildStorageInfoSection() {
+    private VBox buildStorageInfoSection() {
         VBox card = new VBox(8);
         card.getStyleClass().add("card-pane-dashed");
         card.setPadding(new Insets(16));
@@ -793,11 +1125,12 @@ public class SettingsView extends VBox {
         desc.setWrapText(true);
 
         card.getChildren().addAll(title, desc);
-        getChildren().add(card);
+        return card;
     }
 
     public void reload() {
         try {
+            refreshFirebaseAccountSection();
             currentSettings = app.getData().getSettings();
             if (currentSettings == null) currentSettings = new Settings();
 

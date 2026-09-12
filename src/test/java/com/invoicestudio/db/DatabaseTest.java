@@ -24,6 +24,9 @@ class DatabaseTest {
     @BeforeAll
     static void setUp() {
         new File(TEST_DB_FILE).delete();
+        com.invoicestudio.service.AuthSessionManager.setActiveSession(
+                new com.invoicestudio.model.UserSession("test_suite_user", "test@invoicestudio.test", "Test User", "id_tok", "ref_tok", System.currentTimeMillis() + 86400000L, true)
+        );
         db = DatabaseManager.initCustom("jdbc:sqlite:" + TEST_DB_FILE);
         itemDao = new ItemDao(db);
         buyerDao = new BuyerDao(db);
@@ -35,6 +38,7 @@ class DatabaseTest {
 
     @AfterAll
     static void tearDown() {
+        com.invoicestudio.service.AuthSessionManager.clear();
         new File(TEST_DB_FILE).delete();
     }
 
