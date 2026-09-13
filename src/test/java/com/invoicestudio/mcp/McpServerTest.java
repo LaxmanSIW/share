@@ -290,6 +290,37 @@ class McpServerTest {
     }
 
     @Test
+    @Order(21)
+    void createItemCreatesMissingCategoryAndReusesIt() throws Exception {
+        List<Map<String, Object>> catsBefore = callToolList("list_categories", Map.of());
+
+        Map<String, Object> item1 = callTool("create_item", Map.of(
+                "name", "Cotton Trouser Test", "hsn", "620342", "unit", "PCS",
+                "rate", 799.0, "gst", 5.0, "purchaseRate", 450.0,
+                "openingStock", 20.0, "reorderLevel", 5.0,
+                "categoryName", "Cotton"));
+        assertEquals(Boolean.TRUE, item1.get("ok"));
+
+        List<Map<String, Object>> catsAfter = callToolList("list_categories", Map.of());
+        assertEquals(catsBefore.size() + 1, catsAfter.size());
+        assertTrue(catsAfter.stream().anyMatch(c -> "Cotton".equalsIgnoreCase((String) c.get("name"))));
+
+        Map<String, Object> item2 = callTool("create_item", Map.of(
+                "name", "Cotton Trouser Test 2", "hsn", "620343", "unit", "PCS",
+                "rate", 899.0, "gst", 5.0, "purchaseRate", 500.0,
+                "openingStock", 10.0, "reorderLevel", 4.0,
+                "categoryName", "Cotton"));
+        assertEquals(Boolean.TRUE, item2.get("ok"));
+
+        List<Map<String, Object>> catsAfterSecond = callToolList("list_categories", Map.of());
+        assertEquals(catsAfter.size(), catsAfterSecond.size(), "same category should be reused");
+
+        List<Map<String, Object>> items = callToolList("list_items", Map.of("query", "Cotton Trouser Test"));
+        assertEquals(2, items.size(), "creating items under same category should not create duplicate categories");
+        assertTrue(items.stream().allMatch(i -> "Cotton".equalsIgnoreCase((String) i.get("category"))));
+    }
+
+    @Test
     @Order(22)
     void createInvoiceWithCatalogItemComputesGstAndStock() throws Exception {
         Map<String, Object> res = callTool("create_bill", Map.of(

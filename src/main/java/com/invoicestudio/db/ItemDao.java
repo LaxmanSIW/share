@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class ItemDao {
     private final DatabaseManager db;
@@ -97,6 +98,15 @@ public class ItemDao {
     public void saveItem(ItemRecord item) {
         String uid = getEffectiveUserId();
         if (uid.isEmpty() || item == null) return;
+
+        String itemId = item.getId();
+        if (itemId == null || itemId.isBlank()) {
+            itemId = "item_mcp_" + UUID.randomUUID().toString().substring(0, 8);
+            item.setId(itemId);
+        } else {
+            item.setId(itemId.trim());
+        }
+
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                  "INSERT INTO items (id, user_id, name, hsn, unit, rate, gst, category_id, category_name, purchase_rate, current_stock, opening_stock, reorder_level, created_at, updated_at) " +
@@ -132,15 +142,28 @@ public class ItemDao {
 
     public void deleteItem(String id) {
         String uid = getEffectiveUserId();
-        if (uid.isEmpty() || id == null || id.isBlank()) return;
-        if ("item_pent".equalsIgnoreCase(id)) return; // Protected default item
+        if (uid.isEmpty() || id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Item id is required");
+        }
+
+        String normalizedId = id.trim();
+        if ("item_pent".equalsIgnoreCase(normalizedId)) {
+            throw new IllegalArgumentException("Protected default item cannot be deleted");
+        }
+
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement("DELETE FROM items WHERE id = ? AND user_id = ?")) {
-            ps.setString(1, id);
+            ps.setString(1, normalizedId);
             ps.setString(2, uid);
-            ps.executeUpdate();
+            int deleted = ps.executeUpdate();
+            if (deleted == 0) {
+                throw new IllegalArgumentException("Item not found or already deleted: " + normalizedId);
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             e.printStackTrace();
+            throw new RuntimeException("Failed to delete item: " + e.getMessage(), e);
         }
     }
 

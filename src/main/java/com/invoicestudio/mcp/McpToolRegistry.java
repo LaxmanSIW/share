@@ -517,6 +517,12 @@ public final class McpToolRegistry {
     private static Map<String, Object> createItem(DataManager dm, Map<String, Object> args) throws Exception {
         String name = str(args, "name");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
+
+        String categoryId = strOr(args, "categoryId", "").trim();
+        String categoryName = strOr(args, "categoryName", "").trim();
+
+        ItemCategory category = resolveOrCreateCategory(dm, categoryId, categoryName);
+
         ItemRecord it = new ItemRecord();
         it.setId("item_mcp_" + UUID.randomUUID().toString().substring(0, 8));
         it.setName(name.trim());
@@ -527,10 +533,42 @@ public final class McpToolRegistry {
         it.setPurchaseRate(dbl(args, "purchaseRate", 0.0));
         it.setOpeningStock(dbl(args, "openingStock", 0.0));
         it.setReorderLevel(dbl(args, "reorderLevel", 0.0));
-        it.setCategoryId(strOr(args, "categoryId", ""));
-        it.setCategoryName(strOr(args, "categoryName", ""));
+        if (category != null) {
+            it.setCategoryId(category.getId());
+            it.setCategoryName(category.getName());
+        } else {
+            it.setCategoryId(categoryId);
+            it.setCategoryName(categoryName);
+        }
         dm.items().saveItem(it);
-        return mapOf("ok", true, "id", it.getId(), "name", it.getName());
+        return mapOf("ok", true, "id", it.getId(), "name", it.getName(), "category", it.getCategoryName());
+    }
+
+    private static ItemCategory resolveOrCreateCategory(DataManager dm, String categoryId, String categoryName) {
+        List<ItemCategory> categories = dm.getAllCategories();
+
+        if (categoryId != null && !categoryId.isBlank()) {
+            for (ItemCategory category : categories) {
+                if (category.getId().equalsIgnoreCase(categoryId)) {
+                    return category;
+                }
+            }
+        }
+
+        if (categoryName != null && !categoryName.isBlank()) {
+            for (ItemCategory category : categories) {
+                if (category.getName().equalsIgnoreCase(categoryName)) {
+                    return category;
+                }
+            }
+
+            ItemCategory newCategory = new ItemCategory();
+            newCategory.setName(categoryName.trim());
+            dm.saveCategory(newCategory);
+            return newCategory;
+        }
+
+        return null;
     }
 
     @SuppressWarnings("unchecked")

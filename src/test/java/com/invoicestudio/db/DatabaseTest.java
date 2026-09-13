@@ -61,6 +61,25 @@ class DatabaseTest {
     }
 
     @Test
+    void testSaveItemWithoutIdGeneratesStableId() {
+        ItemRecord it = new ItemRecord();
+        it.setName("Auto ID Test Item");
+        it.setHsn("998311");
+        it.setUnit("PCS");
+        it.setRate(250.0);
+        it.setGst(18.0);
+
+        itemDao.save(it);
+
+        assertFalse(it.getId() == null || it.getId().isBlank());
+        assertNotNull(itemDao.findById(it.getId()));
+        assertEquals("Auto ID Test Item", itemDao.findById(it.getId()).getName());
+
+        itemDao.delete(it.getId());
+        assertNull(itemDao.findById(it.getId()));
+    }
+
+    @Test
     void testBuyerCrud() {
         Buyer buyer = new Buyer();
         buyer.setId("byr_test_01");
