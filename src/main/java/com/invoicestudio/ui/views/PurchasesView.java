@@ -1,6 +1,8 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.model.BillPayment;
 import com.invoicestudio.model.PurchaseBill;
+import com.invoicestudio.service.PurchaseService;
 import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
@@ -16,6 +18,7 @@ import javafx.scene.layout.*;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Purchase History / Inward Register (Tally "Purchase Register").
@@ -128,7 +131,7 @@ public class PurchasesView extends BorderPane {
             value += p.getTotals() != null ? p.getTotals().getTaxable() : 0;
             itc += p.getTotals() != null
                     ? p.getTotals().getCgst() + p.getTotals().getSgst() + p.getTotals().getIgst() : 0;
-            if (!p.isPaid()) unpaid += p.getAmountPayable();
+            if (!p.isPaid()) unpaid += Math.max(0, p.getAmountPayable() - p.getPaidAmount());
         }
         statTotalPurchases.setText(String.valueOf(purchases.size()));
         statTotalValue.setText(String.format("%s%.2f", cur, value));
@@ -205,6 +208,13 @@ public class PurchasesView extends BorderPane {
                 String.format("%s%.2f", app.getData().getSettings().getCurrency(), d.getValue().getAmountPayable())));
         colTotal.setStyle("-fx-alignment: CENTER-RIGHT;");
 
+        TableColumn<PurchaseBill, String> colDue = new TableColumn<>("Due");
+        colDue.setPrefWidth(110);
+        colDue.setCellValueFactory(d -> new SimpleStringProperty(String.format("%s%.2f",
+                app.getData().getSettings().getCurrency(),
+                Math.max(0, d.getValue().getAmountPayable() - d.getValue().getPaidAmount()))));
+        colDue.setStyle("-fx-alignment: CENTER-RIGHT;");
+
         TableColumn<PurchaseBill, String> colStatus = new TableColumn<>("Status");
         colStatus.setPrefWidth(100);
         colStatus.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().isPaid() ? "PAID" : "UNPAID"));
@@ -221,15 +231,22 @@ public class PurchasesView extends BorderPane {
         colActions.setPrefWidth(210);
         colActions.setCellFactory(col -> new TableCell<>() {
             private final Button viewBtn = new Button("View");
+            private final Button payBtn = new Button("Pay");
             private final Button editBtn = new Button("Edit");
             private final Button delBtn = new Button("✕");
-            private final HBox box = new HBox(6, viewBtn, editBtn, delBtn);
+            private final HBox box = new HBox(6, viewBtn, payBtn, editBtn, delBtn);
 
             {
                 viewBtn.getStyleClass().addAll("button-sm", "button-secondary");
                 viewBtn.setOnAction(e -> {
                     PurchaseBill p = getTableRow().getItem();
                     if (p != null) showDetails(p);
+                });
+                payBtn.getStyleClass().addAll("button-sm", "button-secondary");
+                payBtn.setTooltip(new Tooltip("Record a supplier payment against this bill"));
+                payBtn.setOnAction(e -> {
+                    PurchaseBill p = getTableRow().getItem();
+                    if (p != null) showPayDialog(p);
                 });
                 editBtn.getStyleClass().addAll("button-sm", "button-secondary");
                 editBtn.setOnAction(e -> {
@@ -252,7 +269,7 @@ public class PurchasesView extends BorderPane {
             }
         });
 
-        table.getColumns().addAll(colNo, colDate, colSup, colSupBill, colTaxable, colItc, colTotal, colStatus, colActions);
+        table.getColumns().addAll(colNo, colDate, colSup, colSupBill, colTaxable, colItc, colTotal, colDue, colStatus, colActions);
     }
 
     private void applyFilter() {
@@ -331,6 +348,68 @@ public class PurchasesView extends BorderPane {
         dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         DialogHelper.styleDialog(dlg, 600, 480);
         dlg.showAndWait();
+    }
+
+    // ------------------------------------------------------------------
+    // Supplier payment voucher (Tally F5: Payment against a purchase bill)
+    // ------------------------------------------------------------------
+
+    private void showPayDialog(PurchaseBill p) {
+        String cur = app.getData().getSettings().getCurrency();
+        double due = Math.max(0, p.getAmountPayable() - p.getPaidAmount());
+        if (due <= 0.001) {
+            Toast.show(app.getRootPane(), "Nothing Due", p.getBillNo() + " is already fully paid.", false);
+            return;
+        }
+
+        Dialog<BillPayment> dlg = new Dialog<>();
+        dlg.setTitle("Pay Supplier — " + p.getSupplierName());
+        dlg.setHeaderText("Record payment for " + p.getBillNo()
+                + " (due " + String.format("%s%.2f", cur, due) + ")");
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(10); g.setPadding(new Insets(16));
+
+        TextField amountF = new TextField(String.format("%.2f", due));
+        amountF.setPromptText("Amount");
+        ComboBox<String> modeBox = new ComboBox<>(FXCollections.observableArrayList("Cash", "Bank / NEFT", "Cheque", "UPI"));
+        modeBox.setValue("Bank / NEFT");
+        TextField refF = new TextField();
+        refF.setPromptText("Reference / Cheque No / UTR");
+        DatePicker datePick = UiTheme.datePicker("Payment Date");
+        datePick.setValue(java.time.LocalDate.now());
+
+        g.add(new Label("Amount (₹):"), 0, 0); g.add(amountF, 1, 0);
+        g.add(new Label("Mode:"), 0, 1); g.add(modeBox, 1, 1);
+        g.add(new Label("Reference:"), 0, 2); g.add(refF, 1, 2);
+        g.add(new Label("Date:"), 0, 3); g.add(datePick, 1, 3);
+
+        dlg.getDialogPane().setContent(g);
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        DialogHelper.styleDialog(dlg);
+        dlg.setResultConverter(btn -> {
+            if (btn != ButtonType.OK) return null;
+            double amt = 0;
+            try { amt = Double.parseDouble(amountF.getText().trim()); } catch (Exception ignored) {}
+            if (amt <= 0) {
+                Toast.show(app.getRootPane(), "Validation Error", "Amount must be positive.", true);
+                return null;
+            }
+            String date = datePick.getValue() != null ? datePick.getValue().toString() : PurchaseService.todayISO();
+            return new BillPayment("pmt_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
+                    date, amt, com.invoicestudio.model.PaymentMethod.CASH, refF.getText().trim(), modeBox.getValue());
+        });
+
+        dlg.showAndWait().ifPresent(pmt -> {
+            p.getPayments().add(pmt);
+            if (p.getPaidAmount() >= p.getAmountPayable() - 0.001) {
+                p.setPaid(true);
+            }
+            app.getData().savePurchase(p);
+            refresh();
+            Toast.show(app.getRootPane(), "Payment Recorded",
+                    String.format("%s%.2f paid to %s.", cur, pmt.getAmount(), p.getSupplierName()), false);
+        });
     }
 
     private void confirmDelete(PurchaseBill p) {

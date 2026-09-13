@@ -226,6 +226,8 @@ public class StudioApp extends Application {
         nav.getChildren().add(sectionFinance);
         addNavButton(nav, "transactions", "Transactions", IconHelper.ICON_TRANSACTIONS, this::showTransactions);
         addNavButton(nav, "purchases", "Purchases", IconHelper.ICON_BILLING, this::showPurchases);
+        addNavButton(nav, "expenses", "Expenses", IconHelper.ICON_TAG, this::showExpenses);
+        addNavButton(nav, "financials", "Financials", IconHelper.ICON_BAR_CHART, this::showFinancials);
         addNavButton(nav, "reports", "Reports & Ledger", IconHelper.ICON_REPORTS, this::showReports);
 
         nav.getChildren().add(sectionManage);
@@ -301,6 +303,8 @@ public class StudioApp extends Application {
             case "history" -> IconHelper.ICON_HISTORY;
             case "transactions" -> IconHelper.ICON_TRANSACTIONS;
             case "purchases" -> IconHelper.ICON_BILLING;
+            case "expenses" -> IconHelper.ICON_TAG;
+            case "financials" -> IconHelper.ICON_BAR_CHART;
             case "reports" -> IconHelper.ICON_REPORTS;
             case "buyers" -> IconHelper.ICON_USERS;
             case "sellers" -> IconHelper.ICON_BUSINESS;
@@ -470,6 +474,18 @@ public class StudioApp extends Application {
         setView("purchases", new CreatePurchaseView(this, bill));
     }
 
+    public void showExpenses() {
+        setView("expenses", cached("expenses",
+                () -> new ExpensesView(this),
+                () -> ((ExpensesView) viewCache.get("expenses")).refresh()));
+    }
+
+    public void showFinancials() {
+        setView("financials", cached("financials",
+                () -> new FinancialsView(this),
+                () -> ((FinancialsView) viewCache.get("financials")).refresh()));
+    }
+
     public void showReports() {
         showReportsForBuyer(null);
     }
@@ -573,6 +589,8 @@ public class StudioApp extends Application {
             case "history" -> showHistory();
             case "transactions" -> showTransactions();
             case "purchases" -> showPurchases();
+            case "expenses" -> showExpenses();
+            case "financials" -> showFinancials();
             case "reports" -> showReports();
             case "buyers" -> showBuyers();
             case "sellers" -> showSuppliers();

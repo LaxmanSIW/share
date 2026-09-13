@@ -28,6 +28,8 @@ public class PurchaseBill {
     private BillTotals totals = new BillTotals();
     private boolean paid;           // false = on credit (adds to payable)
     private String paymentMode = ""; // CASH / BANK / CHEQUE / UPI
+    /** Partial/full payments made against this bill (supplier payment vouchers). */
+    private List<com.invoicestudio.model.BillPayment> payments = new ArrayList<>();
     private String notes = "";
     private String createdAt;
     private String updatedAt;
@@ -72,6 +74,20 @@ public class PurchaseBill {
 
     public String getPaymentMode() { return paymentMode != null ? paymentMode : ""; }
     public void setPaymentMode(String paymentMode) { this.paymentMode = paymentMode; }
+
+    public List<com.invoicestudio.model.BillPayment> getPayments() {
+        return payments != null ? payments : (payments = new ArrayList<>());
+    }
+    public void setPayments(List<com.invoicestudio.model.BillPayment> payments) {
+        this.payments = payments != null ? payments : new ArrayList<>();
+    }
+
+    /** Total paid so far (for bills marked Paid without explicit rows, equals payable). */
+    public double getPaidAmount() {
+        double sum = getPayments().stream().mapToDouble(com.invoicestudio.model.BillPayment::getAmount).sum();
+        if (sum == 0 && paid) return getAmountPayable();
+        return sum;
+    }
 
     public String getNotes() { return notes != null ? notes : ""; }
     public void setNotes(String notes) { this.notes = notes; }

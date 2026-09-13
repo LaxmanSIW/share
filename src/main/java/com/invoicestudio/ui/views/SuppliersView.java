@@ -151,18 +151,20 @@ public class SuppliersView extends BorderPane {
     }
 
     /**
-     * Running supplier balance: opening (Cr positive) minus payments implied by
-     * paid purchase bills, plus unpaid purchase bills. Positive = payable (Cr).
+     * True double-entry running balance per supplier:
+     * opening (Cr+) + credit purchase bills − payments made.
+     * Positive = payable to seller (Cr); negative = advance paid (Dr).
      */
     private double supplierBalance(Supplier s) {
         double bal = s.getOpeningBalance();
         for (PurchaseBill p : app.getData().getAllPurchases()) {
             if (s.getId() != null && s.getId().equals(p.getSupplierId())) {
-                if (p.isPaid()) {
-                    bal -= p.getAmountPayable(); // paid → reduces what we owe
-                } else {
-                    bal += p.getAmountPayable(); // on credit → adds to payable
+                if (!p.isPaid()) {
+                    // Credit purchase increases payable. Payments already made
+                    // (recorded via the Pay dialog) reduce it line by line.
+                    bal += p.getAmountPayable() - p.getPaidAmount();
                 }
+                // Fully-paid bills add then settle — net zero on balance.
             }
         }
         return bal;
@@ -752,14 +754,20 @@ public class SuppliersView extends BorderPane {
         double running = opening;
         for (PurchaseBill p : bills) {
             double amt = p.getAmountPayable();
-            if (p.isPaid()) {
-                // Paid immediately: debit (we paid) and the bill both settle at once.
-                rows.add(new LedgerRow(p.getDate(), "Bill " + p.getBillNo() + " (paid via " + p.getPaymentMode() + ")", "Dr/Payment", amt, 0));
+            // The purchase itself always credits the supplier
+            rows.add(new LedgerRow(p.getDate(), "Bill " + p.getBillNo()
+                    + (p.getSupplierBillNo().isBlank() ? "" : " (their " + p.getSupplierBillNo() + ")"), "Purchase", 0, amt));
+            running += amt;
+            // Every payment against the bill is a separate debit entry
+            for (com.invoicestudio.model.BillPayment pmt : p.getPayments()) {
+                rows.add(new LedgerRow(pmt.getDate(), "Payment via " + pmt.getNote()
+                        + (pmt.getReference() == null || pmt.getReference().isBlank() ? "" : " ref " + pmt.getReference()), "Payment", pmt.getAmount(), 0));
+                running -= pmt.getAmount();
+            }
+            if (p.isPaid() && p.getPayments().isEmpty()) {
+                // Paid at entry time (single settlement, no payment rows)
+                rows.add(new LedgerRow(p.getDate(), "Paid with bill via " + p.getPaymentMode(), "Payment", amt, 0));
                 running -= amt;
-            } else {
-                rows.add(new LedgerRow(p.getDate(), "Bill " + p.getBillNo()
-                        + (p.getSupplierBillNo().isBlank() ? "" : " (their " + p.getSupplierBillNo() + ")"), "Purchase", 0, amt));
-                running += amt;
             }
         }
 

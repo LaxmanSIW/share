@@ -48,6 +48,7 @@ public final class DataManager {
     private final SupplierDao supplierDao;
     private final PurchaseBillDao purchaseBillDao;
     private final StockLedgerDao stockLedgerDao;
+    private final ExpenseDao expenseDao;
 
     /** Cache invalidated on any bill write. Guarded by the monitor of this list. */
     private List<Bill> billsCache;
@@ -74,6 +75,7 @@ public final class DataManager {
         this.supplierDao = new SupplierDao(db);
         this.purchaseBillDao = new PurchaseBillDao(db);
         this.stockLedgerDao = new StockLedgerDao(db);
+        this.expenseDao = new ExpenseDao(db);
 
         com.invoicestudio.service.AuthSessionManager.addSessionChangeListener(session -> onUserSwitched());
     }
@@ -108,6 +110,7 @@ public final class DataManager {
     public SupplierDao suppliers() { return supplierDao; }
     public PurchaseBillDao purchases() { return purchaseBillDao; }
     public StockLedgerDao stockLedger() { return stockLedgerDao; }
+    public ExpenseDao expenses() { return expenseDao; }
 
     public void onUserSwitched() {
         synchronized (this) {
@@ -176,13 +179,18 @@ public final class DataManager {
     public Bill saveBill(Bill bill) {
         billDao.saveBill(bill);
         invalidateBills();
+        // Sales decrement stock (Tally: every sales voucher moves inventory out)
+        stockLedgerDao.deleteByVoucher(bill.getId());
+        recordSaleStockOut(bill);
         syncBillTransaction(bill);
         return bill;
     }
 
     public void deleteBill(String id) {
+        Bill removed = billDao.getBillById(id);
         billDao.deleteBill(id);
         invalidateBills();
+        if (removed != null) removeSaleStockOut(removed);
         try {
             List<Transaction> txs = getAllTransactions();
             for (Transaction t : txs) {
@@ -431,10 +439,70 @@ public final class DataManager {
         return stockLedgerDao.allBalances();
     }
 
+    // ---------- Expenses (uncached; low volume) ----------
+
+    public List<com.invoicestudio.model.Expense> getAllExpenses() {
+        return expenseDao.getAllExpenses();
+    }
+
+    public void saveExpense(com.invoicestudio.model.Expense e) {
+        expenseDao.saveExpense(e);
+    }
+
+    public void deleteExpense(String id) {
+        expenseDao.deleteExpense(id);
+    }
+
     /**
      * Persist a purchase bill, refresh caches and re-write stock ledger rows
      * so item current_stock stays ledger-accurate (never manually edited).
      */
+    /** Catalog item lookup by id, then by name (stock-tracked sale lines). */
+    private com.invoicestudio.model.ItemRecord resolveItem(String id, String name) {
+        if (id != null && !id.isBlank()) {
+            com.invoicestudio.model.ItemRecord it = itemDao.getItemById(id);
+            if (it != null) return it;
+        }
+        if (name != null && !name.isBlank()) {
+            for (com.invoicestudio.model.ItemRecord it : itemDao.getAllItems()) {
+                if (name.equalsIgnoreCase(it.getName())) return it;
+            }
+        }
+        return null;
+    }
+
+    /** Stock OUT rows for a saved sales bill (id- or name-linked lines only). */
+    private void recordSaleStockOut(com.invoicestudio.model.Bill bill) {
+        if (bill == null || bill.getItems() == null) return;
+        for (com.invoicestudio.model.BillItem it : bill.getItems()) {
+            com.invoicestudio.model.ItemRecord catalogItem = resolveItem(it.getId(), it.getDesc());
+            if (catalogItem != null && it.getQty() > 0) {
+                stockLedgerDao.append(catalogItem.getId(), bill.getDate(), StockLedgerDao.V_SALE,
+                        bill.getId(), bill.getBillNo(), 0, it.getQty(), it.getRate());
+            }
+        }
+        java.util.Set<String> touched = new java.util.HashSet<>();
+        for (com.invoicestudio.model.BillItem it : bill.getItems()) {
+            com.invoicestudio.model.ItemRecord catalogItem = resolveItem(it.getId(), it.getDesc());
+            if (catalogItem != null) touched.add(catalogItem.getId());
+        }
+        for (String itemId : touched) stockLedgerDao.recomputeItem(itemId);
+    }
+
+    /** Removes sale stock rows of a deleted sales bill and recomputes balances. */
+    private void removeSaleStockOut(com.invoicestudio.model.Bill bill) {
+        if (bill == null) return;
+        stockLedgerDao.deleteByVoucher(bill.getId());
+        java.util.Set<String> touched = new java.util.HashSet<>();
+        if (bill.getItems() != null) {
+            for (com.invoicestudio.model.BillItem it : bill.getItems()) {
+                com.invoicestudio.model.ItemRecord catalogItem = resolveItem(it.getId(), it.getDesc());
+                if (catalogItem != null) touched.add(catalogItem.getId());
+            }
+        }
+        for (String itemId : touched) stockLedgerDao.recomputeItem(itemId);
+    }
+
     public com.invoicestudio.model.PurchaseBill savePurchase(com.invoicestudio.model.PurchaseBill bill) {
         purchaseBillDao.savePurchaseBill(bill);
         invalidatePurchases();
