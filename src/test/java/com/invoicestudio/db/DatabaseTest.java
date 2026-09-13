@@ -61,6 +61,24 @@ class DatabaseTest {
     }
 
     @Test
+    void testItemSaveGeneratesIdWhenMissing() {
+        ItemRecord item = new ItemRecord();
+        item.setName("New Auto-ID Item");
+        item.setHsn("9999");
+        item.setUnit("PCS");
+        item.setRate(250.0);
+        item.setGst(18.0);
+
+        itemDao.save(item);
+
+        assertNotNull(item.getId(), "Item ID should be generated when missing");
+        assertNotNull(itemDao.findById(item.getId()));
+
+        itemDao.delete(item.getId());
+        assertNull(itemDao.findById(item.getId()));
+    }
+
+    @Test
     void testBuyerCrud() {
         Buyer buyer = new Buyer();
         buyer.setId("byr_test_01");

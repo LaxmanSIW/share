@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class ItemDao {
     private final DatabaseManager db;
@@ -94,9 +95,18 @@ public class ItemDao {
         return null;
     }
 
+    private String generateItemId() {
+        return "it_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    }
+
     public void saveItem(ItemRecord item) {
         String uid = getEffectiveUserId();
         if (uid.isEmpty() || item == null) return;
+
+        if (item.getId() == null || item.getId().isBlank()) {
+            item.setId(generateItemId());
+        }
+
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                  "INSERT INTO items (id, user_id, name, hsn, unit, rate, gst, category_id, category_name, purchase_rate, current_stock, opening_stock, reorder_level, created_at, updated_at) " +
