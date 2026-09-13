@@ -96,6 +96,10 @@ Label {
     -fx-text-fill: -color-text-secondary;
 }
 
+.bold-label {
+    -fx-font-weight: bold;
+}
+
 .card-title {
     -fx-font-size: 13px;
     -fx-font-weight: bold;

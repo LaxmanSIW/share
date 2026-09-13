@@ -162,6 +162,8 @@ public class StudioApp extends Application {
 
     @Override
     public void stop() {
+        // The MCP server must never outlive the app (localhost port + pending ops die with it)
+        com.invoicestudio.mcp.McpServer.shutdown();
         dbExecutor.shutdownNow();
     }
 
@@ -199,6 +201,20 @@ public class StudioApp extends Application {
         data = DataManager.init(db);
         backupService = new BackupRestoreService(db);
         printingService = new PrintingService();
+        startMcpIfConfigured();
+    }
+
+    /** Auto-start the MCP (AI access) server when the user enabled it in Settings. */
+    private void startMcpIfConfigured() {
+        try {
+            com.invoicestudio.mcp.McpConfig cfg = com.invoicestudio.mcp.McpConfig.load();
+            if (cfg.isAutoStart()) {
+                String err = com.invoicestudio.mcp.McpServer.start(cfg);
+                if (err != null) System.err.println("MCP auto-start failed: " + err);
+            }
+        } catch (Exception e) {
+            System.err.println("MCP auto-start error: " + e.getMessage());
+        }
     }
 
     // ------------------------------------------------------------------
