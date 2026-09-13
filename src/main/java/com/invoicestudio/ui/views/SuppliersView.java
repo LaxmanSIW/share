@@ -1,5 +1,6 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.model.PurchaseBill;
 import com.invoicestudio.model.Supplier;
 import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.StudioApp;
@@ -141,12 +142,30 @@ public class SuppliersView extends BorderPane {
         statGstRegistered.setText(gstCount + " of " + allSuppliers.size());
 
         String cur = app.getData().getSettings().getCurrency();
-        // Payable = sum of positive (Cr) opening balances. Negative (Dr) are advances, not payables.
-        double totalPayable = allSuppliers.stream()
-                .mapToDouble(Supplier::getOpeningBalance)
-                .filter(v -> v > 0)
-                .sum();
+        // Payable = positive (Cr) opening balances + unpaid purchase bills, per supplier.
+        double totalPayable = 0;
+        for (Supplier s : allSuppliers) {
+            totalPayable += Math.max(0, supplierBalance(s));
+        }
         statTotalPayable.setText(String.format("%s%.2f", cur, totalPayable));
+    }
+
+    /**
+     * Running supplier balance: opening (Cr positive) minus payments implied by
+     * paid purchase bills, plus unpaid purchase bills. Positive = payable (Cr).
+     */
+    private double supplierBalance(Supplier s) {
+        double bal = s.getOpeningBalance();
+        for (PurchaseBill p : app.getData().getAllPurchases()) {
+            if (s.getId() != null && s.getId().equals(p.getSupplierId())) {
+                if (p.isPaid()) {
+                    bal -= p.getAmountPayable(); // paid → reduces what we owe
+                } else {
+                    bal += p.getAmountPayable(); // on credit → adds to payable
+                }
+            }
+        }
+        return bal;
     }
 
     private Node createTableArea() {
@@ -259,7 +278,7 @@ public class SuppliersView extends BorderPane {
         // 6. Balance / payable (red pill when payable, settled when zero/negative)
         TableColumn<Supplier, Double> colBalance = new TableColumn<>("Balance / Payable");
         colBalance.setPrefWidth(150);
-        colBalance.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getOpeningBalance()));
+        colBalance.setCellValueFactory(d -> new SimpleObjectProperty<>(supplierBalance(d.getValue())));
         colBalance.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(Double bal, boolean empty) {
@@ -279,14 +298,15 @@ public class SuppliersView extends BorderPane {
             }
         });
 
-        // 7. Row actions: Edit / Details / Delete
+        // 7. Row actions: Edit / Ledger / Details / Delete
         TableColumn<Supplier, Void> colActions = new TableColumn<>("Actions");
-        colActions.setPrefWidth(220);
+        colActions.setPrefWidth(280);
         colActions.setCellFactory(col -> new TableCell<>() {
             private final Button editBtn = new Button("Edit");
+            private final Button ledgerBtn = new Button("Ledger");
             private final Button viewBtn = new Button("Details");
             private final Button delBtn = new Button("✕");
-            private final HBox box = new HBox(6, editBtn, viewBtn, delBtn);
+            private final HBox box = new HBox(6, editBtn, ledgerBtn, viewBtn, delBtn);
 
             {
                 editBtn.getStyleClass().addAll("button-sm", "button-secondary");
@@ -294,6 +314,13 @@ public class SuppliersView extends BorderPane {
                 editBtn.setOnAction(e -> {
                     Supplier s = getTableRow().getItem();
                     if (s != null) showSupplierDialog(s);
+                });
+
+                ledgerBtn.getStyleClass().addAll("button-sm", "button-secondary");
+                ledgerBtn.setTooltip(new Tooltip("View purchase & payment ledger statement"));
+                ledgerBtn.setOnAction(e -> {
+                    Supplier s = getTableRow().getItem();
+                    if (s != null) showSupplierLedgerDialog(s);
                 });
 
                 viewBtn.getStyleClass().addAll("button-sm", "button-secondary");
@@ -647,11 +674,12 @@ public class SuppliersView extends BorderPane {
             g.add(new Label("Address:"), 0, r);
             g.add(new Label(s.getAddress()), 1, r++);
         }
-        g.add(new Label("Opening Balance:"), 0, r);
-        Label balLbl = new Label(s.getOpeningBalance() > 0
-                ? String.format("%s%.2f payable (Cr)", cur, s.getOpeningBalance())
-                : s.getOpeningBalance() < 0
-                ? String.format("%s%.2f advance (Dr)", cur, -s.getOpeningBalance())
+        double bal = supplierBalance(s);
+        g.add(new Label("Running Balance:"), 0, r);
+        Label balLbl = new Label(bal > 0
+                ? String.format("%s%.2f payable (Cr)", cur, bal)
+                : bal < 0
+                ? String.format("%s%.2f advance (Dr)", cur, -bal)
                 : "Settled");
         balLbl.getStyleClass().add(s.getOpeningBalance() > 0 ? "accent-red" : "accent-emerald");
         g.add(balLbl, 1, r++);
@@ -694,6 +722,100 @@ public class SuppliersView extends BorderPane {
         app.getData().suppliers().deleteSupplier(s.getId());
         refresh();
         Toast.show(app.getRootPane(), "Seller Deleted", s.getName() + " removed.", false);
+    }
+
+    // ------------------------------------------------------------------
+    // Supplier ledger statement (purchase bills + payments, running balance)
+    // ------------------------------------------------------------------
+
+    private void showSupplierLedgerDialog(Supplier s) {
+        if (s == null) return;
+        String cur = app.getData().getSettings().getCurrency();
+
+        // Ledger rows: opening balance first, then bills + paid-payments date-wise
+        record LedgerRow(String date, String particulars, String type, double debit, double credit) {}
+        java.util.List<LedgerRow> rows = new java.util.ArrayList<>();
+
+        double opening = s.getOpeningBalance();
+        if (opening != 0) {
+            rows.add(new LedgerRow("—", "Opening Balance", opening > 0 ? "Cr" : "Dr",
+                    opening < 0 ? -opening : 0, opening > 0 ? opening : 0));
+        }
+
+        List<PurchaseBill> bills = new java.util.ArrayList<>();
+        for (PurchaseBill p : app.getData().getAllPurchases()) {
+            if (s.getId() != null && s.getId().equals(p.getSupplierId())) bills.add(p);
+        }
+        bills.sort(java.util.Comparator.comparing(PurchaseBill::getDate,
+                java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+
+        double running = opening;
+        for (PurchaseBill p : bills) {
+            double amt = p.getAmountPayable();
+            if (p.isPaid()) {
+                // Paid immediately: debit (we paid) and the bill both settle at once.
+                rows.add(new LedgerRow(p.getDate(), "Bill " + p.getBillNo() + " (paid via " + p.getPaymentMode() + ")", "Dr/Payment", amt, 0));
+                running -= amt;
+            } else {
+                rows.add(new LedgerRow(p.getDate(), "Bill " + p.getBillNo()
+                        + (p.getSupplierBillNo().isBlank() ? "" : " (their " + p.getSupplierBillNo() + ")"), "Purchase", 0, amt));
+                running += amt;
+            }
+        }
+
+        Dialog<Void> dlg = new Dialog<>();
+        dlg.setTitle("Supplier Ledger — " + s.getName());
+        dlg.setHeaderText("Purchase & payment ledger with running balance");
+
+        VBox content = new VBox(10);
+        content.setPrefWidth(720);
+
+        TableView<LedgerRow> table = new TableView<>();
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.getStyleClass().add("table-view");
+
+        TableColumn<LedgerRow, String> cDate = new TableColumn<>("Date");
+        cDate.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().date()));
+        cDate.setPrefWidth(95);
+
+        TableColumn<LedgerRow, String> cPart = new TableColumn<>("Particulars");
+        cPart.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().particulars()));
+
+        TableColumn<LedgerRow, String> cType = new TableColumn<>("Type");
+        cType.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().type()));
+        cType.setPrefWidth(90);
+
+        TableColumn<LedgerRow, String> cDebit = new TableColumn<>("Debit (We Paid)");
+        cDebit.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().debit() > 0 ? String.format("%s%.2f", cur, d.getValue().debit()) : ""));
+        cDebit.setPrefWidth(110);
+
+        TableColumn<LedgerRow, String> cCredit = new TableColumn<>("Credit (Payable)");
+        cCredit.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().credit() > 0 ? String.format("%s%.2f", cur, d.getValue().credit()) : ""));
+        cCredit.setPrefWidth(110);
+
+        TableColumn<LedgerRow, String> cBal = new TableColumn<>("Balance");
+        cBal.setCellValueFactory(d -> new SimpleStringProperty(""));
+        cBal.setPrefWidth(100);
+
+        table.getColumns().addAll(cDate, cPart, cType, cDebit, cCredit, cBal);
+        table.setItems(FXCollections.observableArrayList(rows));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        HBox summary = new HBox(20);
+        summary.setAlignment(Pos.CENTER_RIGHT);
+        summary.getStyleClass().add("card-pane-subtle");
+        summary.setPadding(new Insets(10, 14, 10, 14));
+        Label closing = new Label(running > 0 ? String.format("Closing: %s%.2f Payable (Cr)", cur, running)
+                : running < 0 ? String.format("Closing: %s%.2f Advance (Dr)", cur, -running)
+                : "Closing: Settled");
+        closing.getStyleClass().addAll("table-cell-title", running > 0 ? "accent-red" : "accent-emerald");
+        summary.getChildren().add(closing);
+
+        content.getChildren().addAll(table, summary);
+        dlg.getDialogPane().setContent(content);
+        dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        DialogHelper.styleDialog(dlg, 620, 460);
+        dlg.showAndWait();
     }
 
     // ------------------------------------------------------------------

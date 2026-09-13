@@ -46,12 +46,15 @@ public final class DataManager {
     private final TransactionDao transactionDao;
     private final AuthDao authDao;
     private final SupplierDao supplierDao;
+    private final PurchaseBillDao purchaseBillDao;
+    private final StockLedgerDao stockLedgerDao;
 
     /** Cache invalidated on any bill write. Guarded by the monitor of this list. */
     private List<Bill> billsCache;
     private List<com.invoicestudio.model.Transport> transportsCache;
     private List<com.invoicestudio.model.ItemCategory> categoriesCache;
     private List<com.invoicestudio.model.Transaction> transactionsCache;
+    private List<com.invoicestudio.model.PurchaseBill> purchasesCache;
     private Settings settingsCache;
 
     private final CopyOnWriteArrayList<Consumer<List<Bill>>> billsListeners = new CopyOnWriteArrayList<>();
@@ -69,6 +72,8 @@ public final class DataManager {
         this.transactionDao = new TransactionDao(db);
         this.authDao = new AuthDao(db);
         this.supplierDao = new SupplierDao(db);
+        this.purchaseBillDao = new PurchaseBillDao(db);
+        this.stockLedgerDao = new StockLedgerDao(db);
 
         com.invoicestudio.service.AuthSessionManager.addSessionChangeListener(session -> onUserSwitched());
     }
@@ -101,6 +106,8 @@ public final class DataManager {
     public TransactionDao transactions() { return transactionDao; }
     public AuthDao auth() { return authDao; }
     public SupplierDao suppliers() { return supplierDao; }
+    public PurchaseBillDao purchases() { return purchaseBillDao; }
+    public StockLedgerDao stockLedger() { return stockLedgerDao; }
 
     public void onUserSwitched() {
         synchronized (this) {
@@ -108,6 +115,7 @@ public final class DataManager {
             transportsCache = null;
             categoriesCache = null;
             transactionsCache = null;
+            purchasesCache = null;
             settingsCache = null;
         }
         notifyBillsChanged();
@@ -399,6 +407,77 @@ public final class DataManager {
     public void deleteTransaction(String id, String reason) {
         transactionDao.deleteTransaction(id, reason);
         invalidateTransactions();
+    }
+
+    // ---------- Purchases Caching & Wrappers (stock-synced) ----------
+
+    public List<com.invoicestudio.model.PurchaseBill> getAllPurchases() {
+        synchronized (this) {
+            if (purchasesCache == null) {
+                purchasesCache = purchaseBillDao.getAllPurchaseBills();
+            }
+            return purchasesCache;
+        }
+    }
+
+    public void invalidatePurchases() {
+        synchronized (this) {
+            purchasesCache = null;
+        }
+    }
+
+    /** Live stock balance per item id (opening + ledger movements). */
+    public java.util.Map<String, Double> getStockBalances() {
+        return stockLedgerDao.allBalances();
+    }
+
+    /**
+     * Persist a purchase bill, refresh caches and re-write stock ledger rows
+     * so item current_stock stays ledger-accurate (never manually edited).
+     */
+    public com.invoicestudio.model.PurchaseBill savePurchase(com.invoicestudio.model.PurchaseBill bill) {
+        purchaseBillDao.savePurchaseBill(bill);
+        invalidatePurchases();
+
+        // Stock IN rows for every item line (replaces any previous rows for this voucher)
+        stockLedgerDao.deleteByVoucher(bill.getId());
+        if (bill.getItems() != null) {
+            for (com.invoicestudio.model.BillItem it : bill.getItems()) {
+                if (it.getId() != null && !it.getId().isBlank() && it.getQty() > 0) {
+                    stockLedgerDao.append(it.getId(), bill.getDate(), StockLedgerDao.V_PURCHASE,
+                            bill.getId(), bill.getBillNo(), it.getQty(), 0, it.getRate());
+                }
+            }
+        }
+        // Recompute affected item balances
+        java.util.Set<String> touched = new java.util.HashSet<>();
+        if (bill.getItems() != null) {
+            for (com.invoicestudio.model.BillItem it : bill.getItems()) {
+                if (it.getId() != null && !it.getId().isBlank()) touched.add(it.getId());
+            }
+        }
+        for (String itemId : touched) {
+            stockLedgerDao.recomputeItem(itemId);
+        }
+        return bill;
+    }
+
+    public void deletePurchase(String id) {
+        com.invoicestudio.model.PurchaseBill bill = purchaseBillDao.getPurchaseBillById(id);
+        purchaseBillDao.deletePurchaseBill(id);
+        invalidatePurchases();
+        if (bill != null) {
+            stockLedgerDao.deleteByVoucher(bill.getId());
+            java.util.Set<String> touched = new java.util.HashSet<>();
+            if (bill.getItems() != null) {
+                for (com.invoicestudio.model.BillItem it : bill.getItems()) {
+                    if (it.getId() != null && !it.getId().isBlank()) touched.add(it.getId());
+                }
+            }
+            for (String itemId : touched) {
+                stockLedgerDao.recomputeItem(itemId);
+            }
+        }
     }
 
     public void deleteTransaction(String id) {

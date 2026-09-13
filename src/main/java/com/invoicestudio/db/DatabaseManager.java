@@ -47,6 +47,13 @@ public class DatabaseManager {
             stmt.execute("CREATE TABLE IF NOT EXISTS buyers (id TEXT PRIMARY KEY, name TEXT, phone TEXT, gst TEXT, state TEXT, json_data TEXT, created_at TEXT, updated_at TEXT)");
             // v4.3 — Purchase foundation: supplier (Sundry Creditor) directory
             stmt.execute("CREATE TABLE IF NOT EXISTS suppliers (id TEXT PRIMARY KEY, name TEXT, phone TEXT, gst TEXT, state TEXT, json_data TEXT, created_at TEXT, updated_at TEXT)");
+            // v4.3.1 — Purchase cycle: purchase bills + immutable stock ledger
+            stmt.execute("CREATE TABLE IF NOT EXISTS purchase_bills (id TEXT PRIMARY KEY, bill_no TEXT, supplier_bill_no TEXT, date TEXT, supplier_id TEXT, supplier_name TEXT, total REAL, itc REAL, status TEXT, json_data TEXT, created_at TEXT, updated_at TEXT)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchase_bills(supplier_id)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchase_bills(date)");
+            stmt.execute("CREATE TABLE IF NOT EXISTS stock_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, transaction_date TEXT NOT NULL, voucher_type TEXT NOT NULL, voucher_id TEXT NOT NULL, voucher_no TEXT, qty_in REAL DEFAULT 0, qty_out REAL DEFAULT 0, unit_price REAL, user_id TEXT DEFAULT '', created_at TEXT)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_stock_item ON stock_ledger(item_id)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_stock_voucher ON stock_ledger(voucher_id)");
             stmt.execute("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, name TEXT, hsn TEXT, unit TEXT, rate REAL, gst REAL, created_at TEXT, updated_at TEXT)");
             stmt.execute("CREATE TABLE IF NOT EXISTS variables (key TEXT PRIMARY KEY, label TEXT, type TEXT, builtin INTEGER)");
             stmt.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, val TEXT)");
@@ -99,6 +106,8 @@ public class DatabaseManager {
             try { stmt.execute("DELETE FROM transports WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM buyers WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM suppliers WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM purchase_bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM stock_ledger WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM transactions WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
 

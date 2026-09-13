@@ -225,6 +225,7 @@ public class StudioApp extends Application {
 
         nav.getChildren().add(sectionFinance);
         addNavButton(nav, "transactions", "Transactions", IconHelper.ICON_TRANSACTIONS, this::showTransactions);
+        addNavButton(nav, "purchases", "Purchases", IconHelper.ICON_BILLING, this::showPurchases);
         addNavButton(nav, "reports", "Reports & Ledger", IconHelper.ICON_REPORTS, this::showReports);
 
         nav.getChildren().add(sectionManage);
@@ -299,6 +300,7 @@ public class StudioApp extends Application {
             case "new" -> IconHelper.ICON_RECEIPT;
             case "history" -> IconHelper.ICON_HISTORY;
             case "transactions" -> IconHelper.ICON_TRANSACTIONS;
+            case "purchases" -> IconHelper.ICON_BILLING;
             case "reports" -> IconHelper.ICON_REPORTS;
             case "buyers" -> IconHelper.ICON_USERS;
             case "sellers" -> IconHelper.ICON_BUSINESS;
@@ -451,6 +453,23 @@ public class StudioApp extends Application {
                 () -> ((TransactionsView) viewCache.get("transactions")).refresh()));
     }
 
+    public void showPurchases() {
+        setView("purchases", cached("purchases",
+                () -> new PurchasesView(this),
+                () -> ((PurchasesView) viewCache.get("purchases")).refresh()));
+    }
+
+    /** Record a new purchase bill (Tally F9: Purchase equivalent). */
+    public void showCreatePurchase() {
+        // Entry form holds unsaved state → always fresh.
+        setView("purchases", new CreatePurchaseView(this));
+    }
+
+    /** Edit an existing purchase bill (stock ledger rows are rewritten on save). */
+    public void showEditPurchase(com.invoicestudio.model.PurchaseBill bill) {
+        setView("purchases", new CreatePurchaseView(this, bill));
+    }
+
     public void showReports() {
         showReportsForBuyer(null);
     }
@@ -553,6 +572,7 @@ public class StudioApp extends Application {
             case "templates" -> showTemplates();
             case "history" -> showHistory();
             case "transactions" -> showTransactions();
+            case "purchases" -> showPurchases();
             case "reports" -> showReports();
             case "buyers" -> showBuyers();
             case "sellers" -> showSuppliers();
