@@ -46,6 +46,7 @@ public class ItemDao {
                     try { it.setPurchaseRate(rs.getDouble("purchase_rate")); } catch (Exception ignored) {}
                     try { it.setCurrentStock(rs.getDouble("current_stock")); } catch (Exception ignored) {}
                     try { it.setOpeningStock(rs.getDouble("opening_stock")); } catch (Exception ignored) {}
+                    try { it.setReorderLevel(rs.getDouble("reorder_level")); } catch (Exception ignored) {}
                     it.setCreatedAt(rs.getString("created_at"));
                     it.setUpdatedAt(rs.getString("updated_at"));
                     list.add(it);
@@ -81,6 +82,7 @@ public class ItemDao {
                     try { it.setPurchaseRate(rs.getDouble("purchase_rate")); } catch (Exception ignored) {}
                     try { it.setCurrentStock(rs.getDouble("current_stock")); } catch (Exception ignored) {}
                     try { it.setOpeningStock(rs.getDouble("opening_stock")); } catch (Exception ignored) {}
+                    try { it.setReorderLevel(rs.getDouble("reorder_level")); } catch (Exception ignored) {}
                     it.setCreatedAt(rs.getString("created_at"));
                     it.setUpdatedAt(rs.getString("updated_at"));
                     return it;
@@ -97,12 +99,12 @@ public class ItemDao {
         if (uid.isEmpty() || item == null) return;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "INSERT INTO items (id, user_id, name, hsn, unit, rate, gst, category_id, category_name, purchase_rate, current_stock, opening_stock, created_at, updated_at) " +
-                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                 "INSERT INTO items (id, user_id, name, hsn, unit, rate, gst, category_id, category_name, purchase_rate, current_stock, opening_stock, reorder_level, created_at, updated_at) " +
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                  "ON CONFLICT(id) DO UPDATE SET user_id = excluded.user_id, name = excluded.name, hsn = excluded.hsn, unit = excluded.unit, " +
                  "rate = excluded.rate, gst = excluded.gst, category_id = excluded.category_id, " +
                  "category_name = excluded.category_name, purchase_rate = excluded.purchase_rate, current_stock = excluded.current_stock, " +
-                 "opening_stock = excluded.opening_stock, updated_at = excluded.updated_at WHERE items.user_id = excluded.user_id")) {
+                 "opening_stock = excluded.opening_stock, reorder_level = excluded.reorder_level, updated_at = excluded.updated_at WHERE items.user_id = excluded.user_id")) {
             String now = Instant.now().toString();
             if (item.getCreatedAt() == null) item.setCreatedAt(now);
             item.setUpdatedAt(now);
@@ -119,8 +121,9 @@ public class ItemDao {
             ps.setDouble(10, item.getPurchaseRate());
             ps.setDouble(11, item.getCurrentStock());
             ps.setDouble(12, item.getOpeningStock());
-            ps.setString(13, item.getCreatedAt());
-            ps.setString(14, item.getUpdatedAt());
+            ps.setDouble(13, item.getReorderLevel());
+            ps.setString(14, item.getCreatedAt());
+            ps.setString(15, item.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();

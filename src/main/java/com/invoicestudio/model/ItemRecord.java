@@ -16,6 +16,7 @@ public class ItemRecord {
     private double purchaseRate = 0.0;
     private double currentStock = 0.0;
     private double openingStock = 0.0;
+    private double reorderLevel = 0.0; // 0 = no alerting
     private String createdAt;
     private String updatedAt;
 
@@ -68,6 +69,9 @@ public class ItemRecord {
 
     public double getOpeningStock() { return openingStock; }
     public void setOpeningStock(double openingStock) { this.openingStock = openingStock; }
+
+    public double getReorderLevel() { return reorderLevel; }
+    public void setReorderLevel(double reorderLevel) { this.reorderLevel = reorderLevel; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

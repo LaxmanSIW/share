@@ -92,9 +92,11 @@ public class DatabaseManager {
             // v4.3 — Purchase foundation: supplier directory + item purchase/stock groundwork
             try { stmt.execute("ALTER TABLE suppliers ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
             try { stmt.execute("ALTER TABLE expenses ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE purchase_bills ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
             try { stmt.execute("ALTER TABLE items ADD COLUMN purchase_rate REAL DEFAULT 0"); } catch (Exception ignored) {}
             try { stmt.execute("ALTER TABLE items ADD COLUMN current_stock REAL DEFAULT 0"); } catch (Exception ignored) {}
             try { stmt.execute("ALTER TABLE items ADD COLUMN opening_stock REAL DEFAULT 0"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE items ADD COLUMN reorder_level REAL DEFAULT 0"); } catch (Exception ignored) {}
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_suppliers_user ON suppliers(user_id)"); } catch (Exception ignored) {}
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)"); } catch (Exception ignored) {}
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id)"); } catch (Exception ignored) {}

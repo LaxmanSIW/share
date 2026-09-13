@@ -133,7 +133,8 @@ public class SettingsView extends VBox {
             createTab("Fields", IconHelper.ICON_FIELDS, buildBuyerFieldsSection()),
             createTab("Fonts", IconHelper.ICON_FONT, buildCustomFontsSection()),
             createTab("Print", IconHelper.ICON_PRINT, buildPrintCalibrationSection()),
-            createTab("Backup", IconHelper.ICON_BACKUP, buildBackupStorageSection())
+            createTab("Backup", IconHelper.ICON_BACKUP, buildBackupStorageSection()),
+            createTab("Shortcuts", IconHelper.ICON_CODE, new com.invoicestudio.ui.ShortcutsPanel())
         );
     }
 

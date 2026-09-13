@@ -22,6 +22,8 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
 import javafx.stage.Stage;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCombination;
 import javafx.util.Duration;
 
 import java.io.InputStream;
@@ -96,6 +98,7 @@ public class StudioApp extends Application {
         rootPane.getChildren().add(mainLayout);
 
         Scene scene = new Scene(rootPane, 1440, 900);
+        installGlobalShortcuts(scene);
         String css = getClass().getResource("/css/globalfile.css") != null
                 ? getClass().getResource("/css/globalfile.css").toExternalForm()
                 : null;
@@ -162,6 +165,34 @@ public class StudioApp extends Application {
         dbExecutor.shutdownNow();
     }
 
+    // ------------------------------------------------------------------
+    // Global keyboard shortcuts (F1 help · Ctrl+N new bill · Ctrl+P/E/B/D)
+    // ------------------------------------------------------------------
+
+    private void installGlobalShortcuts(Scene scene) {
+        scene.getAccelerators().put(KeyCombination.valueOf("F1"), this::toggleShortcutsHelp);
+        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+N"), this::showCreateBill);
+        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+P"), this::showCreatePurchase);
+        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+E"), this::showExpensesDialog);
+        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+B"), this::showBuyers);
+        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+D"), this::showDashboard);
+    }
+
+    private void showExpensesDialog() {
+        showExpenses();
+    }
+
+    private void toggleShortcutsHelp() {
+        // Remove existing overlay if present (toggle behavior)
+        rootPane.getChildren().removeIf(n -> n instanceof ShortcutsDialog);
+        ShortcutsDialog dlg = new ShortcutsDialog(() -> rootPane.getChildren().removeIf(n -> n instanceof ShortcutsDialog));
+        rootPane.getChildren().add(dlg);
+    }
+
+    private void showShortcutsHelp() {
+        toggleShortcutsHelp();
+    }
+
     /** Create the shared data layer + long-lived services. Kept cheap: heavy DB work is deferred. */
     private void initServices() {
         DatabaseManager db = DatabaseManager.getInstance();
@@ -213,31 +244,51 @@ public class StudioApp extends Application {
         Label sectionMain = new Label("WORKSPACE");
         sectionMain.getStyleClass().add("sidebar-section-label");
 
-        Label sectionFinance = new Label("FINANCE & LEDGER");
+        Label sectionSales = new Label("SALES");
+        sectionSales.getStyleClass().add("sidebar-section-label");
+
+        Label sectionPurchase = new Label("PURCHASE & EXPENSES");
+        sectionPurchase.getStyleClass().add("sidebar-section-label");
+
+        Label sectionFinance = new Label("INSIGHTS");
         sectionFinance.getStyleClass().add("sidebar-section-label");
 
         Label sectionManage = new Label("DIRECTORY & CATALOG");
         sectionManage.getStyleClass().add("sidebar-section-label");
 
+        Label sectionSystem = new Label("SYSTEM");
+        sectionSystem.getStyleClass().add("sidebar-section-label");
+
         nav.getChildren().add(sectionMain);
         addNavButton(nav, "dashboard", "Dashboard", IconHelper.ICON_DASHBOARD, this::showDashboard);
-        addNavButton(nav, "history", "History", IconHelper.ICON_HISTORY, this::showHistory);
 
-        nav.getChildren().add(sectionFinance);
+        nav.getChildren().add(sectionSales);
+        addNavButton(nav, "history", "Invoices", IconHelper.ICON_HISTORY, this::showHistory);
         addNavButton(nav, "transactions", "Transactions", IconHelper.ICON_TRANSACTIONS, this::showTransactions);
-        addNavButton(nav, "purchases", "Purchases", IconHelper.ICON_BILLING, this::showPurchases);
-        addNavButton(nav, "expenses", "Expenses", IconHelper.ICON_TAG, this::showExpenses);
-        addNavButton(nav, "financials", "Financials", IconHelper.ICON_BAR_CHART, this::showFinancials);
         addNavButton(nav, "reports", "Reports & Ledger", IconHelper.ICON_REPORTS, this::showReports);
 
+        nav.getChildren().add(sectionPurchase);
+        addNavButton(nav, "purchases", "Purchases", IconHelper.ICON_BILLING, this::showPurchases);
+        addNavButton(nav, "expenses", "Expenses", IconHelper.ICON_TAG, this::showExpenses);
+
+        nav.getChildren().add(sectionFinance);
+        addNavButton(nav, "financials", "Financials", IconHelper.ICON_BAR_CHART, this::showFinancials);
+        addNavButton(nav, "stockanalysis", "Stock & Profit", IconHelper.ICON_TRENDING_UP, this::showStockAnalysis);
+
         nav.getChildren().add(sectionManage);
-        addNavButton(nav, "templates", "Templates", IconHelper.ICON_TEMPLATES, this::showTemplates);
-        addNavButton(nav, "buyers", "Buyers", IconHelper.ICON_USERS, this::showBuyers);
-        addNavButton(nav, "sellers", "Sellers", IconHelper.ICON_BUSINESS, this::showSuppliers);
-        addNavButton(nav, "items", "Items", IconHelper.ICON_PACKAGE, this::showItems);
-        addNavButton(nav, "categories", "Categories", IconHelper.ICON_CATEGORIES, this::showCategories);
-        addNavButton(nav, "transports", "Transports", IconHelper.ICON_TRANSPORT, this::showTransports);
-        addNavButton(nav, "variables", "Variables", IconHelper.ICON_VARIABLE, this::showVariables);
+        // Directory & Catalog collapsed into ONE button to keep the sidebar short;
+        // the 7 catalog destinations live in a themed popup (same icons/design).
+        Button catalogBtn = new Button("Catalog");
+        catalogBtn.setGraphic(IconHelper.getIcon(IconHelper.ICON_CATEGORIES, 15, "#94A3B8"));
+        catalogBtn.getStyleClass().add("sidebar-nav-btn");
+        catalogBtn.setMaxWidth(Double.MAX_VALUE);
+        catalogBtn.setAlignment(Pos.CENTER_LEFT);
+        catalogBtn.setTooltip(new Tooltip("Buyers, Sellers, Items, Categories, Templates, Transports & Variables"));
+        catalogBtn.setOnAction(e -> showCatalogPopup(catalogBtn));
+        navButtons.put("catalog", catalogBtn);
+        nav.getChildren().add(catalogBtn);
+
+        nav.getChildren().add(sectionSystem);
         addNavButton(nav, "settings", "Settings", IconHelper.ICON_SETTINGS, this::showSettings);
 
         // Push footer down
@@ -279,11 +330,17 @@ public class StudioApp extends Application {
 
     private void updateNavActive(String activeId) {
         this.currentView = activeId;
+        // Views that live inside the collapsed Catalog popup light up the Catalog button.
+        boolean catalogGroup = switch (activeId) {
+            case "buyers", "sellers", "items", "categories", "templates", "transports", "variables", "designer" -> true;
+            default -> false;
+        };
         for (Map.Entry<String, Button> entry : navButtons.entrySet()) {
             Button btn = entry.getValue();
             boolean isActive = entry.getKey().equalsIgnoreCase(activeId) ||
                     ("designer".equalsIgnoreCase(activeId) && "templates".equalsIgnoreCase(entry.getKey())) ||
-                    ("dashboard2".equalsIgnoreCase(activeId) && "dashboard".equalsIgnoreCase(entry.getKey()));
+                    ("dashboard2".equalsIgnoreCase(activeId) && "dashboard".equalsIgnoreCase(entry.getKey())) ||
+                    (catalogGroup && "catalog".equalsIgnoreCase(entry.getKey()));
             btn.getStyleClass().remove("active");
             if (isActive) {
                 btn.getStyleClass().add("active");
@@ -292,6 +349,64 @@ public class StudioApp extends Application {
                 btn.setGraphic(IconHelper.getIcon(navIconFor(entry.getKey()), 15, "#94A3B8"));
             }
         }
+    }
+
+    /** Catalog destinations shown inside the popup (id, label, icon). */
+    private static final String[][] CATALOG_ITEMS = {
+            {"buyers", "Buyers", "buyers"},
+            {"sellers", "Sellers", "business"},
+            {"items", "Items", "items"},
+            {"categories", "Categories", "categories"},
+            {"templates", "Templates", "templates"},
+            {"transports", "Transports", "transport"},
+            {"variables", "Variables", "variables"}
+    };
+
+    /** Themed popup listing the Directory & Catalog destinations (same icons/design). */
+    private void showCatalogPopup(Button anchor) {
+        javafx.stage.Popup popup = new javafx.stage.Popup();
+        popup.setAutoHide(true);
+        popup.setAutoFix(true);
+
+        VBox panel = new VBox(4);
+        panel.getStyleClass().add("catalog-popup");
+
+        Label head = new Label("DIRECTORY & CATALOG");
+        head.getStyleClass().add("sidebar-section-label");
+        head.setStyle("-fx-padding: 2 8 8 8;");
+        panel.getChildren().add(head);
+
+        for (String[] item : CATALOG_ITEMS) {
+            String id = item[0];
+            String label = item[1];
+            String iconKey = navIconFor(id);
+            Button b = new Button(label);
+            boolean active = id.equalsIgnoreCase(currentView)
+                    || ("designer".equalsIgnoreCase(currentView) && "templates".equals(id));
+            b.setGraphic(IconHelper.getIcon(iconKey, 15, active ? "#F2CA6B" : "#94A3B8"));
+            b.getStyleClass().add("sidebar-nav-btn");
+            if (active) b.getStyleClass().add("catalog-popup-item-active");
+            b.setMaxWidth(Double.MAX_VALUE);
+            b.setAlignment(Pos.CENTER_LEFT);
+            b.setOnAction(ev -> {
+                popup.hide();
+                switch (id) {
+                    case "buyers" -> showBuyers();
+                    case "sellers" -> showSuppliers();
+                    case "items" -> showItems();
+                    case "categories" -> showCategories();
+                    case "templates" -> showTemplates();
+                    case "transports" -> showTransports();
+                    case "variables" -> showVariables();
+                }
+            });
+            panel.getChildren().add(b);
+        }
+
+        popup.getContent().add(panel);
+        // Position below the anchor, aligned to its left edge
+        javafx.geometry.Bounds bounds = anchor.localToScreen(anchor.getBoundsInLocal());
+        popup.show(anchor, bounds.getMinX(), bounds.getMaxY() + 6);
     }
 
     private String navIconFor(String id) {
@@ -309,6 +424,7 @@ public class StudioApp extends Application {
             case "buyers" -> IconHelper.ICON_USERS;
             case "sellers" -> IconHelper.ICON_BUSINESS;
             case "items" -> IconHelper.ICON_PACKAGE;
+            case "stockanalysis" -> IconHelper.ICON_TRENDING_UP;
             case "categories" -> IconHelper.ICON_CATEGORIES;
             case "transports" -> IconHelper.ICON_TRANSPORT;
             case "variables" -> IconHelper.ICON_VARIABLE;
@@ -486,6 +602,12 @@ public class StudioApp extends Application {
                 () -> ((FinancialsView) viewCache.get("financials")).refresh()));
     }
 
+    public void showStockAnalysis() {
+        setView("stockanalysis", cached("stockanalysis",
+                () -> new StockAnalysisView(this),
+                () -> ((StockAnalysisView) viewCache.get("stockanalysis")).refresh()));
+    }
+
     public void showReports() {
         showReportsForBuyer(null);
     }
@@ -595,6 +717,7 @@ public class StudioApp extends Application {
             case "buyers" -> showBuyers();
             case "sellers" -> showSuppliers();
             case "items" -> showItems();
+            case "stockanalysis" -> showStockAnalysis();
             case "categories" -> showCategories();
             case "transports" -> showTransports();
             case "variables" -> showVariables();

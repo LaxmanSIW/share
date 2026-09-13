@@ -1405,7 +1405,7 @@ Label {
     -fx-font-weight: bold;
     -fx-text-fill: -color-text-tertiary;
     -fx-letter-spacing: 1.4;
-    -fx-padding: 14 16 6 16;
+    -fx-padding: 10 16 4 16;
 }
 
 .sidebar-nav-btn {
@@ -1413,12 +1413,33 @@ Label {
     -fx-text-fill: -color-text-secondary;
     -fx-font-size: 12.5px;
     -fx-font-weight: 600;
-    -fx-padding: 9 14 9 14;
+    -fx-padding: 6 14 6 14;
     -fx-background-radius: 8;
     -fx-cursor: hand;
     -fx-alignment: CENTER_LEFT;
     -fx-max-width: Infinity;
     -fx-graphic-text-gap: 10;
+}
+
+/* Themed popup for the collapsed Directory & Catalog group */
+.catalog-popup {
+    -fx-background-color: -color-surface;
+    -fx-background-radius: 12;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+    -fx-padding: 12;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.5), 20, 0, 0, 6);
+}
+
+.catalog-popup .sidebar-nav-btn {
+    -fx-padding: 8 12 8 12;
+    -fx-max-width: Infinity;
+}
+
+.catalog-popup-item-active {
+    -fx-background-color: -color-accent-subtle;
+    -fx-text-fill: #F2CA6B;
 }
 
 .sidebar-nav-btn:hover {
@@ -1434,6 +1455,30 @@ Label {
     -fx-background-color: -color-accent-subtle;
     -fx-text-fill: #F2CA6B;
     -fx-font-weight: bold;
+}
+
+/* Ledger-style statement rows (Financials / reports): hairline separators, no boxes */
+.ledger-row {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent -color-bg-subtle transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.ledger-total-row {
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 6;
+    -fx-border-color: -color-border transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 9 16 9 16;
+}
+
+.sidebar-divider {
+    -fx-background-color: -color-border;
+    -fx-max-height: 1;
+    -fx-min-height: 1;
+    -fx-pref-height: 1;
+    -fx-padding: 0 12 0 12;
+    -fx-background-insets: 0 12 0 12;
 }
 
 .sidebar-footer {

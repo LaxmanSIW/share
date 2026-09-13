@@ -1,6 +1,7 @@
 package com.invoicestudio.service;
 
 import com.invoicestudio.model.Bill;
+import com.invoicestudio.model.BillItem;
 import com.invoicestudio.model.BillPayment;
 import com.invoicestudio.model.BillStatus;
 import com.invoicestudio.model.Expense;
@@ -28,6 +29,16 @@ public class FinancialService {
     // ------------------------------------------------------------------
 
     public record DaybookEntry(String date, String type, String particulars, double inflow, double outflow) {}
+
+    /** One row of the Tally-style Stock Summary (opening/in/out/closing + value). */
+    public record StockSummaryRow(String itemId, String name, String unit,
+                                  double openingQty, double inQty, double outQty, double closingQty,
+                                  double costRate, double closingValue) {}
+
+    /** One row of item-wise profitability (sales vs cost → gross profit). */
+    public record ItemProfitRow(String itemId, String name,
+                                double qtySold, double salesValue,
+                                double avgCost, double cogs, double grossProfit, double gpPercent) {}
 
     public record Financials(
             // Trading / P&L
@@ -274,6 +285,123 @@ public class FinancialService {
             return c != 0 ? c : a.type().compareTo(b2.type());
         });
         return rows;
+    }
+
+    // ------------------------------------------------------------------
+    // Stock & profitability reports (Tally Stock Summary / Item P&L)
+    // ------------------------------------------------------------------
+
+    /**
+     * Stock Summary: per item opening → inwards (purchases) → outwards (sales)
+     * → closing quantity with closing value at cost (purchase rate or selling
+     * rate when never purchased).
+     */
+    public List<StockSummaryRow> stockSummary(List<ItemRecord> items, Map<String, Double> stockBalances,
+                                              List<PurchaseBill> purchases, List<Bill> bills,
+                                              String fromDate, String toDate) {
+        Map<String, double[]> in = new HashMap<>();   // itemId → [qty, value]
+        Map<String, double[]> out = new HashMap<>();
+        for (PurchaseBill p : purchases) {
+            if (!inRange(p.getDate(), fromDate, toDate) || p.getItems() == null) continue;
+            for (BillItem it : p.getItems()) {
+                if (it.getId() == null || it.getId().isBlank() || it.getQty() <= 0) continue;
+                double[] v = in.computeIfAbsent(it.getId(), k -> new double[2]);
+                v[0] += it.getQty();
+                v[1] += it.getAmount();
+            }
+        }
+        for (Bill b : bills) {
+            if (b.getStatus() == BillStatus.CANCELLED || !inRange(b.getDate(), fromDate, toDate)) continue;
+            for (BillItem it : b.getItems()) {
+                ItemRecord catalog = resolveCatalog(items, it.getId(), it.getDesc());
+                if (catalog == null || it.getQty() <= 0) continue;
+                double[] v = out.computeIfAbsent(catalog.getId(), k -> new double[2]);
+                v[0] += it.getQty();
+                v[1] += it.getAmount();
+            }
+        }
+
+        List<StockSummaryRow> rows = new ArrayList<>();
+        for (ItemRecord it : items) {
+            double opening = it.getOpeningStock();
+            double[] i = in.getOrDefault(it.getId(), new double[2]);
+            double[] o = out.getOrDefault(it.getId(), new double[2]);
+            double closing = stockBalances.getOrDefault(it.getId(), opening + i[0] - o[0]);
+            double cost = it.getPurchaseRate() > 0 ? it.getPurchaseRate() : it.getRate();
+            rows.add(new StockSummaryRow(it.getId(), it.getName(), it.getUnit(),
+                    opening, i[0], o[0], closing, cost, PurchaseService.round2(Math.max(0, closing) * cost)));
+        }
+        rows.sort((a, b2) -> a.name().compareToIgnoreCase(b2.name()));
+        return rows;
+    }
+
+    /**
+     * Item-wise Profitability: qty sold × selling value vs qty sold × average
+     * purchase cost → gross profit per item (Tally "Stock Item-wise Profit").
+     */
+    public List<ItemProfitRow> itemProfitability(List<ItemRecord> items,
+                                                 List<PurchaseBill> purchases,
+                                                 List<Bill> bills,
+                                                 String fromDate, String toDate) {
+        // Average purchase cost per item from purchase bills in range
+        Map<String, double[]> bought = new HashMap<>(); // itemId → [qty, value]
+        for (PurchaseBill p : purchases) {
+            if (!inRange(p.getDate(), fromDate, toDate) || p.getItems() == null) continue;
+            for (BillItem it : p.getItems()) {
+                if (it.getId() == null || it.getId().isBlank() || it.getQty() <= 0) continue;
+                double[] v = bought.computeIfAbsent(it.getId(), k -> new double[2]);
+                v[0] += it.getQty();
+                v[1] += it.getAmount();
+            }
+        }
+
+        Map<String, double[]> sold = new HashMap<>();  // itemId → [qty, salesValue]
+        for (Bill b : bills) {
+            if (b.getStatus() == BillStatus.CANCELLED || !inRange(b.getDate(), fromDate, toDate)) continue;
+            for (BillItem it : b.getItems()) {
+                ItemRecord catalog = resolveCatalog(items, it.getId(), it.getDesc());
+                if (catalog == null || it.getQty() <= 0) continue;
+                double[] v = sold.computeIfAbsent(catalog.getId(), k -> new double[2]);
+                v[0] += it.getQty();
+                v[1] += it.getAmount();
+            }
+        }
+
+        List<ItemProfitRow> rows = new ArrayList<>();
+        for (Map.Entry<String, double[]> e : sold.entrySet()) {
+            ItemRecord item = null;
+            for (ItemRecord it : items) {
+                if (it.getId().equals(e.getKey())) { item = it; break; }
+            }
+            if (item == null) continue;
+            double qtySold = e.getValue()[0];
+            double salesValue = e.getValue()[1];
+            double[] bp = bought.get(e.getKey());
+            double avgCost = (bp != null && bp[0] > 0) ? bp[1] / bp[0]
+                    : (item.getPurchaseRate() > 0 ? item.getPurchaseRate() : item.getRate());
+            double cogs = avgCost * qtySold;
+            double gp = salesValue - cogs;
+            double pct = salesValue != 0 ? (gp / salesValue) * 100.0 : 0;
+            rows.add(new ItemProfitRow(item.getId(), item.getName(), qtySold,
+                    PurchaseService.round2(salesValue), PurchaseService.round2(avgCost),
+                    PurchaseService.round2(cogs), PurchaseService.round2(gp), PurchaseService.round2(pct)));
+        }
+        rows.sort((a, b2) -> Double.compare(b2.grossProfit(), a.grossProfit()));
+        return rows;
+    }
+
+    private ItemRecord resolveCatalog(List<ItemRecord> items, String id, String name) {
+        if (id != null && !id.isBlank()) {
+            for (ItemRecord it : items) {
+                if (it.getId().equals(id)) return it;
+            }
+        }
+        if (name != null && !name.isBlank()) {
+            for (ItemRecord it : items) {
+                if (it.getName() != null && it.getName().equalsIgnoreCase(name.trim())) return it;
+            }
+        }
+        return null;
     }
 
     /** ISO-date inclusive range check (blank bounds = open). */

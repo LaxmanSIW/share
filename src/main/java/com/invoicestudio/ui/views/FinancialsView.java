@@ -154,21 +154,21 @@ public class FinancialsView extends BorderPane {
     private void rebuildPnl(FinancialService.Financials f, String cur) {
         pnlBox.getChildren().clear();
 
-        Label trading = section("TRADING ACCOUNT");
-        pnlBox.getChildren().add(trading);
-        pnlBox.getChildren().add(stmtRow("Sales Revenue", fmt(cur, f.salesRevenue()), false, cur));
-        pnlBox.getChildren().add(stmtRow("Opening Stock", fmt(cur, f.openingStockValue()), true, cur));
-        pnlBox.getChildren().add(stmtRow("Purchases (taxable)", fmt(cur, f.purchasesValue()), true, cur));
-        pnlBox.getChildren().add(stmtRow("Direct Expenses", fmt(cur, f.directExpenses()), true, cur));
-        pnlBox.getChildren().add(stmtRow("Closing Stock", fmt(cur, f.closingStockValue()), false, cur));
-        pnlBox.getChildren().add(totalRow("GROSS PROFIT", fmt(cur, f.grossProfit()), f.grossProfit() >= 0 ? "accent-emerald" : "accent-red", cur));
-
-        pnlBox.getChildren().add(section("PROFIT & LOSS ACCOUNT"));
-        pnlBox.getChildren().add(stmtRow("Gross Profit b/f", fmt(cur, f.grossProfit()), false, cur));
-        pnlBox.getChildren().add(stmtRow("Indirect Expenses", fmt(cur, f.indirectExpenses()), true, cur));
-        pnlBox.getChildren().add(totalRow("NET PROFIT", fmt(cur, f.netProfit()), f.netProfit() >= 0 ? "accent-emerald" : "accent-red", cur));
-
-        pnlBox.getChildren().add(hint("GP = (Sales + Closing Stock) − (Opening Stock + Purchases + Direct Expenses)   ·   NP = GP − Indirect Expenses"));
+        VBox tradingCard = UiTheme.card(0);
+        tradingCard.getChildren().addAll(
+                section("TRADING ACCOUNT"),
+                stmtRow("Sales Revenue", fmt(cur, f.salesRevenue()), false),
+                stmtRow("Opening Stock", fmt(cur, f.openingStockValue()), true),
+                stmtRow("Purchases (taxable)", fmt(cur, f.purchasesValue()), true),
+                stmtRow("Direct Expenses", fmt(cur, f.directExpenses()), true),
+                stmtRow("Closing Stock", fmt(cur, f.closingStockValue()), false),
+                totalRow("GROSS PROFIT", fmt(cur, f.grossProfit()), f.grossProfit() >= 0 ? "accent-emerald" : "accent-red"),
+                section("PROFIT & LOSS ACCOUNT"),
+                stmtRow("Gross Profit b/f", fmt(cur, f.grossProfit()), false),
+                stmtRow("Indirect Expenses", fmt(cur, f.indirectExpenses()), true),
+                totalRow("NET PROFIT", fmt(cur, f.netProfit()), f.netProfit() >= 0 ? "accent-emerald" : "accent-red"),
+                hint("GP = (Sales + Closing Stock) − (Opening Stock + Purchases + Direct Expenses)   ·   NP = GP − Indirect Expenses"));
+        pnlBox.getChildren().add(tradingCard);
     }
 
     // ------------------------------------------------------------------
@@ -181,26 +181,22 @@ public class FinancialsView extends BorderPane {
         HBox cols = new HBox(24);
         cols.setAlignment(Pos.TOP_CENTER);
 
-        VBox liab = new VBox(8);
-        liab.getStyleClass().add("card-pane");
-        liab.setPadding(new Insets(16));
+        VBox liab = UiTheme.card(0);
         HBox.setHgrow(liab, Priority.ALWAYS);
         liab.getChildren().add(section("LIABILITIES (Sources of Funds)"));
-        liab.getChildren().add(stmtRow("Sundry Creditors (Sellers)", fmt(cur, f.sundryCreditors()), false, cur));
-        liab.getChildren().add(stmtRow("Duties & Taxes (Net GST Payable)", fmt(cur, f.gstPayable()), false, cur));
-        liab.getChildren().add(stmtRow("Capital / Net Profit (accumulated)", fmt(cur, f.netProfit()), false, cur));
-        liab.getChildren().add(totalRow("TOTAL LIABILITIES", fmt(cur, f.totalLiabilities()), "accent-gold", cur));
+        liab.getChildren().add(stmtRow("Sundry Creditors (Sellers)", fmt(cur, f.sundryCreditors()), false));
+        liab.getChildren().add(stmtRow("Duties & Taxes (Net GST Payable)", fmt(cur, f.gstPayable()), false));
+        liab.getChildren().add(stmtRow("Capital / Net Profit (accumulated)", fmt(cur, f.netProfit()), false));
+        liab.getChildren().add(totalRow("TOTAL LIABILITIES", fmt(cur, f.totalLiabilities()), "accent-gold"));
 
-        VBox assets = new VBox(8);
-        assets.getStyleClass().add("card-pane");
-        assets.setPadding(new Insets(16));
+        VBox assets = UiTheme.card(0);
         HBox.setHgrow(assets, Priority.ALWAYS);
         assets.getChildren().add(section("ASSETS (Application of Funds)"));
-        assets.getChildren().add(stmtRow("Sundry Debtors (Buyers)", fmt(cur, f.sundryDebtors()), false, cur));
-        assets.getChildren().add(stmtRow("Closing Stock (Inventory)", fmt(cur, f.inventoryValue()), false, cur));
-        assets.getChildren().add(stmtRow("Cash in Hand (net position)", fmt(cur, f.cashInHand()), false, cur));
-        assets.getChildren().add(stmtRow("GST Credit in Hand (ITC > Output)", fmt(cur, Math.max(0, f.inputCredit() - f.outputGst())), false, cur));
-        assets.getChildren().add(totalRow("TOTAL ASSETS", fmt(cur, f.totalAssets()), "accent-gold", cur));
+        assets.getChildren().add(stmtRow("Sundry Debtors (Buyers)", fmt(cur, f.sundryDebtors()), false));
+        assets.getChildren().add(stmtRow("Closing Stock (Inventory)", fmt(cur, f.inventoryValue()), false));
+        assets.getChildren().add(stmtRow("Cash in Hand (net position)", fmt(cur, f.cashInHand()), false));
+        assets.getChildren().add(stmtRow("GST Credit in Hand (ITC > Output)", fmt(cur, Math.max(0, f.inputCredit() - f.outputGst())), false));
+        assets.getChildren().add(totalRow("TOTAL ASSETS", fmt(cur, f.totalAssets()), "accent-gold"));
 
         cols.getChildren().addAll(liab, assets);
         bsBox.getChildren().add(cols);
@@ -221,19 +217,20 @@ public class FinancialsView extends BorderPane {
     private void rebuildGst(FinancialService.Financials f, String cur) {
         gstBox.getChildren().clear();
 
-        gstBox.getChildren().add(section("GSTR-1 (OUTWARD SUPPLIES — SALES)"));
-        gstBox.getChildren().add(stmtRow("Taxable Sales Value", fmt(cur, f.salesRevenue()), false, cur));
-        gstBox.getChildren().add(stmtRow("Output GST (CGST+SGST+IGST)", fmt(cur, f.outputGst()), false, cur));
-
-        gstBox.getChildren().add(section("PURCHASE REGISTER / ITC (INWARD SUPPLIES)"));
-        gstBox.getChildren().add(stmtRow("Taxable Purchase Value", fmt(cur, f.purchasesValue()), false, cur));
-        gstBox.getChildren().add(stmtRow("Eligible Input Tax Credit", fmt(cur, f.inputCredit()), false, cur));
-
-        gstBox.getChildren().add(section("GSTR-3B STYLE COMPUTATION"));
-        gstBox.getChildren().add(stmtRow("Output GST", fmt(cur, f.outputGst()), false, cur));
-        gstBox.getChildren().add(stmtRow("Less: ITC", fmt(cur, f.inputCredit()), true, cur));
-        gstBox.getChildren().add(totalRow("NET TAX PAYABLE TO GOVT", fmt(cur, f.netTaxPayable()),
-                f.netTaxPayable() > 0 ? "accent-red" : "accent-emerald", cur));
+        VBox gstCard = UiTheme.card(0);
+        gstCard.getChildren().addAll(
+                section("GSTR-1 (OUTWARD SUPPLIES — SALES)"),
+                stmtRow("Taxable Sales Value", fmt(cur, f.salesRevenue()), false),
+                stmtRow("Output GST (CGST+SGST+IGST)", fmt(cur, f.outputGst()), false),
+                section("PURCHASE REGISTER / ITC (INWARD SUPPLIES)"),
+                stmtRow("Taxable Purchase Value", fmt(cur, f.purchasesValue()), false),
+                stmtRow("Eligible Input Tax Credit", fmt(cur, f.inputCredit()), false),
+                section("GSTR-3B STYLE COMPUTATION"),
+                stmtRow("Output GST", fmt(cur, f.outputGst()), false),
+                stmtRow("Less: ITC", fmt(cur, f.inputCredit()), true),
+                totalRow("NET TAX PAYABLE TO GOVT", fmt(cur, f.netTaxPayable()),
+                        f.netTaxPayable() > 0 ? "accent-red" : "accent-emerald"));
+        gstBox.getChildren().add(gstCard);
     }
 
     // ------------------------------------------------------------------
@@ -289,24 +286,28 @@ public class FinancialsView extends BorderPane {
         return l;
     }
 
-    private HBox stmtRow(String label, String value, boolean isDebit, String cur) {
+    /** Ledger-style row: hairline separator below, no box/border. */
+    private HBox stmtRow(String label, String value, boolean isDebit) {
         HBox h = new HBox();
         h.setAlignment(Pos.CENTER_LEFT);
-        Label l = new Label((isDebit ? "Dr · " : "Cr · ") + label);
+        h.getStyleClass().add("ledger-row");
+        h.setPadding(new Insets(8, 16, 8, 16));
+        Label l = new Label((isDebit ? "Dr" : "Cr") + " · " + label);
         l.getStyleClass().add("table-cell-secondary");
         Label v = new Label(value);
         v.getStyleClass().add("table-cell-title");
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
         h.getChildren().addAll(l, sp, v);
-        h.getStyleClass().add("card-pane-subtle");
-        h.setPadding(new Insets(6, 12, 6, 12));
         return h;
     }
 
-    private HBox totalRow(String label, String value, String accent, String cur) {
+    /** Emphasised total row with a top rule, staying inside the same card. */
+    private HBox totalRow(String label, String value, String accent) {
         HBox h = new HBox();
         h.setAlignment(Pos.CENTER_LEFT);
+        h.getStyleClass().add("ledger-total-row");
+        h.setPadding(new Insets(9, 16, 9, 16));
         Label l = new Label(label);
         l.getStyleClass().add("table-cell-title");
         Label v = new Label(value);
@@ -314,8 +315,6 @@ public class FinancialsView extends BorderPane {
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
         h.getChildren().addAll(l, sp, v);
-        h.getStyleClass().add("card-pane");
-        h.setPadding(new Insets(8, 12, 8, 12));
         return h;
     }
 
