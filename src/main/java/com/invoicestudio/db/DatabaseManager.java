@@ -45,6 +45,8 @@ public class DatabaseManager {
             stmt.execute("CREATE TABLE IF NOT EXISTS bills (id TEXT PRIMARY KEY, bill_no TEXT, date TEXT, doc_type TEXT, status TEXT, buyer_name TEXT, grand_total REAL, due_amount REAL, json_data TEXT, created_at TEXT, updated_at TEXT)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_bills_bill_no ON bills(bill_no)");
             stmt.execute("CREATE TABLE IF NOT EXISTS buyers (id TEXT PRIMARY KEY, name TEXT, phone TEXT, gst TEXT, state TEXT, json_data TEXT, created_at TEXT, updated_at TEXT)");
+            // v4.3 — Purchase foundation: supplier (Sundry Creditor) directory
+            stmt.execute("CREATE TABLE IF NOT EXISTS suppliers (id TEXT PRIMARY KEY, name TEXT, phone TEXT, gst TEXT, state TEXT, json_data TEXT, created_at TEXT, updated_at TEXT)");
             stmt.execute("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, name TEXT, hsn TEXT, unit TEXT, rate REAL, gst REAL, created_at TEXT, updated_at TEXT)");
             stmt.execute("CREATE TABLE IF NOT EXISTS variables (key TEXT PRIMARY KEY, label TEXT, type TEXT, builtin INTEGER)");
             stmt.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, val TEXT)");
@@ -78,6 +80,12 @@ public class DatabaseManager {
             try { stmt.execute("ALTER TABLE meta ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_bills_user ON bills(user_id)"); } catch (Exception ignored) {}
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_buyers_user ON buyers(user_id)"); } catch (Exception ignored) {}
+            // v4.3 — Purchase foundation: supplier directory + item purchase/stock groundwork
+            try { stmt.execute("ALTER TABLE suppliers ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE items ADD COLUMN purchase_rate REAL DEFAULT 0"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE items ADD COLUMN current_stock REAL DEFAULT 0"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE items ADD COLUMN opening_stock REAL DEFAULT 0"); } catch (Exception ignored) {}
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_suppliers_user ON suppliers(user_id)"); } catch (Exception ignored) {}
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id)"); } catch (Exception ignored) {}
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id)"); } catch (Exception ignored) {}
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id)"); } catch (Exception ignored) {}
@@ -90,6 +98,7 @@ public class DatabaseManager {
             try { stmt.execute("DELETE FROM variables WHERE builtin = 0 AND (user_id = '' OR user_id IS NULL)"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM transports WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM buyers WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM suppliers WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM transactions WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
 

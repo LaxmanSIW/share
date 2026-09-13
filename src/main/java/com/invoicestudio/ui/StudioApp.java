@@ -230,6 +230,7 @@ public class StudioApp extends Application {
         nav.getChildren().add(sectionManage);
         addNavButton(nav, "templates", "Templates", IconHelper.ICON_TEMPLATES, this::showTemplates);
         addNavButton(nav, "buyers", "Buyers", IconHelper.ICON_USERS, this::showBuyers);
+        addNavButton(nav, "sellers", "Sellers", IconHelper.ICON_BUSINESS, this::showSuppliers);
         addNavButton(nav, "items", "Items", IconHelper.ICON_PACKAGE, this::showItems);
         addNavButton(nav, "categories", "Categories", IconHelper.ICON_CATEGORIES, this::showCategories);
         addNavButton(nav, "transports", "Transports", IconHelper.ICON_TRANSPORT, this::showTransports);
@@ -300,6 +301,7 @@ public class StudioApp extends Application {
             case "transactions" -> IconHelper.ICON_TRANSACTIONS;
             case "reports" -> IconHelper.ICON_REPORTS;
             case "buyers" -> IconHelper.ICON_USERS;
+            case "sellers" -> IconHelper.ICON_BUSINESS;
             case "items" -> IconHelper.ICON_PACKAGE;
             case "categories" -> IconHelper.ICON_CATEGORIES;
             case "transports" -> IconHelper.ICON_TRANSPORT;
@@ -425,6 +427,12 @@ public class StudioApp extends Application {
                 () -> ((BuyersView) viewCache.get("buyers")).refresh()));
     }
 
+    public void showSuppliers() {
+        setView("sellers", cached("sellers",
+                () -> new SuppliersView(this),
+                () -> ((SuppliersView) viewCache.get("sellers")).refresh()));
+    }
+
     public void showItems() {
         setView("items", cached("items",
                 () -> new ItemsView(this),
@@ -547,6 +555,7 @@ public class StudioApp extends Application {
             case "transactions" -> showTransactions();
             case "reports" -> showReports();
             case "buyers" -> showBuyers();
+            case "sellers" -> showSuppliers();
             case "items" -> showItems();
             case "categories" -> showCategories();
             case "transports" -> showTransports();

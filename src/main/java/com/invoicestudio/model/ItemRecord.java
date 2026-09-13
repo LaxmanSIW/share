@@ -12,6 +12,10 @@ public class ItemRecord {
     private double gst = 18.0;
     private String categoryId = "";
     private String categoryName = "";
+    // v4.3 — Purchase foundation groundwork (backward compatible defaults)
+    private double purchaseRate = 0.0;
+    private double currentStock = 0.0;
+    private double openingStock = 0.0;
     private String createdAt;
     private String updatedAt;
 
@@ -55,6 +59,15 @@ public class ItemRecord {
 
     public String getCategoryName() { return categoryName != null ? categoryName : ""; }
     public void setCategoryName(String categoryName) { this.categoryName = categoryName != null ? categoryName : ""; }
+
+    public double getPurchaseRate() { return purchaseRate; }
+    public void setPurchaseRate(double purchaseRate) { this.purchaseRate = purchaseRate; }
+
+    public double getCurrentStock() { return currentStock; }
+    public void setCurrentStock(double currentStock) { this.currentStock = currentStock; }
+
+    public double getOpeningStock() { return openingStock; }
+    public void setOpeningStock(double openingStock) { this.openingStock = openingStock; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

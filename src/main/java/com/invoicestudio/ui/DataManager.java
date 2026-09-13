@@ -45,6 +45,7 @@ public final class DataManager {
     private final CategoryDao categoryDao;
     private final TransactionDao transactionDao;
     private final AuthDao authDao;
+    private final SupplierDao supplierDao;
 
     /** Cache invalidated on any bill write. Guarded by the monitor of this list. */
     private List<Bill> billsCache;
@@ -67,6 +68,7 @@ public final class DataManager {
         this.categoryDao = new CategoryDao(db);
         this.transactionDao = new TransactionDao(db);
         this.authDao = new AuthDao(db);
+        this.supplierDao = new SupplierDao(db);
 
         com.invoicestudio.service.AuthSessionManager.addSessionChangeListener(session -> onUserSwitched());
     }
@@ -98,6 +100,7 @@ public final class DataManager {
     public CategoryDao categories() { return categoryDao; }
     public TransactionDao transactions() { return transactionDao; }
     public AuthDao auth() { return authDao; }
+    public SupplierDao suppliers() { return supplierDao; }
 
     public void onUserSwitched() {
         synchronized (this) {
@@ -410,6 +413,11 @@ public final class DataManager {
 
     public List<com.invoicestudio.model.Buyer> getAllBuyers() {
         return buyerDao.getAllBuyers();
+    }
+
+    /** All suppliers of the current user (delegates to the shared SupplierDao). */
+    public List<com.invoicestudio.model.Supplier> getAllSuppliers() {
+        return supplierDao.getAllSuppliers();
     }
 
     // ---------- Change notifications ----------
