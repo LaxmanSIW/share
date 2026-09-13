@@ -532,7 +532,21 @@ public class TransactionsView extends BorderPane {
         } else {
             rbCc.setSelected(true);
         }
-        HBox bookBox = new HBox(12, rbCc, rbCs);
+        rbCc.getStyleClass().add("theme-radio-pill");
+        rbCs.getStyleClass().add("theme-radio-pill");
+        HBox.setHgrow(rbCc, Priority.ALWAYS);
+        HBox.setHgrow(rbCs, Priority.ALWAYS);
+        rbCc.setMaxWidth(Double.MAX_VALUE);
+        rbCs.setMaxWidth(Double.MAX_VALUE);
+        bookGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal == null && oldVal != null) {
+                oldVal.setSelected(true);
+            }
+        });
+        HBox bookBox = new HBox(8, rbCc, rbCs);
+        bookBox.getStyleClass().add("theme-choice-box");
+        bookBox.setPrefWidth(280);
+        bookBox.setMaxWidth(280);
         grid.add(new Label("Book Type: *"), 0, row);
         grid.add(bookBox, 1, row++);
 
@@ -547,7 +561,21 @@ public class TransactionsView extends BorderPane {
         } else {
             rbSale.setSelected(true);
         }
-        HBox typeBox = new HBox(12, rbSale, rbPayment);
+        rbSale.getStyleClass().add("theme-radio-pill");
+        rbPayment.getStyleClass().add("theme-radio-pill");
+        HBox.setHgrow(rbSale, Priority.ALWAYS);
+        HBox.setHgrow(rbPayment, Priority.ALWAYS);
+        rbSale.setMaxWidth(Double.MAX_VALUE);
+        rbPayment.setMaxWidth(Double.MAX_VALUE);
+        typeGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal == null && oldVal != null) {
+                oldVal.setSelected(true);
+            }
+        });
+        HBox typeBox = new HBox(8, rbSale, rbPayment);
+        typeBox.getStyleClass().add("theme-choice-box");
+        typeBox.setPrefWidth(280);
+        typeBox.setMaxWidth(280);
         grid.add(new Label("Transaction Type: *"), 0, row);
         grid.add(typeBox, 1, row++);
 

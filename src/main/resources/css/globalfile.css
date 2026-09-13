@@ -597,6 +597,147 @@ Label {
 
 .check-box .label { -fx-text-fill: -color-text; }
 
+/* RadioButton — Obsidian & Gold */
+.radio-button {
+    -fx-text-fill: -color-text;
+    -fx-font-size: 12px;
+    -fx-cursor: hand;
+}
+
+.radio-button .text {
+    -fx-fill: -color-text;
+}
+
+.radio-button .label {
+    -fx-text-fill: -color-text;
+}
+
+.radio-button .radio {
+    -fx-background-color: #0E131B;
+    -fx-border-color: -color-border-strong;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-padding: 3;
+}
+
+.radio-button:hover .radio {
+    -fx-border-color: -color-border-focus;
+}
+
+.radio-button:selected .radio {
+    -fx-border-color: -color-accent;
+    -fx-background-color: #121824;
+}
+
+.radio-button .dot {
+    -fx-background-color: transparent;
+    -fx-background-radius: 10;
+    -fx-padding: 3.5;
+}
+
+.radio-button:selected .dot {
+    -fx-background-color: -color-accent;
+}
+
+.radio-button:focused .radio {
+    -fx-border-color: -color-border-focus;
+}
+
+.radio-button:disabled {
+    -fx-opacity: 0.45;
+}
+
+.radio-button:disabled .text,
+.radio-button:disabled .label {
+    -fx-fill: -color-text-tertiary;
+    -fx-text-fill: -color-text-tertiary;
+}
+
+/* Radio Pill Card Selector (used in dialogs for binary/multi choice) */
+.theme-choice-box {
+    -fx-background-color: transparent;
+}
+
+.theme-radio-pill {
+    -fx-background-color: #0E131B;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 7;
+    -fx-background-radius: 7;
+    -fx-padding: 7 12 7 10;
+    -fx-text-fill: -color-text-secondary;
+    -fx-font-size: 12px;
+    -fx-font-weight: 500;
+    -fx-cursor: hand;
+    -fx-alignment: CENTER_LEFT;
+}
+
+.theme-radio-pill .label {
+    -fx-text-fill: -color-text-secondary;
+}
+
+.theme-radio-pill .text {
+    -fx-fill: -color-text-secondary;
+}
+
+.theme-radio-pill:hover {
+    -fx-background-color: #141C28;
+    -fx-border-color: -color-border-strong;
+    -fx-text-fill: -color-text;
+}
+
+.theme-radio-pill:hover .label {
+    -fx-text-fill: -color-text;
+}
+
+.theme-radio-pill:hover .text {
+    -fx-fill: -color-text;
+}
+
+.theme-radio-pill:selected {
+    -fx-background-color: rgba(217, 161, 59, 0.10);
+    -fx-border-color: -color-accent;
+    -fx-text-fill: -color-text;
+    -fx-font-weight: bold;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.25), 4, 0, 0, 1);
+}
+
+.theme-radio-pill:selected .label {
+    -fx-text-fill: -color-text;
+    -fx-font-weight: bold;
+}
+
+.theme-radio-pill:selected .text {
+    -fx-fill: -color-text;
+    -fx-font-weight: bold;
+}
+
+.theme-radio-pill .radio {
+    -fx-background-color: #0B0E13;
+    -fx-border-color: -color-border-strong;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-padding: 3;
+}
+
+.theme-radio-pill:hover .radio {
+    -fx-border-color: -color-border-focus;
+}
+
+.theme-radio-pill:selected .radio {
+    -fx-background-color: #121824;
+    -fx-border-color: -color-accent;
+}
+
+.theme-radio-pill .dot {
+    -fx-background-color: transparent;
+    -fx-background-radius: 8;
+    -fx-padding: 3.5;
+}
+
+.theme-radio-pill:selected .dot {
+    -fx-background-color: -color-accent;
+}
+
 /* ComboBox */
 .combo-box {
     -fx-background-color: #0E131B;
@@ -1401,6 +1542,7 @@ Label {
     -fx-font-weight: bold;
 }
 
+.dialog-pane .radio-button, .dialog-pane .radio-button .label, .dialog-pane .radio-button .text { -fx-text-fill: -color-text; -fx-fill: -color-text; }
 .dialog-pane .content .label {
     -fx-text-fill: -color-text;
 }
