@@ -522,13 +522,13 @@ always `mvn package` first, then rerun the script.
 
 ## 11. Release checklist (version bump)
 
-When the version changes (e.g. `2.0.1` → `2.0.2`), update it in **five** places:
+When the version changes (e.g. `4.0.0` → `4.0.1`), update it in **one** place:
 
-1. `pom.xml` → `<version>` (jar name follows automatically)
-2. `packaging/build-windows-installer.ps1` → `$Jar` filename **and** `--app-version`
-3. `packaging/InvoiceStudio.iss` → `#define AppVersion`
-4. `.github/workflows/windows-installer.yml` → artifact name / jpackage `--app-version`
-5. Tag the release: `git tag v2.0.2 && git push origin v2.0.2` → CI builds the MSI
+1. `pom.xml` → `<version>` — all other scripts read from here automatically:
+   - `packaging/build-windows-installer.ps1` parses `pom.xml` for `$AppVersion` and jar name
+   - `.github/workflows/windows-installer.yml` parses `pom.xml` for version and jar name
+   - `packaging/InvoiceStudio.iss` accepts `/DAppVersion=...` from the build script (falls back to a hardcoded default only if invoked manually without `/D`)
+2. Tag the release: `git tag v4.0.1 && git push origin v4.0.1` → CI builds the MSI
    and attaches it to a GitHub Release automatically (§7.2, step 5).
 
 ---

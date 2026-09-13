@@ -734,7 +734,7 @@ public class BuyersView extends BorderPane {
             info.getStyleClass().add("kpi-subtext");
             info.setWrapText(true);
 
-            Label fieldsNotice = new Label("Supported columns: Name, Address, GSTIN, Phone, State, State Code + Custom Fields");
+            Label fieldsNotice = new Label("Supported columns: Name, Address, GSTIN, Phone, State, State Code, Opening Balance, City, Contact Person, Default Transport + Custom Fields");
             fieldsNotice.getStyleClass().add("section-eyebrow");
 
             box.getChildren().addAll(fieldsNotice, info, updateExistingCb);
@@ -754,6 +754,10 @@ public class BuyersView extends BorderPane {
                     int phoneCol = -1;
                     int stateCol = -1;
                     int stateCodeCol = -1;
+                    int openingBalCol = -1;
+                    int cityCol = -1;
+                    int contactPersonCol = -1;
+                    int transportCol = -1;
 
                     for (int c = 0; c < headers.size(); c++) {
                         String h = headers.get(c).trim().toLowerCase().replaceAll("[_\\-\\s]+", "");
@@ -769,6 +773,14 @@ public class BuyersView extends BorderPane {
                             stateCodeCol = c;
                         } else if (stateCol == -1 && (h.equals("state") || h.equals("placeofsupply") || h.equals("statename") || h.equals("pos"))) {
                             stateCol = c;
+                        } else if (openingBalCol == -1 && (h.equals("openingbalance") || h.equals("openingbal") || h.equals("opbal") || h.equals("balance"))) {
+                            openingBalCol = c;
+                        } else if (cityCol == -1 && (h.equals("city") || h.equals("town"))) {
+                            cityCol = c;
+                        } else if (contactPersonCol == -1 && (h.equals("contactperson") || h.equals("contactname") || h.equals("person"))) {
+                            contactPersonCol = c;
+                        } else if (transportCol == -1 && (h.equals("defaulttransport") || h.equals("transport") || h.equals("carrier") || h.equals("transporter"))) {
+                            transportCol = c;
                         }
                     }
 
@@ -792,6 +804,13 @@ public class BuyersView extends BorderPane {
                     if (phoneCol >= 0) standardCols.add(phoneCol);
                     if (stateCol >= 0) standardCols.add(stateCol);
                     if (stateCodeCol >= 0) standardCols.add(stateCodeCol);
+                    if (openingBalCol >= 0) standardCols.add(openingBalCol);
+                    if (cityCol >= 0) standardCols.add(cityCol);
+                    if (contactPersonCol >= 0) standardCols.add(contactPersonCol);
+                    if (transportCol >= 0) standardCols.add(transportCol);
+
+                    // Cache for transport name -> id lookups during import (avoids repeated DB queries)
+                    Map<String, String> transportNameToId = new HashMap<>();
 
                     int imported = 0;
                     for (int i = 1; i < rows.size(); i++) {
@@ -827,6 +846,49 @@ public class BuyersView extends BorderPane {
 
                         Buyer b = new Buyer(id, name, addr, gst, phone, state, stateCode);
 
+                        // Set city, contact person, opening balance
+                        String city = (cityCol >= 0 && cityCol < r.size()) ? r.get(cityCol).trim() : "";
+                        if (city.isBlank() && existing != null) city = existing.getCity();
+                        b.setCity(city);
+
+                        String contactPerson = (contactPersonCol >= 0 && contactPersonCol < r.size()) ? r.get(contactPersonCol).trim() : "";
+                        if (contactPerson.isBlank() && existing != null) contactPerson = existing.getContactPerson();
+                        b.setContactPerson(contactPerson);
+
+                        try {
+                            String obStr = (openingBalCol >= 0 && openingBalCol < r.size()) ? r.get(openingBalCol).trim() : "";
+                            if (!obStr.isEmpty()) {
+                                b.setOpeningBalance(Double.parseDouble(obStr));
+                            } else if (existing != null) {
+                                b.setOpeningBalance(existing.getOpeningBalance());
+                            }
+                        } catch (NumberFormatException ignored) {
+                            if (existing != null) b.setOpeningBalance(existing.getOpeningBalance());
+                        }
+
+                        // Handle transport: trim name, lookup or create, set ID
+                        String transportName = (transportCol >= 0 && transportCol < r.size()) ? r.get(transportCol).trim() : "";
+                        if (!transportName.isBlank()) {
+                            String trpId = transportNameToId.get(transportName.toLowerCase());
+                            if (trpId == null) {
+                                // Look up in DB
+                                Transport existingTrp = app.getData().transports().findByName(transportName);
+                                if (existingTrp != null) {
+                                    trpId = existingTrp.getId();
+                                } else {
+                                    // Create new transport
+                                    Transport newTrp = new Transport();
+                                    newTrp.setName(transportName);
+                                    app.getData().transports().saveTransport(newTrp);
+                                    trpId = newTrp.getId();
+                                }
+                                transportNameToId.put(transportName.toLowerCase(), trpId);
+                            }
+                            b.setDefaultTransportId(trpId);
+                        } else if (existing != null && !existing.getDefaultTransportId().isBlank()) {
+                            b.setDefaultTransportId(existing.getDefaultTransportId());
+                        }
+
                         // Populate custom columns if present in CSV
                         Map<String, String> customMap = new HashMap<>();
                         if (existing != null && existing.getCustom() != null) {
@@ -848,6 +910,7 @@ public class BuyersView extends BorderPane {
                         app.getData().buyers().saveBuyer(b);
                         imported++;
                     }
+                    app.getData().invalidateTransports();
                     refresh();
                     Toast.show(app.getRootPane(), "Import Complete", "Successfully imported " + imported + " customers.", false);
                 }
@@ -881,7 +944,7 @@ public class BuyersView extends BorderPane {
         File dest = fc.showSaveDialog(app.getPrimaryStage());
         if (dest != null) {
             try (FileWriter fw = new FileWriter(dest)) {
-                fw.write(CsvService.exportBuyers(new ArrayList<>(filteredBuyers), app.getData().getSettings().getBuyerFields()));
+                fw.write(CsvService.exportBuyers(new ArrayList<>(filteredBuyers), app.getData().getSettings().getBuyerFields(), app.getData().getAllTransports()));
                 Toast.show(app.getRootPane(), "Export Successful", "Saved " + filteredBuyers.size() + " buyers.", false);
             } catch (Exception ex) {
                 Toast.show(app.getRootPane(), "Export Failed", ex.getMessage(), true);

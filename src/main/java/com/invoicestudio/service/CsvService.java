@@ -4,6 +4,7 @@ import com.invoicestudio.model.Bill;
 import com.invoicestudio.model.Buyer;
 import com.invoicestudio.model.BuyerFieldDef;
 import com.invoicestudio.model.DocType;
+import com.invoicestudio.model.Transport;
 
 import java.util.*;
 import java.util.regex.Pattern;
@@ -106,14 +107,27 @@ public class CsvService {
     }
 
     public static String exportBuyers(List<Buyer> buyers, List<BuyerFieldDef> customFields) {
+        return exportBuyers(buyers, customFields, List.of());
+    }
+
+    public static String exportBuyers(List<Buyer> buyers, List<BuyerFieldDef> customFields, List<Transport> transports) {
         StringBuilder sb = new StringBuilder("\uFEFF");
-        List<String> header = new ArrayList<>(List.of("Name", "Address", "GSTIN", "Phone", "State", "State Code"));
+        List<String> header = new ArrayList<>(List.of("Name", "Address", "GSTIN", "Phone", "State", "State Code",
+                "Opening Balance", "City", "Contact Person", "Default Transport"));
         if (customFields != null) {
             for (BuyerFieldDef cf : customFields) {
                 header.add(cf.getLabel());
             }
         }
         sb.append(csvRow(header));
+
+        // Build transport ID → name lookup
+        Map<String, String> transportNames = new HashMap<>();
+        if (transports != null) {
+            for (Transport t : transports) {
+                if (t.getId() != null) transportNames.put(t.getId(), t.getName());
+            }
+        }
 
         for (Buyer b : buyers) {
             List<String> row = new ArrayList<>();
@@ -123,6 +137,10 @@ public class CsvService {
             row.add(b.getPhone());
             row.add(b.getState());
             row.add(b.getEffectiveStateCode());
+            row.add(b.getOpeningBalance() != 0 ? String.valueOf(b.getOpeningBalance()) : "");
+            row.add(b.getCity());
+            row.add(b.getContactPerson());
+            row.add(transportNames.getOrDefault(b.getDefaultTransportId(), ""));
             if (customFields != null) {
                 for (BuyerFieldDef cf : customFields) {
                     row.add(b.getCustom().getOrDefault(cf.getKey(), ""));
@@ -217,13 +235,16 @@ public class CsvService {
 
     public static String getSampleBuyerCsv(List<BuyerFieldDef> customFields) {
         StringBuilder sb = new StringBuilder("\uFEFF");
-        List<String> header = new ArrayList<>(List.of("Name", "Address", "GSTIN", "Phone", "State", "State Code"));
+        List<String> header = new ArrayList<>(List.of("Name", "Address", "GSTIN", "Phone", "State", "State Code",
+                "Opening Balance", "City", "Contact Person", "Default Transport"));
         if (customFields != null) {
             for (BuyerFieldDef cf : customFields) header.add(cf.getLabel());
         }
         sb.append(csvRow(header));
 
-        List<String> sampleRow = new ArrayList<>(List.of("Acme Enterprises", "101 Industrial Area, Phase 2, Pune", "27AAAAA0000A1Z5", "9876543210", "Maharashtra", "27"));
+        List<String> sampleRow = new ArrayList<>(List.of("Acme Enterprises", "101 Industrial Area, Phase 2, Pune",
+                "27AAAAA0000A1Z5", "9876543210", "Maharashtra", "27",
+                "5000.00", "Pune", "Mr. Sharma", "Shree Ganesh Transport"));
         if (customFields != null) {
             for (BuyerFieldDef ignored : customFields) sampleRow.add("Sample Value");
         }

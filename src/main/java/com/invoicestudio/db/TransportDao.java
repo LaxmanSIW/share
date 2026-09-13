@@ -113,6 +113,33 @@ public class TransportDao {
         }
     }
 
+    public Transport findByName(String name) {
+        if (name == null || name.isBlank()) return null;
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty()) return null;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT * FROM transports WHERE LOWER(name) = LOWER(?) AND user_id = ? LIMIT 1")) {
+            ps.setString(1, name.trim());
+            ps.setString(2, uid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    Transport t = new Transport(
+                        rs.getString("id"),
+                        rs.getString("name"),
+                        rs.getString("phone"),
+                        rs.getString("vehicle_number")
+                    );
+                    t.setCreatedAt(rs.getString("created_at"));
+                    t.setUpdatedAt(rs.getString("updated_at"));
+                    return t;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
     public List<Transport> findAll() { return getAllTransports(); }
     public Transport findById(String id) { return getTransportById(id); }
 }

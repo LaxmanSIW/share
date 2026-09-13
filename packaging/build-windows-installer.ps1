@@ -72,7 +72,7 @@ if ($AppImage) {
     Remove-Item $Dest -Recurse -Force -ErrorAction SilentlyContinue
     jpackage @Common --type app-image --dest $Dest
     if ($LASTEXITCODE -ne 0) { throw "jpackage app-image failed" }
-    Write-Host "OK: $Dest\InvoiceStudio\  (then: ISCC packaging\InvoiceStudio.iss)" -ForegroundColor Green
+    Write-Host "OK: $Dest\InvoiceStudio\  (then: ISCC /DAppVersion=$AppVersion packaging\InvoiceStudio.iss)" -ForegroundColor Green
 } else {
     # --- 3b) MSI: desktop icon + start menu + dir chooser, admin install -----
     if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
