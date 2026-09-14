@@ -187,4 +187,96 @@ class PurchaseAndFinancialsTest {
         assertFalse(rows.isEmpty());
         assertTrue(rows.get(0).date().compareTo(rows.get(rows.size() - 1).date()) <= 0);
     }
+
+    @Test
+    void stockSummaryDateFilteringAndMathIntegrity() {
+        FinancialService svc = new FinancialService();
+
+        ItemRecord shirt = new ItemRecord("it_shirt", "Cotton Shirt", "6205", "PCS", 800.0, 5.0);
+        shirt.setOpeningStock(10); // initial baseline
+        shirt.setPurchaseRate(400.0);
+
+        // Transaction prior to June: 5 purchased in May, 3 sold in May
+        PurchaseBill pMay = new PurchaseBill();
+        pMay.setDate("2026-05-10");
+        pMay.setItems(List.of(item("Cotton Shirt", 5, 400, 5))); // matched by name
+
+        Bill sMay = new Bill();
+        sMay.setDate("2026-05-20");
+        sMay.setStatus(BillStatus.PAID);
+        sMay.setItems(List.of(item("Cotton Shirt", 3, 800, 5)));
+
+        // Transactions in June: 10 purchased in June, 4 sold in June, 2 cancelled in June
+        PurchaseBill pJune = new PurchaseBill();
+        pJune.setDate("2026-06-05");
+        pJune.setItems(List.of(item("Cotton Shirt", 10, 420, 5)));
+
+        Bill sJune = new Bill();
+        sJune.setDate("2026-06-15");
+        sJune.setStatus(BillStatus.PAID);
+        sJune.setItems(List.of(item("Cotton Shirt", 4, 800, 5)));
+
+        Bill sCancelled = new Bill();
+        sCancelled.setDate("2026-06-18");
+        sCancelled.setStatus(BillStatus.CANCELLED);
+        sCancelled.setItems(List.of(item("Cotton Shirt", 2, 800, 5)));
+
+        List<ItemRecord> items = List.of(shirt);
+        List<PurchaseBill> purchases = List.of(pMay, pJune);
+        List<Bill> bills = List.of(sMay, sJune, sCancelled);
+
+        // Report for June 2026
+        List<FinancialService.StockSummaryRow> summary = svc.stockSummary(
+                items, Map.of(), purchases, bills, "2026-06-01", "2026-06-30");
+
+        assertEquals(1, summary.size());
+        FinancialService.StockSummaryRow row = summary.get(0);
+
+        // Opening as of June 1 = 10 (initial) + 5 (May in) - 3 (May out) = 12
+        assertEquals(12.0, row.openingQty(), 0.001, "Period opening stock must include prior transactions");
+        // In June = 10
+        assertEquals(10.0, row.inQty(), 0.001, "Inwards qty in range");
+        // Out June = 4 (cancelled bill must be excluded)
+        assertEquals(4.0, row.outQty(), 0.001, "Outwards qty in range excluding cancelled");
+        // Closing = 12 + 10 - 4 = 18
+        assertEquals(18.0, row.closingQty(), 0.001, "Closing must equal Opening + In - Out");
+        assertEquals(row.openingQty() + row.inQty() - row.outQty(), row.closingQty(), 0.001);
+
+        // Cost rate should use purchaseRate or average in-range purchase rate (400 or 420)
+        assertTrue(row.costRate() > 0);
+        assertEquals(row.closingQty() * row.costRate(), row.closingValue(), 0.01);
+    }
+
+    @Test
+    void itemProfitabilityUsesHistoricalPurchaseCost() {
+        FinancialService svc = new FinancialService();
+
+        ItemRecord widget = new ItemRecord("it_widget", "Gizmo Widget", "8471", "PCS", 100.0, 18.0);
+        // Catalog purchaseRate is 0, so cost must come from purchase bills!
+        widget.setPurchaseRate(0.0);
+
+        // Purchased in April @ 45 each
+        PurchaseBill pApril = new PurchaseBill();
+        pApril.setDate("2026-04-10");
+        pApril.setItems(List.of(item("Gizmo Widget", 20, 45, 18)));
+
+        // Sold in June @ 100 each, 0 purchases in June
+        Bill sJune = new Bill();
+        sJune.setDate("2026-06-12");
+        sJune.setStatus(BillStatus.PAID);
+        sJune.setItems(List.of(item("Gizmo Widget", 10, 100, 18)));
+
+        List<FinancialService.ItemProfitRow> profit = svc.itemProfitability(
+                List.of(widget), List.of(pApril), List.of(sJune), "2026-06-01", "2026-06-30");
+
+        assertEquals(1, profit.size());
+        FinancialService.ItemProfitRow row = profit.get(0);
+        assertEquals(10.0, row.qtySold(), 0.001);
+        assertEquals(1000.0, row.salesValue(), 0.01);
+        // Cost should be picked up from historical April purchase (45.0), not 0 and not 100
+        assertEquals(45.0, row.avgCost(), 0.01, "Historical purchase cost must be used when no purchases in range");
+        assertEquals(450.0, row.cogs(), 0.01);
+        assertEquals(550.0, row.grossProfit(), 0.01);
+        assertEquals(55.0, row.gpPercent(), 0.01);
+    }
 }

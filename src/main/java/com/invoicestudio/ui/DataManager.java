@@ -181,7 +181,18 @@ public final class DataManager {
         invalidateBills();
         // Sales decrement stock (Tally: every sales voucher moves inventory out)
         stockLedgerDao.deleteByVoucher(bill.getId());
-        recordSaleStockOut(bill);
+        if (bill.getStatus() != com.invoicestudio.model.BillStatus.CANCELLED) {
+            recordSaleStockOut(bill);
+        } else {
+            java.util.Set<String> touched = new java.util.HashSet<>();
+            if (bill.getItems() != null) {
+                for (com.invoicestudio.model.BillItem it : bill.getItems()) {
+                    com.invoicestudio.model.ItemRecord catalogItem = resolveItem(it.getId(), it.getDesc());
+                    if (catalogItem != null) touched.add(catalogItem.getId());
+                }
+            }
+            for (String itemId : touched) stockLedgerDao.recomputeItem(itemId);
+        }
         syncBillTransaction(bill);
         return bill;
     }
@@ -486,7 +497,7 @@ public final class DataManager {
 
     /** Stock OUT rows for a saved sales bill (id- or name-linked lines only). */
     private void recordSaleStockOut(com.invoicestudio.model.Bill bill) {
-        if (bill == null || bill.getItems() == null) return;
+        if (bill == null || bill.getStatus() == com.invoicestudio.model.BillStatus.CANCELLED || bill.getItems() == null) return;
         for (com.invoicestudio.model.BillItem it : bill.getItems()) {
             com.invoicestudio.model.ItemRecord catalogItem = resolveItem(it.getId(), it.getDesc());
             if (catalogItem != null && it.getQty() > 0) {
@@ -522,21 +533,18 @@ public final class DataManager {
 
         // Stock IN rows for every item line (replaces any previous rows for this voucher)
         stockLedgerDao.deleteByVoucher(bill.getId());
+        java.util.Set<String> touched = new java.util.HashSet<>();
         if (bill.getItems() != null) {
             for (com.invoicestudio.model.BillItem it : bill.getItems()) {
-                if (it.getId() != null && !it.getId().isBlank() && it.getQty() > 0) {
-                    stockLedgerDao.append(it.getId(), bill.getDate(), StockLedgerDao.V_PURCHASE,
+                com.invoicestudio.model.ItemRecord catalogItem = resolveItem(it.getId(), it.getDesc());
+                if (catalogItem != null && it.getQty() > 0) {
+                    stockLedgerDao.append(catalogItem.getId(), bill.getDate(), StockLedgerDao.V_PURCHASE,
                             bill.getId(), bill.getBillNo(), it.getQty(), 0, it.getRate());
+                    touched.add(catalogItem.getId());
                 }
             }
         }
         // Recompute affected item balances
-        java.util.Set<String> touched = new java.util.HashSet<>();
-        if (bill.getItems() != null) {
-            for (com.invoicestudio.model.BillItem it : bill.getItems()) {
-                if (it.getId() != null && !it.getId().isBlank()) touched.add(it.getId());
-            }
-        }
         for (String itemId : touched) {
             stockLedgerDao.recomputeItem(itemId);
         }
@@ -552,7 +560,8 @@ public final class DataManager {
             java.util.Set<String> touched = new java.util.HashSet<>();
             if (bill.getItems() != null) {
                 for (com.invoicestudio.model.BillItem it : bill.getItems()) {
-                    if (it.getId() != null && !it.getId().isBlank()) touched.add(it.getId());
+                    com.invoicestudio.model.ItemRecord catalogItem = resolveItem(it.getId(), it.getDesc());
+                    if (catalogItem != null) touched.add(catalogItem.getId());
                 }
             }
             for (String itemId : touched) {

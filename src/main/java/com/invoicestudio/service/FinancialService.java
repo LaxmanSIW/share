@@ -293,43 +293,107 @@ public class FinancialService {
 
     /**
      * Stock Summary: per item opening → inwards (purchases) → outwards (sales)
-     * → closing quantity with closing value at cost (purchase rate or selling
-     * rate when never purchased).
+     * → closing quantity with closing value at cost (actual purchase rate or catalog cost).
+     *
+     * Correctly respects date filtering by accumulating transactions before fromDate
+     * into period opening stock, so Closing = Opening + In - Out strictly balances.
      */
     public List<StockSummaryRow> stockSummary(List<ItemRecord> items, Map<String, Double> stockBalances,
                                               List<PurchaseBill> purchases, List<Bill> bills,
                                               String fromDate, String toDate) {
-        Map<String, double[]> in = new HashMap<>();   // itemId → [qty, value]
-        Map<String, double[]> out = new HashMap<>();
+        String from = fromDate != null ? fromDate.trim() : "";
+        String to = toDate != null ? toDate.trim() : "";
+
+        Map<String, double[]> priorIn = new HashMap<>();  // itemId -> [qty, value] before fromDate
+        Map<String, double[]> priorOut = new HashMap<>(); // itemId -> [qty, value] before fromDate
+        Map<String, double[]> in = new HashMap<>();        // itemId -> [qty, value] in [fromDate, toDate]
+        Map<String, double[]> out = new HashMap<>();       // itemId -> [qty, value] in [fromDate, toDate]
+        Map<String, double[]> allIn = new HashMap<>();     // itemId -> [qty, value] across all purchases
+
         for (PurchaseBill p : purchases) {
-            if (!inRange(p.getDate(), fromDate, toDate) || p.getItems() == null) continue;
+            if (p.getItems() == null) continue;
+            String d = p.getDate() != null ? p.getDate().trim() : "";
+            boolean isPrior = !from.isBlank() && d.compareTo(from) < 0;
+            boolean isInRange = inRange(d, from, to);
+
             for (BillItem it : p.getItems()) {
-                if (it.getId() == null || it.getId().isBlank() || it.getQty() <= 0) continue;
-                double[] v = in.computeIfAbsent(it.getId(), k -> new double[2]);
-                v[0] += it.getQty();
-                v[1] += it.getAmount();
+                ItemRecord catalog = resolveCatalog(items, it.getId(), it.getDesc());
+                if (catalog == null || it.getQty() <= 0) continue;
+                String cid = catalog.getId();
+
+                double[] total = allIn.computeIfAbsent(cid, k -> new double[2]);
+                total[0] += it.getQty();
+                total[1] += it.getAmount();
+
+                if (isPrior) {
+                    double[] v = priorIn.computeIfAbsent(cid, k -> new double[2]);
+                    v[0] += it.getQty();
+                    v[1] += it.getAmount();
+                } else if (isInRange) {
+                    double[] v = in.computeIfAbsent(cid, k -> new double[2]);
+                    v[0] += it.getQty();
+                    v[1] += it.getAmount();
+                }
             }
         }
+
         for (Bill b : bills) {
-            if (b.getStatus() == BillStatus.CANCELLED || !inRange(b.getDate(), fromDate, toDate)) continue;
+            if (b.getStatus() == BillStatus.CANCELLED || b.getItems() == null) continue;
+            String d = b.getDate() != null ? b.getDate().trim() : "";
+            boolean isPrior = !from.isBlank() && d.compareTo(from) < 0;
+            boolean isInRange = inRange(d, from, to);
+
             for (BillItem it : b.getItems()) {
                 ItemRecord catalog = resolveCatalog(items, it.getId(), it.getDesc());
                 if (catalog == null || it.getQty() <= 0) continue;
-                double[] v = out.computeIfAbsent(catalog.getId(), k -> new double[2]);
-                v[0] += it.getQty();
-                v[1] += it.getAmount();
+                String cid = catalog.getId();
+
+                if (isPrior) {
+                    double[] v = priorOut.computeIfAbsent(cid, k -> new double[2]);
+                    v[0] += it.getQty();
+                    v[1] += it.getAmount();
+                } else if (isInRange) {
+                    double[] v = out.computeIfAbsent(cid, k -> new double[2]);
+                    v[0] += it.getQty();
+                    v[1] += it.getAmount();
+                }
             }
         }
 
         List<StockSummaryRow> rows = new ArrayList<>();
         for (ItemRecord it : items) {
-            double opening = it.getOpeningStock();
-            double[] i = in.getOrDefault(it.getId(), new double[2]);
-            double[] o = out.getOrDefault(it.getId(), new double[2]);
-            double closing = stockBalances.getOrDefault(it.getId(), opening + i[0] - o[0]);
-            double cost = it.getPurchaseRate() > 0 ? it.getPurchaseRate() : it.getRate();
+            double pInQty = priorIn.getOrDefault(it.getId(), new double[2])[0];
+            double pOutQty = priorOut.getOrDefault(it.getId(), new double[2])[0];
+            double opening = it.getOpeningStock() + pInQty - pOutQty;
+
+            double[] inData = in.getOrDefault(it.getId(), new double[2]);
+            double inQty = inData[0];
+
+            double[] outData = out.getOrDefault(it.getId(), new double[2]);
+            double outQty = outData[0];
+
+            double closing = opening + inQty - outQty;
+
+            // Unit cost priority:
+            // 1. Catalog purchaseRate if set > 0
+            // 2. Average purchase cost from in-range purchases
+            // 3. Average purchase cost from historical purchases
+            // 4. 0 if no purchase cost is known (never inflate to selling rate)
+            double cost = it.getPurchaseRate();
+            if (cost <= 0 && inData[0] > 0) {
+                cost = inData[1] / inData[0];
+            }
+            if (cost <= 0) {
+                double[] hist = allIn.get(it.getId());
+                if (hist != null && hist[0] > 0) {
+                    cost = hist[1] / hist[0];
+                }
+            }
+            cost = PurchaseService.round2(Math.max(0, cost));
+
+            double closingValue = PurchaseService.round2(Math.max(0, closing) * cost);
             rows.add(new StockSummaryRow(it.getId(), it.getName(), it.getUnit(),
-                    opening, i[0], o[0], closing, cost, PurchaseService.round2(Math.max(0, closing) * cost)));
+                    opening, inQty, outQty, closing, cost, closingValue));
         }
         rows.sort((a, b2) -> a.name().compareToIgnoreCase(b2.name()));
         return rows;
@@ -338,26 +402,44 @@ public class FinancialService {
     /**
      * Item-wise Profitability: qty sold × selling value vs qty sold × average
      * purchase cost → gross profit per item (Tally "Stock Item-wise Profit").
+     * Uses actual purchase history (in-range, then all-time) or catalog purchase rate.
      */
     public List<ItemProfitRow> itemProfitability(List<ItemRecord> items,
                                                  List<PurchaseBill> purchases,
                                                  List<Bill> bills,
                                                  String fromDate, String toDate) {
-        // Average purchase cost per item from purchase bills in range
-        Map<String, double[]> bought = new HashMap<>(); // itemId → [qty, value]
+        String from = fromDate != null ? fromDate.trim() : "";
+        String to = toDate != null ? toDate.trim() : "";
+
+        // Purchases in range and all-time purchases (for accurate historical cost)
+        Map<String, double[]> boughtInRange = new HashMap<>(); // itemId -> [qty, value]
+        Map<String, double[]> boughtAllTime = new HashMap<>(); // itemId -> [qty, value]
+
         for (PurchaseBill p : purchases) {
-            if (!inRange(p.getDate(), fromDate, toDate) || p.getItems() == null) continue;
+            if (p.getItems() == null) continue;
+            String d = p.getDate() != null ? p.getDate().trim() : "";
+            boolean inPeriod = inRange(d, from, to);
+
             for (BillItem it : p.getItems()) {
-                if (it.getId() == null || it.getId().isBlank() || it.getQty() <= 0) continue;
-                double[] v = bought.computeIfAbsent(it.getId(), k -> new double[2]);
-                v[0] += it.getQty();
-                v[1] += it.getAmount();
+                ItemRecord catalog = resolveCatalog(items, it.getId(), it.getDesc());
+                if (catalog == null || it.getQty() <= 0) continue;
+                String cid = catalog.getId();
+
+                double[] total = boughtAllTime.computeIfAbsent(cid, k -> new double[2]);
+                total[0] += it.getQty();
+                total[1] += it.getAmount();
+
+                if (inPeriod) {
+                    double[] v = boughtInRange.computeIfAbsent(cid, k -> new double[2]);
+                    v[0] += it.getQty();
+                    v[1] += it.getAmount();
+                }
             }
         }
 
-        Map<String, double[]> sold = new HashMap<>();  // itemId → [qty, salesValue]
+        Map<String, double[]> sold = new HashMap<>(); // itemId -> [qty, salesValue]
         for (Bill b : bills) {
-            if (b.getStatus() == BillStatus.CANCELLED || !inRange(b.getDate(), fromDate, toDate)) continue;
+            if (b.getStatus() == BillStatus.CANCELLED || !inRange(b.getDate(), from, to) || b.getItems() == null) continue;
             for (BillItem it : b.getItems()) {
                 ItemRecord catalog = resolveCatalog(items, it.getId(), it.getDesc());
                 if (catalog == null || it.getQty() <= 0) continue;
@@ -374,11 +456,28 @@ public class FinancialService {
                 if (it.getId().equals(e.getKey())) { item = it; break; }
             }
             if (item == null) continue;
+
             double qtySold = e.getValue()[0];
             double salesValue = e.getValue()[1];
-            double[] bp = bought.get(e.getKey());
-            double avgCost = (bp != null && bp[0] > 0) ? bp[1] / bp[0]
-                    : (item.getPurchaseRate() > 0 ? item.getPurchaseRate() : item.getRate());
+
+            // Unit cost priority:
+            // 1. In-range average purchase rate (if bought during this period)
+            // 2. Catalog purchase rate if set > 0
+            // 3. Historical all-time purchase average (if bought previously)
+            // 4. 0 if no purchase cost is known (never inflate to selling rate)
+            double avgCost = 0;
+            double[] bpIn = boughtInRange.get(e.getKey());
+            if (bpIn != null && bpIn[0] > 0) {
+                avgCost = bpIn[1] / bpIn[0];
+            } else if (item.getPurchaseRate() > 0) {
+                avgCost = item.getPurchaseRate();
+            } else {
+                double[] bpAll = boughtAllTime.get(e.getKey());
+                if (bpAll != null && bpAll[0] > 0) {
+                    avgCost = bpAll[1] / bpAll[0];
+                }
+            }
+
             double cogs = avgCost * qtySold;
             double gp = salesValue - cogs;
             double pct = salesValue != 0 ? (gp / salesValue) * 100.0 : 0;

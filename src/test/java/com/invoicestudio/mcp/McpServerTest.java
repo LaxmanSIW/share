@@ -384,8 +384,8 @@ class McpServerTest {
         assertEquals(Boolean.FALSE, res.get("interState"));
         purchaseId = (String) res.get("id");
 
-        // stock back up: 6 + 10 = 16
-        assertEquals(16.0, closingQty(), 0.001);
+        // stock: cancelled sale in Order 23 restored 4 units (stock back to 10), plus purchase 10 = 20
+        assertEquals(20.0, closingQty(), 0.001);
 
         // supplier payable: 1500 opening + 7780 due = 9280
         List<Map<String, Object>> suppliers = callToolList("list_suppliers", Map.of("query", "MCP OEM"));

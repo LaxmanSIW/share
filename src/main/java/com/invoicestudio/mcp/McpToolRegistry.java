@@ -178,7 +178,7 @@ public final class McpToolRegistry {
                         "reorderLevel", num("Low-stock alert level"),
                         "categoryId", str("Category id"),
                         "categoryName", str("Category name")), true, false));
-        t.add(new ToolDef("update_item", "Update a catalog item: name, hsn, unit, rate, gst, purchaseRate, reorderLevel — and MOVE it to another category via categoryId and/or categoryName (THE only way to reassign: create_item never modifies an existing item; the target category is resolved first and auto-created if missing, and the move is spelled out in the confirmation summary). Requires user confirmation. Stock itself is ledger-managed — openingStock/currentStock are intentionally not editable here.",
+        t.add(new ToolDef("update_item", "Update a catalog item: name, hsn, unit, rate, gst, purchaseRate, openingStock, reorderLevel — and MOVE it to another category via categoryId and/or categoryName (THE only way to reassign: create_item never modifies an existing item; the target category is resolved first and auto-created if missing, and the move is spelled out in the confirmation summary). Requires user confirmation.",
                 obj("id", str("Item id"),
                         "name", str("New name"),
                         "hsn", str("New HSN code"),
@@ -186,6 +186,7 @@ public final class McpToolRegistry {
                         "rate", num("New selling rate"),
                         "gst", num("New GST %"),
                         "purchaseRate", num("New cost rate"),
+                        "openingStock", num("New opening stock qty"),
                         "reorderLevel", num("New reorder level"),
                         "categoryId", str("Category id to move the item into"),
                         "categoryName", str("Category name to move the item into (auto-created if missing)")), true, true));
@@ -411,6 +412,7 @@ public final class McpToolRegistry {
                 if (args.containsKey("rate")) it.setRate(dbl(args, "rate", it.getRate()));
                 if (args.containsKey("gst")) it.setGst(dbl(args, "gst", it.getGst()));
                 if (args.containsKey("purchaseRate")) it.setPurchaseRate(dbl(args, "purchaseRate", it.getPurchaseRate()));
+                if (args.containsKey("openingStock")) it.setOpeningStock(dbl(args, "openingStock", it.getOpeningStock()));
                 if (args.containsKey("reorderLevel")) it.setReorderLevel(dbl(args, "reorderLevel", it.getReorderLevel()));
                 // Category reassignment (the proper path — create_item never updates):
                 // check-then-create so the item can never land on a dangling category id.
@@ -421,6 +423,7 @@ public final class McpToolRegistry {
                     it.setCategoryName(cat.name);
                 }
                 dm.items().saveItem(it);
+                dm.stockLedger().recomputeItem(it.getId());
             });
             case "delete_item": return confirmable("delete_item", args, () -> dm.items().deleteItem(str(args, "id")));
 
@@ -797,6 +800,7 @@ public final class McpToolRegistry {
             it.setCategoryName(category.name);
         }
         dm.items().saveItem(it);
+        dm.stockLedger().recomputeItem(it.getId());
         // DAOs swallow SQL failures — verify before declaring success.
         if (dm.items().getItemById(it.getId()) == null) {
             McpEnsure.rollback(dm, created);

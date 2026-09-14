@@ -606,6 +606,15 @@ public class ItemsView extends VBox {
 
         TextField rateField = new TextField(editing != null ? String.valueOf(editing.getRate()) : "0");
 
+        TextField purchaseRateField = new TextField(editing != null && editing.getPurchaseRate() > 0 ? String.valueOf(editing.getPurchaseRate()) : "0");
+        purchaseRateField.setPromptText("Cost / purchase price");
+
+        TextField openStockField = new TextField(editing != null ? String.valueOf(editing.getOpeningStock()) : "0");
+        openStockField.setPromptText("Initial stock on hand");
+
+        TextField reorderField = new TextField(editing != null ? String.valueOf(editing.getReorderLevel()) : "0");
+        reorderField.setPromptText("Low stock alert threshold");
+
         ComboBox<Integer> gstBox = new ComboBox<>(FXCollections.observableArrayList(COMMON_GST));
         gstBox.setValue(editing != null ? (int) editing.getGst() : 18);
         gstBox.setMaxWidth(Double.MAX_VALUE);
@@ -634,14 +643,29 @@ public class ItemsView extends VBox {
                 .findFirst().ifPresent(catBox::setValue);
         }
 
+        HBox rateRow = new HBox(12);
+        VBox sellRateBox = UiTheme.labeled("Default Selling Rate (" + currency + ") *", rateField);
+        HBox.setHgrow(sellRateBox, Priority.ALWAYS);
+        VBox costRateBox = UiTheme.labeled("Purchase / Cost Rate (" + currency + ")", purchaseRateField);
+        HBox.setHgrow(costRateBox, Priority.ALWAYS);
+        rateRow.getChildren().addAll(sellRateBox, costRateBox);
+
+        HBox stockRow = new HBox(12);
+        VBox openBox = UiTheme.labeled("Opening Stock Qty", openStockField);
+        HBox.setHgrow(openBox, Priority.ALWAYS);
+        VBox reorderBox = UiTheme.labeled("Low-Stock Reorder Level", reorderField);
+        HBox.setHgrow(reorderBox, Priority.ALWAYS);
+        stockRow.getChildren().addAll(openBox, reorderBox);
+
         VBox form = new VBox(12);
         form.getChildren().addAll(
                 UiTheme.labeled("Item Name / Description *", nameField),
                 UiTheme.labeled("Product Category", catBox),
                 UiTheme.labeled("HSN / SAC Code", hsnField),
                 UiTheme.labeled("Unit of Measurement", unitBox),
-                UiTheme.labeled("Default Unit Rate (" + currency + ")", rateField),
-                UiTheme.labeled("Default GST Rate (%)", gstBox)
+                rateRow,
+                UiTheme.labeled("Default GST Rate (%)", gstBox),
+                stockRow
         );
 
         HBox btnRow = new HBox(12);
@@ -662,6 +686,24 @@ public class ItemsView extends VBox {
             } catch (Exception ex) {
                 rate = 0;
             }
+            double purchaseRate = 0;
+            try {
+                purchaseRate = Double.parseDouble(purchaseRateField.getText().trim());
+            } catch (Exception ex) {
+                purchaseRate = 0;
+            }
+            double openingStock = 0;
+            try {
+                openingStock = Double.parseDouble(openStockField.getText().trim());
+            } catch (Exception ex) {
+                openingStock = 0;
+            }
+            double reorderLevel = 0;
+            try {
+                reorderLevel = Double.parseDouble(reorderField.getText().trim());
+            } catch (Exception ex) {
+                reorderLevel = 0;
+            }
             int gst = gstBox.getValue() != null ? gstBox.getValue() : 18;
             String unit = unitBox.getValue() != null ? unitBox.getValue().trim().toUpperCase() : "PCS";
             String hsn = hsnField.getText().trim();
@@ -680,7 +722,11 @@ public class ItemsView extends VBox {
                     it.setUnit(unit);
                     it.setRate(rate);
                     it.setGst(gst);
+                    it.setPurchaseRate(purchaseRate);
+                    it.setOpeningStock(openingStock);
+                    it.setReorderLevel(reorderLevel);
                     app.getData().items().insert(it);
+                    app.getData().stockLedger().recomputeItem(it.getId());
                     Toast.show(this, "Item added: " + name, false);
                 } else {
                     editing.setName(name);
@@ -690,7 +736,11 @@ public class ItemsView extends VBox {
                     editing.setUnit(unit);
                     editing.setRate(rate);
                     editing.setGst(gst);
+                    editing.setPurchaseRate(purchaseRate);
+                    editing.setOpeningStock(openingStock);
+                    editing.setReorderLevel(reorderLevel);
                     app.getData().items().update(editing);
+                    app.getData().stockLedger().recomputeItem(editing.getId());
                     Toast.show(this, "Item updated: " + name, false);
                 }
                 dlg.close();
