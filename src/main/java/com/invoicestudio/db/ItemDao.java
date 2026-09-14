@@ -105,6 +105,8 @@ public class ItemDao {
 
         if (item.getId() == null || item.getId().isBlank()) {
             item.setId(generateItemId());
+        } else {
+            item.setId(item.getId().trim());
         }
 
         try (Connection conn = db.getConnection();
@@ -142,15 +144,28 @@ public class ItemDao {
 
     public void deleteItem(String id) {
         String uid = getEffectiveUserId();
-        if (uid.isEmpty() || id == null || id.isBlank()) return;
-        if ("item_pent".equalsIgnoreCase(id)) return; // Protected default item
+        if (uid.isEmpty() || id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Item id is required");
+        }
+
+        String normalizedId = id.trim();
+        if ("item_pent".equalsIgnoreCase(normalizedId)) {
+            throw new IllegalArgumentException("Protected default item cannot be deleted");
+        }
+
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement("DELETE FROM items WHERE id = ? AND user_id = ?")) {
-            ps.setString(1, id);
+            ps.setString(1, normalizedId);
             ps.setString(2, uid);
-            ps.executeUpdate();
+            int deleted = ps.executeUpdate();
+            if (deleted == 0) {
+                throw new IllegalArgumentException("Item not found or already deleted: " + normalizedId);
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             e.printStackTrace();
+            throw new RuntimeException("Failed to delete item: " + e.getMessage(), e);
         }
     }
 

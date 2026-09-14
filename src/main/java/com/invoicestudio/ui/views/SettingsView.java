@@ -134,7 +134,9 @@ public class SettingsView extends VBox {
             createTab("Fonts", IconHelper.ICON_FONT, buildCustomFontsSection()),
             createTab("Print", IconHelper.ICON_PRINT, buildPrintCalibrationSection()),
             createTab("Backup", IconHelper.ICON_BACKUP, buildBackupStorageSection()),
-            createTab("Shortcuts", IconHelper.ICON_CODE, new com.invoicestudio.ui.ShortcutsPanel())
+            createTab("Shortcuts", IconHelper.ICON_CODE, new com.invoicestudio.ui.ShortcutsPanel()),
+            createTab("MCP Server", IconHelper.ICON_CODE, new com.invoicestudio.mcp.McpSettingsPanel(
+                    com.invoicestudio.mcp.McpConfig.load()))
         );
     }
 
