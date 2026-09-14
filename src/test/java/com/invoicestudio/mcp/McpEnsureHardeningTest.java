@@ -366,4 +366,89 @@ class McpEnsureHardeningTest {
             }
         }, "second category with same (user_id, case-insensitive name) must violate the unique index");
     }
+
+    // ------------------------------------------------------------------
+    // update_item → category reassignment (THE FOLLOW-UP GAP)
+    // create_item is idempotent by name, so before this fix there was NO
+    // way at all to move an item to another category via MCP.
+    // ------------------------------------------------------------------
+
+    private ItemRecord itemByName(String name) {
+        return dm.items().getAllItems().stream()
+                .filter(i -> i.getName().equals(name)).findFirst().orElseThrow();
+    }
+
+    @Test
+    void updateItemMovesItemToExistingCategory() throws Exception {
+        tool("create_item", Map.of("name", "HARD Mover A", "rate", 20.0,
+                "gst", 18.0, "categoryName", "HARD Old Home"));
+        String itemId = itemByName("HARD Mover A").getId();
+
+        Map<String, Object> res = tool("update_item", Map.of(
+                "id", itemId, "categoryName", "HARD New Home"));
+        assertEquals(Boolean.TRUE, res.get("requiresConfirmation"));
+        String summary = String.valueOf(res.get("summary")).toLowerCase();
+        assertTrue(summary.contains("move category"),
+                "confirm summary must surface the category move, got: " + res.get("summary"));
+
+        assertTrue(PendingOperations.approve((String) res.get("operationId")),
+                "approved op must execute");
+        ItemRecord after = dm.items().getItemById(itemId);
+        assertEquals("HARD New Home", after.getCategoryName(), "item must be moved");
+        assertNotNull(after.getCategoryId());
+        assertFalse(after.getCategoryId().isBlank(), "category id must be linked, not dangling");
+        assertEquals(1, countRows("categories", "LOWER(name) = 'hard new home'"));
+    }
+
+    @Test
+    void updateItemAutoCreatesMissingCategoryAndKeepsOtherFields() throws Exception {
+        tool("create_item", Map.of("name", "HARD Mover B", "rate", 30.0, "gst", 5.0));
+        String itemId = itemByName("HARD Mover B").getId();
+
+        Map<String, Object> res = tool("update_item", Map.of(
+                "id", itemId, "categoryName", "HARD Fresh Category", "rate", 42.0));
+        assertTrue(PendingOperations.approve((String) res.get("operationId")));
+
+        ItemRecord after = dm.items().getItemById(itemId);
+        assertEquals("HARD Fresh Category", after.getCategoryName());
+        assertEquals(42.0, after.getRate(), 1e-9, "other update fields must still apply");
+        assertEquals(5.0, after.getGst(), 1e-9, "untouched fields must be preserved");
+        assertEquals(1, countRows("categories", "LOWER(name) = 'hard fresh category'"),
+                "missing target category must be auto-created exactly once");
+    }
+
+    @Test
+    void createItemStillNeverUpdatesExistingItemCategory() throws Exception {
+        tool("create_item", Map.of("name", "HARD Sticky", "categoryName", "HARD Keep Me"));
+        String catIdBefore = itemByName("HARD Sticky").getCategoryId();
+
+        // the AI's failed workaround from the field report: re-create under a new
+        // category — must stay a no-op (existed=true), never silently move it
+        Map<String, Object> res = tool("create_item", Map.of(
+                "name", "HARD Sticky", "categoryName", "HARD Other Place"));
+        assertEquals(Boolean.TRUE, res.get("existed"));
+        assertTrue(String.valueOf(res.get("note")).contains("update_item"),
+                "note must point the AI at the correct tool");
+
+        ItemRecord it = itemByName("HARD Sticky");
+        assertEquals("HARD Keep Me", it.getCategoryName(), "category must NOT change via create");
+        assertEquals(catIdBefore, it.getCategoryId());
+    }
+
+    @Test
+    void updateItemWithUnknownIdFailsAtApprovalNotQueueTime() throws Exception {
+        // confirmable() queues first and executes on approval — existence is
+        // re-validated at EXECUTION time (same contract as every update tool)
+        Map<String, Object> res = tool("update_item",
+                Map.of("id", "item_does_not_exist", "categoryName", "HARD Nowhere"));
+        assertEquals(Boolean.TRUE, res.get("requiresConfirmation"));
+        String opId = (String) res.get("operationId");
+
+        assertThrows(Exception.class, () -> PendingOperations.approve(opId),
+                "approval of an unknown item id must fail loudly, not silently");
+        assertEquals(0, PendingOperations.pending().size(),
+                "failed op must be consumed, nothing half-done left pending");
+        assertEquals(0, countRows("categories", "LOWER(name) = 'hard nowhere'"),
+                "target category must NOT be auto-created when the update aborts");
+    }
 }

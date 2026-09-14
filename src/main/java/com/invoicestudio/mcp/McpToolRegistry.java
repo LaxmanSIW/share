@@ -162,13 +162,17 @@ public final class McpToolRegistry {
                         "reorderLevel", num("Low-stock alert level"),
                         "categoryId", str("Category id"),
                         "categoryName", str("Category name")), true, false));
-        t.add(new ToolDef("update_item", "Update a catalog item (rates, reorder level etc; stock itself is ledger-managed). Requires user confirmation.",
+        t.add(new ToolDef("update_item", "Update a catalog item: name, hsn, unit, rate, gst, purchaseRate, reorderLevel — and MOVE it to another category via categoryId and/or categoryName (THE only way to reassign: create_item never modifies an existing item; the target category is resolved first and auto-created if missing, and the move is spelled out in the confirmation summary). Requires user confirmation. Stock itself is ledger-managed — openingStock/currentStock are intentionally not editable here.",
                 obj("id", str("Item id"),
                         "name", str("New name"),
+                        "hsn", str("New HSN code"),
+                        "unit", str("New unit (PCS, KG, BOX...)"),
                         "rate", num("New selling rate"),
                         "gst", num("New GST %"),
                         "purchaseRate", num("New cost rate"),
-                        "reorderLevel", num("New reorder level")), true, true));
+                        "reorderLevel", num("New reorder level"),
+                        "categoryId", str("Category id to move the item into"),
+                        "categoryName", str("Category name to move the item into (auto-created if missing)")), true, true));
         t.add(new ToolDef("delete_item", "Delete a catalog item permanently. Requires user confirmation.",
                 obj("id", str("Item id")), true, true));
 
@@ -359,10 +363,20 @@ public final class McpToolRegistry {
             case "update_item": return confirmable("update_item", args, () -> {
                 ItemRecord it = requireItem(dm, str(args, "id"));
                 if (args.containsKey("name") && !str(args, "name").isBlank()) it.setName(str(args, "name").trim());
+                if (args.containsKey("hsn")) it.setHsn(strOr(args, "hsn", "").trim());
+                if (args.containsKey("unit") && !str(args, "unit").isBlank()) it.setUnit(str(args, "unit").trim());
                 if (args.containsKey("rate")) it.setRate(dbl(args, "rate", it.getRate()));
                 if (args.containsKey("gst")) it.setGst(dbl(args, "gst", it.getGst()));
                 if (args.containsKey("purchaseRate")) it.setPurchaseRate(dbl(args, "purchaseRate", it.getPurchaseRate()));
                 if (args.containsKey("reorderLevel")) it.setReorderLevel(dbl(args, "reorderLevel", it.getReorderLevel()));
+                // Category reassignment (the proper path — create_item never updates):
+                // check-then-create so the item can never land on a dangling category id.
+                McpEnsure.Outcome cat = McpEnsure.ensureCategory(dm,
+                        strOr(args, "categoryId", ""), strOr(args, "categoryName", ""));
+                if (cat != null) {
+                    it.setCategoryId(cat.id);
+                    it.setCategoryName(cat.name);
+                }
                 dm.items().saveItem(it);
             });
             case "delete_item": return confirmable("delete_item", args, () -> dm.items().deleteItem(str(args, "id")));
@@ -477,6 +491,23 @@ public final class McpToolRegistry {
             case "delete_buyer": return "Permanently delete buyer " + str(args, "id");
             case "delete_supplier": return "Permanently delete supplier " + str(args, "id");
             case "delete_item": return "Permanently delete catalog item " + str(args, "id");
+            case "update_item": {
+                StringBuilder sb = new StringBuilder("Update item ").append(str(args, "id"));
+                List<String> changes = new ArrayList<>();
+                if (args.containsKey("name")) changes.add("name → " + str(args, "name"));
+                if (args.containsKey("hsn")) changes.add("hsn → " + str(args, "hsn"));
+                if (args.containsKey("unit")) changes.add("unit → " + str(args, "unit"));
+                if (args.containsKey("rate")) changes.add("rate → " + args.get("rate"));
+                if (args.containsKey("gst")) changes.add("gst → " + args.get("gst"));
+                if (args.containsKey("purchaseRate")) changes.add("purchaseRate → " + args.get("purchaseRate"));
+                if (args.containsKey("reorderLevel")) changes.add("reorderLevel → " + args.get("reorderLevel"));
+                String catName = strOr(args, "categoryName", "");
+                String catId = strOr(args, "categoryId", "");
+                if (!catName.isBlank() || !catId.isBlank())
+                    changes.add("MOVE category → " + (!catName.isBlank() ? catName : catId));
+                if (!changes.isEmpty()) sb.append(": ").append(String.join(", ", changes));
+                return sb.toString();
+            }
             case "delete_expense": return "Delete expense " + str(args, "id");
             case "update_bill_status": return "Change invoice " + str(args, "id") + " status → " + str(args, "status");
             default:
@@ -560,7 +591,7 @@ public final class McpToolRegistry {
             return mapOf("ok", true, "id", dup.getId(), "name", dup.getName(),
                     "category", dup.getCategoryName(),
                     "existed", true, "matchedBy", "name",
-                    "note", "Existing item returned unchanged; use update_item to modify it.");
+                    "note", "Existing item returned unchanged — create_item NEVER updates (passing a different categoryName here does NOT move the item). To change any field or reassign the category use update_item with categoryId/categoryName (confirmation-gated).");
         }
 
         String categoryId = strOr(args, "categoryId", "").trim();

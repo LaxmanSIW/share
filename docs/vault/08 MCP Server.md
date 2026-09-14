@@ -47,6 +47,13 @@ and listed in `autoCreated[]`. Create tools are idempotent by natural key
 (`existed: true` instead of duplicates). Failures roll back auto-created deps
 (verified with a DB read-back — DAOs swallow SQL errors).
 
+`update_item` is the one update tool that also runs this contract: its
+`categoryId`/`categoryName` is resolved via the same ensure path, making
+category **reassignment** first-class (create_item never updates an existing
+item, so re-calling create with a new category is a documented no-op —
+`update_item` is the only way to move an item; the confirm summary spells out
+`MOVE category → X`).
+
 | Reference | Missing dependency → |
 |---|---|
 | item → category | auto-create category (unique index `idx_categories_user_name` backstops races) |
@@ -72,8 +79,8 @@ and listed in `autoCreated[]`. Create tools are idempotent by natural key
 
 Docs (operator + developer guide, per-tool contract): `src/main/resources/docs/MCP_SERVER.md`
 Tests: `McpServerTest` (protocol/e2e, 20) · `McpEnsureHardeningTest` (both
-branches per tool + race + rollback, 17) · `McpTemplateDesignTest` (design
-guide completeness, styling round-trip, previews + warnings, thermal
-geometry, 6).
+branches per tool + race + rollback + category reassignment, 21) ·
+`McpTemplateDesignTest` (design guide completeness, styling round-trip,
+previews + warnings, thermal geometry, 6).
 
 Related: [[01 Architecture]] · [[02 Database Layer]] · [[03 Service Layer]] · [[07 Branches and Versions]]

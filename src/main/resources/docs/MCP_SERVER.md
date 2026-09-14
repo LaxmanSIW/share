@@ -66,10 +66,27 @@ create_item { name: "Cotton Shirt", hsn: "6105", unit: "PCS",
 - If **Apparel** doesn't exist: it is created for you and listed in
   `autoCreated` — say so in your summary to the user.
 - Call it twice by mistake? The second call returns the existing item with
-  `existed: true` — **never** a duplicate. To change rate/stock settings use
-  `update_item` (confirmation-gated).
+  `existed: true` — **never** a duplicate. To change anything (rate, hsn, unit,
+  **or its category**) use `update_item` (confirmation-gated).
 - Side effects: opening stock seeds the stock ledger, so `stock_report` shows
   it immediately.
+
+### Flow 1b — "Move these 10 items from 'Misc' to 'Apparel'" (category reassignment)
+
+```
+update_item { id: "<itemId>", categoryName: "Apparel" }   // one call per item
+```
+
+- **This is the only correct way to reassign a category.** Re-calling
+  `create_item` with a new `categoryName` does NOT move anything — create is
+  idempotent by name and returns the untouched item (`existed: true`).
+- 'Apparel' missing? It is auto-created (check-then-create, same guarantees as
+  create paths) and the move is spelled out in the confirmation summary:
+  `Update item it_xxx: MOVE category → Apparel`.
+- Every `update_item` is confirmation-gated: queue all 10, then have the user
+  approve them together in Settings → MCP Server (or `confirm_operation` each).
+- Batch example: `list_categories` first to reuse an existing category name —
+  avoids creating a near-duplicate like "Apparels".
 
 ### Flow 2 — "Invoice 3 units of Cotton Shirt to Ramesh Traders, paid by UPI"
 
@@ -240,8 +257,11 @@ Every create path funnels through `com.invoicestudio.mcp.McpEnsure`:
 | `record_expense` | none by design | duplicates allowed | — | `head` |
 | `pay_purchase` | purchase must exist (hard error) | n/a | — | `paid`, `remaining`, `fullySettled` |
 
-Update/delete tools: unchanged — they queue a `PendingOperations` op
-(confirmation-gated) and re-validate existence at execution time.
+Update/delete tools: queue a `PendingOperations` op (confirmation-gated) and
+re-validate existence at execution time. Exception to "unchanged":
+`update_item` now also runs a dependency check — its `categoryId`/`categoryName`
+reference is resolved via the same check-then-create path (auto-create + race
+safety + no dangling ids), so category reassignment is first-class there.
 
 ## Template design tools — full vocabulary exposure + sight
 
