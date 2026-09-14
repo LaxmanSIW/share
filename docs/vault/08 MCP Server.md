@@ -6,7 +6,7 @@ aliases: [MCP Server, MCP, Model Context Protocol]
 # 08 — MCP Server (`com.invoicestudio.mcp`)
 
 Localhost MCP (Model Context Protocol) server embedded in the app: exposes the
-desktop's capabilities as ~45 JSON-RPC tools to AI clients (Claude, Cursor, VS
+desktop's capabilities as ~48 JSON-RPC tools to AI clients (Claude, Cursor, VS
 Code). Started from **Settings → MCP Server**; binds `127.0.0.1:<port>/mcp`
 with a bearer token; dies with the app; every call audited.
 
@@ -15,7 +15,7 @@ with a bearer token; dies with the app; every call audited.
 ```mermaid
 flowchart LR
   CLIENT["AI client (Claude/Cursor)"] -->|Bearer token| SRV["McpServer (HTTP JSON-RPC)"]
-  SRV --> REG["McpToolRegistry (~45 tools)"]
+  SRV --> REG["McpToolRegistry (~48 tools)"]
   SRV --> IMG["McpImageResult → native image blocks"]
   REG --> ENS["McpEnsure — check-then-create"]
   REG --> PREV["TemplatePreviewService — print-true PNG"]
@@ -52,7 +52,19 @@ and listed in `autoCreated[]`. Create tools are idempotent by natural key
 category **reassignment** first-class (create_item never updates an existing
 item, so re-calling create with a new category is a documented no-op —
 `update_item` is the only way to move an item; the confirm summary spells out
-`MOVE category → X`).
+`MOVE category → X`). Same contract for **buyer → default transport**:
+`create_buyer`/`update_buyer` accept `transportId`/`transportName`
+(`McpEnsure.ensureTransport` — auto-create + race safety).
+
+Categories are also first-class tools now: `create_category` (idempotent by
+name), `update_category` (rename **cascaded** to items' denormalized
+`category_name` via `ItemDao.updateCategoryNameForCategory`), `delete_category`
+(refuses while `ItemDao.countItemsInCategory` > 0, protects the default), and
+`list_categories` carries a live `itemCount` per row. `update_buyer` /
+`update_supplier` have full create/update field parity (address, stateCode,
+openingBalance, creditPeriodDays / creditLimit, city, contactPerson) — the
+confirm summaries spell out every field change incl. `ASSIGN default
+transport → X`.
 
 | Reference | Missing dependency → |
 |---|---|
@@ -79,8 +91,8 @@ item, so re-calling create with a new category is a documented no-op —
 
 Docs (operator + developer guide, per-tool contract): `src/main/resources/docs/MCP_SERVER.md`
 Tests: `McpServerTest` (protocol/e2e, 20) · `McpEnsureHardeningTest` (both
-branches per tool + race + rollback + category reassignment, 21) ·
-`McpTemplateDesignTest` (design guide completeness, styling round-trip,
-previews + warnings, thermal geometry, 6).
+branches per tool + race + rollback + category reassignment + buyer transport
++ category CRUD lifecycle, 27) · `McpTemplateDesignTest` (design guide
+completeness, styling round-trip, previews + warnings, thermal geometry, 6).
 
 Related: [[01 Architecture]] · [[02 Database Layer]] · [[03 Service Layer]] · [[07 Branches and Versions]]

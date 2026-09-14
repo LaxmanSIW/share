@@ -1,8 +1,10 @@
 package com.invoicestudio.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.invoicestudio.model.Buyer;
 import com.invoicestudio.model.ItemCategory;
 import com.invoicestudio.model.ItemRecord;
+import com.invoicestudio.model.Supplier;
 import com.invoicestudio.model.UserSession;
 import com.invoicestudio.service.AuthSessionManager;
 import com.invoicestudio.ui.DataManager;
@@ -450,5 +452,156 @@ class McpEnsureHardeningTest {
                 "failed op must be consumed, nothing half-done left pending");
         assertEquals(0, countRows("categories", "LOWER(name) = 'hard nowhere'"),
                 "target category must NOT be auto-created when the update aborts");
+    }
+
+    // ------------------------------------------------------------------
+    // Buyer default transport + buyer/supplier field parity (Task 14)
+    // ------------------------------------------------------------------
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void createBuyerAssignsAndAutoCreatesDefaultTransport() throws Exception {
+        Map<String, Object> res = tool("create_buyer", Map.of(
+                "name", "HARD Transport Buyer", "transportName", "Hard Roadways"));
+
+        assertEquals(Boolean.TRUE, res.get("ok"));
+        List<Map<String, Object>> auto = (List<Map<String, Object>>) (Object) res.get("autoCreated");
+        assertEquals(2, auto.size(), "buyer itself + missing auto-created transport must be reported");
+        assertEquals("buyer", auto.get(0).get("type"));
+        assertEquals("transport", auto.get(1).get("type"));
+        assertEquals("Hard Roadways", auto.get(1).get("name"));
+
+        String trId = (String) auto.get(1).get("id");
+        Buyer b = dm.buyers().getBuyerById((String) res.get("id"));
+        assertEquals(trId, b.getDefaultTransportId(), "buyer must carry the default transport id");
+        assertNotNull(dm.transports().getTransportById(trId), "transport row must exist");
+
+        // second buyer reusing the SAME name must link, not duplicate
+        Map<String, Object> res2 = tool("create_buyer", Map.of(
+                "name", "HARD Transport Buyer 2", "transportName", "hard roadways")); // case-insensitive
+        Buyer b2 = dm.buyers().getBuyerById((String) res2.get("id"));
+        assertEquals(trId, b2.getDefaultTransportId(), "existing transport must be matched case-insensitively");
+        assertEquals(1, countRows("transports", "LOWER(name) = 'hard roadways'"),
+                "no duplicate transport row may appear");
+
+        // reassignment via update_buyer (confirmation-gated)
+        Map<String, Object> upd = tool("update_buyer", Map.of(
+                "id", res.get("id"), "transportName", "Hard Other Lines"));
+        assertEquals(Boolean.TRUE, upd.get("requiresConfirmation"));
+        assertTrue(String.valueOf(upd.get("summary")).toLowerCase().contains("assign default transport"),
+                "confirm summary must surface the transport assignment");
+        assertTrue(PendingOperations.approve((String) upd.get("operationId")));
+        assertEquals("Hard Other Lines",
+                dm.buyers().getBuyerById((String) res.get("id")).getDefaultTransportId() != null
+                        ? dm.transports().getTransportById(
+                                dm.buyers().getBuyerById((String) res.get("id")).getDefaultTransportId()).getName()
+                        : null);
+    }
+
+    @Test
+    void updateBuyerFullFieldParity() throws Exception {
+        Map<String, Object> created = tool("create_buyer", Map.of("name", "HARD Parity Buyer"));
+        String id = (String) created.get("id");
+
+        Map<String, Object> upd = tool("update_buyer", Map.of(
+                "id", id, "city", "Indore", "contactPerson", "Ravi",
+                "openingBalance", 5500.0, "creditLimit", 250000.0,
+                "address", "5 MG Road", "stateCode", "23"));
+        assertTrue(PendingOperations.approve((String) upd.get("operationId")));
+
+        Buyer b = dm.buyers().getBuyerById(id);
+        assertEquals("Indore", b.getCity());
+        assertEquals("Ravi", b.getContactPerson());
+        assertEquals(5500.0, b.getOpeningBalance(), 1e-9);
+        assertEquals(250000.0, b.getCreditLimit(), 1e-9);
+        assertEquals("5 MG Road", b.getAddress());
+        assertEquals("23", b.getStateCode());
+    }
+
+    @Test
+    void updateSupplierFieldParity() throws Exception {
+        Map<String, Object> created = tool("create_supplier", Map.of("name", "HARD Parity Supplier"));
+        String id = (String) created.get("id");
+
+        Map<String, Object> upd = tool("update_supplier", Map.of(
+                "id", id, "address", "Plot 9 MIDC", "stateCode", "27",
+                "openingBalance", 12000.0, "creditPeriodDays", 45.0));
+        assertTrue(PendingOperations.approve((String) upd.get("operationId")));
+
+        Supplier s = dm.suppliers().getSupplierById(id);
+        assertEquals("Plot 9 MIDC", s.getAddress());
+        assertEquals("27", s.getStateCode());
+        assertEquals(12000.0, s.getOpeningBalance(), 1e-9);
+        assertEquals(45, s.getCreditPeriodDays());
+    }
+
+    // ------------------------------------------------------------------
+    // Category CRUD: standalone create, rename cascade, delete guard
+    // ------------------------------------------------------------------
+
+    @Test
+    void categoryCreateIsIdempotentByName() throws Exception {
+        Map<String, Object> first = tool("create_category", Map.of("name", "Hard Standalone"));
+        assertEquals(Boolean.FALSE, first.get("existed"));
+        Map<String, Object> second = tool("create_category", Map.of("name", "hard standalone"));
+        assertEquals(Boolean.TRUE, second.get("existed"));
+        assertEquals(first.get("id"), second.get("id"), "case-insensitive match must return the same category");
+        assertEquals(1, countRows("categories", "LOWER(name) = 'hard standalone'"));
+    }
+
+    @Test
+    void categoryRenameCascadesToItemsAndRefusesClash() throws Exception {
+        Map<String, Object> cat = tool("create_category", Map.of("name", "Hard Rename Me"));
+        String catId = (String) cat.get("id");
+        tool("create_item", Map.of("name", "HARD Rename Child", "categoryId", catId));
+
+        Map<String, Object> upd = tool("update_category", Map.of("id", catId, "name", "Hard Renamed"));
+        assertEquals(Boolean.TRUE, upd.get("requiresConfirmation"));
+        assertTrue(PendingOperations.approve((String) upd.get("operationId")));
+
+        assertEquals("Hard Renamed", dm.categories().getCategoryById(catId).getName());
+        ItemRecord child = dm.items().getAllItems().stream()
+                .filter(i -> i.getName().equals("HARD Rename Child")).findFirst().orElseThrow();
+        assertEquals("Hard Renamed", child.getCategoryName(),
+                "denormalized category_name on items must follow the rename");
+        assertEquals(catId, child.getCategoryId());
+
+        // renaming to another category's existing name must be refused at approval
+        Map<String, Object> other = tool("create_category", Map.of("name", "Hard Clash Cat"));
+        Map<String, Object> bad = tool("update_category",
+                Map.of("id", other.get("id"), "name", "Hard Renamed"));
+        assertThrows(Exception.class, () -> PendingOperations.approve((String) bad.get("operationId")),
+                "cross-category name clash must be refused");
+        assertEquals("Hard Clash Cat", dm.categories().getCategoryById((String) other.get("id")).getName(),
+                "clashing rename must leave the target untouched");
+    }
+
+    @Test
+    void categoryDeleteGuardsAssignmentsAndProtectsDefault() throws Exception {
+        Map<String, Object> cat = tool("create_category", Map.of("name", "Hard Doomed"));
+        String catId = (String) cat.get("id");
+        tool("create_item", Map.of("name", "HARD Doomed Child", "categoryId", catId));
+
+        // refuses while items are assigned (guard fires at approval; category survives)
+        Map<String, Object> blocked = tool("delete_category", Map.of("id", catId));
+        assertThrows(Exception.class, () -> PendingOperations.approve((String) blocked.get("operationId")),
+                "delete must refuse while items are assigned");
+        assertNotNull(dm.categories().getCategoryById(catId), "assigned category must survive");
+
+        // move the item out, then deletion succeeds
+        ItemRecord child = dm.items().getAllItems().stream()
+                .filter(i -> i.getName().equals("HARD Doomed Child")).findFirst().orElseThrow();
+        Map<String, Object> move = tool("update_item",
+                Map.of("id", child.getId(), "categoryName", "Hard Safe Harbour"));
+        assertTrue(PendingOperations.approve((String) move.get("operationId")));
+
+        Map<String, Object> del = tool("delete_category", Map.of("id", catId));
+        assertTrue(PendingOperations.approve((String) del.get("operationId")));
+        assertNull(dm.categories().getCategoryById(catId), "empty category must be deleted");
+
+        // default category is protected
+        Map<String, Object> prot = tool("delete_category", Map.of("id", "cat_trouser"));
+        assertThrows(Exception.class, () -> PendingOperations.approve((String) prot.get("operationId")),
+                "default category must be protected");
     }
 }

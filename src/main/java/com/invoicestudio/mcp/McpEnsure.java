@@ -150,6 +150,38 @@ public final class McpEnsure {
         return null;
     }
 
+    /**
+     * Resolves the buyer → default-transport reference. Accepts an id, a name,
+     * or both. A missing dependency is created (same contract as ensureCategory),
+     * so an MCP buyer can never carry a dangling defaultTransportId.
+     */
+    public static Outcome ensureTransport(DataManager dm, String idArg, String nameArg) {
+        String id = safe(idArg);
+        String name = safe(nameArg);
+        if (id.isEmpty() && name.isEmpty()) return null;
+
+        Transport existing = null;
+        if (!id.isEmpty()) existing = dm.transports().getTransportById(id.trim());
+        if (existing == null && !name.isEmpty()) existing = findTransportByName(dm, name);
+        if (existing != null) {
+            boolean byId = !id.isEmpty() && existing.getId() != null && existing.getId().equalsIgnoreCase(id);
+            return new Outcome(existing.getId(), existing.getName(), false, byId ? "id" : "name");
+        }
+
+        String key = "transport|" + (name.isEmpty() ? id : name).toLowerCase(Locale.ROOT);
+        synchronized (lockFor(key)) {
+            existing = null; // double-checked inside lock
+            if (!id.isEmpty()) existing = dm.transports().getTransportById(id.trim());
+            if (existing == null && !name.isEmpty()) existing = findTransportByName(dm, name);
+            if (existing != null) return new Outcome(existing.getId(), existing.getName(), false, "race");
+            Transport t = new Transport(
+                    id.isEmpty() ? newId("trn_", 10) : sanitizeId(id, "trn_", 10),
+                    name.isEmpty() ? sanitizeId(id, "", 40) : name, "", "");
+            dm.saveTransport(t);
+            return new Outcome(t.getId(), t.getName(), true, null);
+        }
+    }
+
     public static Template findTemplateByName(DataManager dm, String nameArg) {
         if (nameArg == null || nameArg.isBlank()) return null;
         String needle = nameArg.trim().toLowerCase(Locale.ROOT);

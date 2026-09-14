@@ -176,5 +176,46 @@ public class ItemDao {
     public void insert(ItemRecord item) { saveItem(item); }
     public void update(ItemRecord item) { saveItem(item); }
     public void delete(String id) { deleteItem(id); }
+
+    // --- Category helpers (MCP category CRUD: rename cascade + delete guard) ---
+
+    /** Number of catalog items currently assigned to a category (per user). */
+    public int countItemsInCategory(String categoryId) {
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || categoryId == null || categoryId.isBlank()) return 0;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) FROM items WHERE user_id = ? AND category_id = ?")) {
+            ps.setString(1, uid);
+            ps.setString(2, categoryId.trim());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
+    /**
+     * Keeps the denormalized category_name in sync after a category rename.
+     * Returns the number of item rows updated.
+     */
+    public int updateCategoryNameForCategory(String categoryId, String newName) {
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty() || categoryId == null || categoryId.isBlank() || newName == null) return 0;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE items SET category_name = ?, updated_at = ? WHERE user_id = ? AND category_id = ?")) {
+            ps.setString(1, newName.trim());
+            ps.setString(2, Instant.now().toString());
+            ps.setString(3, uid);
+            ps.setString(4, categoryId.trim());
+            return ps.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
 }
 

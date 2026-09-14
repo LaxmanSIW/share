@@ -100,22 +100,34 @@ public final class McpToolRegistry {
                 obj(
                         "query", str("Optional search text matched against name, phone, GSTIN, city"),
                         "limit", num("Max rows (default 100)")), false, false));
-        t.add(new ToolDef("create_buyer", "Create a buyer/customer. Idempotent by name: if a buyer with the same name already exists it is returned unchanged (existed=true) instead of duplicated.",
+        t.add(new ToolDef("create_buyer", "Create a buyer/customer. Check-then-create: the default transport (transportId and/or transportName) is resolved first and AUTO-CREATED if missing — listed in response.autoCreated. Idempotent by name: if a buyer with the same name already exists it is returned unchanged (existed=true) instead of duplicated; use update_buyer to change it.",
                 obj(
                         "name", str("Buyer/firm name (required)"),
                         "phone", str("Phone"),
                         "gst", str("15-char GSTIN"),
                         "address", str("Address"),
                         "state", str("State name"),
-                        "stateCode", str("2-digit state code (decides IGST vs CGST/SGST)")), true, false));
-        t.add(new ToolDef("update_buyer", "Update an existing buyer. Requires user confirmation.",
+                        "stateCode", str("2-digit state code (decides IGST vs CGST/SGST)"),
+                        "city", str("City"),
+                        "contactPerson", str("Contact person name"),
+                        "openingBalance", num("Opening receivable balance"),
+                        "creditLimit", num("Credit limit (default 100000)"),
+                        "transportId", str("Default transport id"),
+                        "transportName", str("Default transport name (auto-created if missing)")), true, false));
+        t.add(new ToolDef("update_buyer", "Update an existing buyer: name, phone, gst, address, state, stateCode, city, contactPerson, openingBalance, creditLimit — and assign its DEFAULT TRANSPORT via transportId and/or transportName (resolved first, auto-created if missing; the assignment is spelled out in the confirmation summary). Requires user confirmation.",
                 obj("id", str("Buyer id"),
                         "name", str("New name"),
                         "phone", str("New phone"),
                         "gst", str("New GSTIN"),
                         "address", str("New address"),
                         "state", str("New state"),
-                        "stateCode", str("New state code")), true, true));
+                        "stateCode", str("New state code"),
+                        "city", str("New city"),
+                        "contactPerson", str("New contact person"),
+                        "openingBalance", num("New opening balance"),
+                        "creditLimit", num("New credit limit"),
+                        "transportId", str("Default transport id to assign"),
+                        "transportName", str("Default transport name to assign (auto-created if missing)")), true, true));
         t.add(new ToolDef("delete_buyer", "Delete a buyer permanently. Requires user confirmation.",
                 obj("id", str("Buyer id")), true, true));
 
@@ -135,13 +147,17 @@ public final class McpToolRegistry {
                         "address", str("Full address"),
                         "openingBalance", num("Opening payable (positive = you owe them)"),
                         "creditPeriodDays", num("Credit period in days")), true, false));
-        t.add(new ToolDef("update_supplier", "Update a supplier. Requires user confirmation.",
+        t.add(new ToolDef("update_supplier", "Update a supplier: name, phone, gst, state, stateCode, city, address, openingBalance, creditPeriodDays. Requires user confirmation.",
                 obj("id", str("Supplier id"),
                         "name", str("New name"),
                         "phone", str("New phone"),
                         "gst", str("New GSTIN"),
                         "state", str("New state"),
-                        "city", str("New city")), true, true));
+                        "stateCode", str("New state code"),
+                        "city", str("New city"),
+                        "address", str("New address"),
+                        "openingBalance", num("New opening payable (positive = you owe them)"),
+                        "creditPeriodDays", num("New credit period in days")), true, true));
         t.add(new ToolDef("delete_supplier", "Delete a supplier permanently. Requires user confirmation.",
                 obj("id", str("Supplier id")), true, true));
 
@@ -177,7 +193,14 @@ public final class McpToolRegistry {
                 obj("id", str("Item id")), true, true));
 
         // --- Read-only masters ---
-        t.add(new ToolDef("list_categories", "List item categories.", obj(), false, false));
+        t.add(new ToolDef("list_categories", "List item categories with the live itemCount of catalog items assigned to each (0 = safe to delete).", obj(), false, false));
+        t.add(new ToolDef("create_category", "Create an item category standalone (no item needed). Check-then-create: idempotent by name (case-insensitive) — an existing category is returned (existed=true), never duplicated; the unique DB index backstops races.",
+                obj("name", str("Category name (required)")), true, false));
+        t.add(new ToolDef("update_category", "Rename a category. The new name is CASCADED to every catalog item that references it (items store the category name denormalized, so the rename keeps them in sync — response reports how many items were updated). Rejects a name that collides with another existing category. Requires user confirmation.",
+                obj("id", str("Category id"),
+                        "name", str("New category name")), true, true));
+        t.add(new ToolDef("delete_category", "Delete an EMPTY category. Refuses while items are still assigned (the error tells you how many and points at update_item with categoryId/categoryName to move them first). The default category is protected. Requires user confirmation.",
+                obj("id", str("Category id")), true, true));
         t.add(new ToolDef("list_transports", "List transports (logistics partners).", obj(), false, false));
         t.add(new ToolDef("list_templates", "List print templates with element counts and page sizes.", obj(), false, false));
         t.add(new ToolDef("get_template_design_guide",
@@ -339,6 +362,14 @@ public final class McpToolRegistry {
                 if (args.containsKey("address")) b.setAddress(str(args, "address"));
                 if (args.containsKey("state")) b.setState(str(args, "state"));
                 if (args.containsKey("stateCode")) b.setStateCode(str(args, "stateCode"));
+                if (args.containsKey("city")) b.setCity(str(args, "city"));
+                if (args.containsKey("contactPerson")) b.setContactPerson(str(args, "contactPerson"));
+                if (args.containsKey("openingBalance")) b.setOpeningBalance(dbl(args, "openingBalance", b.getOpeningBalance()));
+                if (args.containsKey("creditLimit")) b.setCreditLimit(dbl(args, "creditLimit", b.getCreditLimit()));
+                // Default transport assignment — check-then-create, no dangling ids.
+                McpEnsure.Outcome tr = McpEnsure.ensureTransport(dm,
+                        strOr(args, "transportId", ""), strOr(args, "transportName", ""));
+                if (tr != null) b.setDefaultTransportId(tr.id);
                 dm.buyers().saveBuyer(b);
             });
             case "delete_buyer": return confirmable("delete_buyer", args, () -> dm.buyers().deleteBuyer(str(args, "id")));
@@ -352,7 +383,11 @@ public final class McpToolRegistry {
                 if (args.containsKey("phone")) s.setPhone(str(args, "phone"));
                 if (args.containsKey("gst")) s.setGst(str(args, "gst").trim().toUpperCase(Locale.ROOT));
                 if (args.containsKey("state")) s.setState(str(args, "state"));
+                if (args.containsKey("stateCode")) s.setStateCode(str(args, "stateCode"));
                 if (args.containsKey("city")) s.setCity(str(args, "city"));
+                if (args.containsKey("address")) s.setAddress(str(args, "address"));
+                if (args.containsKey("openingBalance")) s.setOpeningBalance(dbl(args, "openingBalance", s.getOpeningBalance()));
+                if (args.containsKey("creditPeriodDays")) s.setCreditPeriodDays((int) dbl(args, "creditPeriodDays", s.getCreditPeriodDays()));
                 dm.suppliers().saveSupplier(s);
             });
             case "delete_supplier": return confirmable("delete_supplier", args, () -> dm.suppliers().deleteSupplier(str(args, "id")));
@@ -383,7 +418,35 @@ public final class McpToolRegistry {
 
             // Read-only masters
             case "list_categories": return dm.getAllCategories().stream().map(c -> mapOf(
-                    "id", c.getId(), "name", c.getName())).collect(java.util.stream.Collectors.toList());
+                    "id", c.getId(), "name", c.getName(),
+                    "itemCount", dm.items().countItemsInCategory(c.getId()))).collect(java.util.stream.Collectors.toList());
+            case "create_category": return createCategory(dm, args);
+            case "update_category": return confirmable("update_category", args, () -> {
+                ItemCategory cat = requireCategory(dm, str(args, "id"));
+                String newName = str(args, "name");
+                if (newName == null || newName.isBlank()) throw new IllegalArgumentException("name is required");
+                String trimmed = newName.trim();
+                // case-insensitive duplicate guard (unique index backstops races)
+                ItemCategory clash = McpEnsure.findCategory(dm, null, trimmed);
+                if (clash != null && !clash.getId().equalsIgnoreCase(cat.getId()))
+                    throw new IllegalArgumentException("Another category named '" + clash.getName()
+                            + "' already exists (id " + clash.getId() + "); rename refused.");
+                cat.setName(trimmed);
+                dm.saveCategory(cat);
+                // items carry category_name denormalized — cascade the rename
+                dm.items().updateCategoryNameForCategory(cat.getId(), trimmed);
+            });
+            case "delete_category": return confirmable("delete_category", args, () -> {
+                String id = str(args, "id");
+                if ("cat_trouser".equalsIgnoreCase(id) || "cat_trousers".equalsIgnoreCase(id))
+                    throw new IllegalArgumentException("The default category '" + id + "' is protected and cannot be deleted.");
+                ItemCategory cat = requireCategory(dm, id);
+                int assigned = dm.items().countItemsInCategory(id);
+                if (assigned > 0)
+                    throw new IllegalArgumentException("Category '" + cat.getName() + "' still has " + assigned
+                            + " item(s) assigned. Move them first with update_item { id, categoryId/categoryName }, then delete the empty category.");
+                dm.deleteCategory(id);
+            });
             case "list_transports": return dm.getAllTransports().stream().map(tr -> mapOf(
                     "id", tr.getId(), "name", tr.getName(), "phone", tr.getPhone(),
                     "vehicleNumber", tr.getVehicleNumber())).collect(java.util.stream.Collectors.toList());
@@ -491,6 +554,44 @@ public final class McpToolRegistry {
             case "delete_buyer": return "Permanently delete buyer " + str(args, "id");
             case "delete_supplier": return "Permanently delete supplier " + str(args, "id");
             case "delete_item": return "Permanently delete catalog item " + str(args, "id");
+            case "update_buyer": {
+                StringBuilder sb = new StringBuilder("Update buyer ").append(str(args, "id"));
+                List<String> changes = new ArrayList<>();
+                if (args.containsKey("name")) changes.add("name → " + str(args, "name"));
+                if (args.containsKey("phone")) changes.add("phone → " + str(args, "phone"));
+                if (args.containsKey("gst")) changes.add("gst → " + str(args, "gst"));
+                if (args.containsKey("address")) changes.add("address → " + str(args, "address"));
+                if (args.containsKey("state")) changes.add("state → " + str(args, "state"));
+                if (args.containsKey("stateCode")) changes.add("stateCode → " + str(args, "stateCode"));
+                if (args.containsKey("city")) changes.add("city → " + str(args, "city"));
+                if (args.containsKey("contactPerson")) changes.add("contactPerson → " + str(args, "contactPerson"));
+                if (args.containsKey("openingBalance")) changes.add("openingBalance → " + args.get("openingBalance"));
+                if (args.containsKey("creditLimit")) changes.add("creditLimit → " + args.get("creditLimit"));
+                String trName = strOr(args, "transportName", "");
+                String trId = strOr(args, "transportId", "");
+                if (!trName.isBlank() || !trId.isBlank())
+                    changes.add("ASSIGN default transport → " + (!trName.isBlank() ? trName : trId));
+                if (!changes.isEmpty()) sb.append(": ").append(String.join(", ", changes));
+                return sb.toString();
+            }
+            case "update_supplier": {
+                StringBuilder sb = new StringBuilder("Update supplier ").append(str(args, "id"));
+                List<String> changes = new ArrayList<>();
+                if (args.containsKey("name")) changes.add("name → " + str(args, "name"));
+                if (args.containsKey("phone")) changes.add("phone → " + str(args, "phone"));
+                if (args.containsKey("gst")) changes.add("gst → " + str(args, "gst"));
+                if (args.containsKey("state")) changes.add("state → " + str(args, "state"));
+                if (args.containsKey("stateCode")) changes.add("stateCode → " + str(args, "stateCode"));
+                if (args.containsKey("city")) changes.add("city → " + str(args, "city"));
+                if (args.containsKey("address")) changes.add("address → " + str(args, "address"));
+                if (args.containsKey("openingBalance")) changes.add("openingBalance → " + args.get("openingBalance"));
+                if (args.containsKey("creditPeriodDays")) changes.add("creditPeriodDays → " + args.get("creditPeriodDays"));
+                if (!changes.isEmpty()) sb.append(": ").append(String.join(", ", changes));
+                return sb.toString();
+            }
+            case "update_category": return "Rename category " + str(args, "id") + " → " + str(args, "name")
+                    + " (cascades to all items referencing it)";
+            case "delete_category": return "Delete category " + str(args, "id") + " (only allowed while it has no items)";
             case "update_item": {
                 StringBuilder sb = new StringBuilder("Update item ").append(str(args, "id"));
                 List<String> changes = new ArrayList<>();
@@ -532,6 +633,7 @@ public final class McpToolRegistry {
     private static Map<String, Object> createBuyer(DataManager dm, Map<String, Object> args) throws Exception {
         String name = str(args, "name");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
+        List<Map<String, Object>> autoCreated = new ArrayList<>();
 
         // Idempotent by name — never silently duplicate a directory entry.
         McpEnsure.Outcome out = McpEnsure.ensureBuyer(dm, null, name);
@@ -540,6 +642,7 @@ public final class McpToolRegistry {
                     "existed", true, "matchedBy", out.matchedBy,
                     "note", "Existing buyer returned unchanged; use update_buyer to modify.");
         }
+        autoCreated.add(out.asMap("buyer"));
         // enrich the freshly auto-created record with the provided fields
         Buyer b = dm.buyers().getBuyerById(out.id);
         if (b != null) {
@@ -548,10 +651,20 @@ public final class McpToolRegistry {
             if (!strOr(args, "address", "").isBlank()) b.setAddress(strOr(args, "address", ""));
             if (!strOr(args, "state", "").isBlank()) b.setState(strOr(args, "state", ""));
             if (!strOr(args, "stateCode", "").isBlank()) b.setStateCode(strOr(args, "stateCode", ""));
+            if (!strOr(args, "city", "").isBlank()) b.setCity(strOr(args, "city", ""));
+            if (!strOr(args, "contactPerson", "").isBlank()) b.setContactPerson(strOr(args, "contactPerson", ""));
+            if (args.containsKey("openingBalance")) b.setOpeningBalance(dbl(args, "openingBalance", 0.0));
+            if (args.containsKey("creditLimit")) b.setCreditLimit(dbl(args, "creditLimit", 100000.0));
+            McpEnsure.Outcome transport = McpEnsure.ensureTransport(dm,
+                    strOr(args, "transportId", ""), strOr(args, "transportName", ""));
+            if (transport != null) {
+                b.setDefaultTransportId(transport.id);
+                if (transport.created) autoCreated.add(transport.asMap("transport"));
+            }
             dm.buyers().saveBuyer(b);
         }
         return mapOf("ok", true, "id", out.id, "name", b != null ? b.getName() : out.name,
-                "existed", false, "autoCreated", List.of(out.asMap("buyer")));
+                "existed", false, "autoCreated", autoCreated);
     }
 
     private static Map<String, Object> createSupplier(DataManager dm, Map<String, Object> args) throws Exception {
@@ -1369,6 +1482,19 @@ public final class McpToolRegistry {
         return mapOf("ok", true, "id", tr.getId(), "name", tr.getName(), "existed", false);
     }
 
+    private static Map<String, Object> createCategory(DataManager dm, Map<String, Object> args) throws Exception {
+        String name = str(args, "name");
+        if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
+        // Check-then-create (idempotent by case-insensitive name, race-safe,
+        // unique DB index backstop) — the exact same path items use.
+        McpEnsure.Outcome out = McpEnsure.ensureCategory(dm, null, name);
+        Map<String, Object> res = mapOf("ok", true, "id", out.id, "name", out.name,
+                "existed", !out.created);
+        if (out.created) res.put("autoCreated", List.of(out.asMap("category")));
+        else res.put("matchedBy", out.matchedBy);
+        return res;
+    }
+
     private static Map<String, Object> createBackup(DataManager dm, Map<String, Object> args) throws Exception {
         java.io.File dest;
         String p = str(args, "path");
@@ -1648,6 +1774,13 @@ public final class McpToolRegistry {
         ItemRecord it = dm.items().getItemById(id);
         if (it == null) throw new IllegalArgumentException("Item not found: " + id);
         return it;
+    }
+
+    private static ItemCategory requireCategory(DataManager dm, String id) {
+        if (id == null || id.isBlank()) throw new IllegalArgumentException("Category id is required");
+        ItemCategory c = dm.categories().getCategoryById(id.trim());
+        if (c == null) throw new IllegalArgumentException("Category not found: " + id);
+        return c;
     }
 
     private static boolean matches(String query, String... fields) {

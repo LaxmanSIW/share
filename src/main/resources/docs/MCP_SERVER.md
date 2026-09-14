@@ -152,6 +152,39 @@ delete_item { id: "item_..." }
 4. Never confirm on your own initiative. Unapproved ops are discarded when
    the server stops.
 
+### Flow 6 — Categories as first-class directory entries
+
+```
+create_category { name: "Apparel" }                        // idempotent by name
+update_category { id: "cat_...", name: "Apparels & Clothing" }  // rename, cascades
+delete_category { id: "cat_..." }                           // only when empty
+```
+
+- `list_categories` returns `itemCount` per category — 0 means safe to delete.
+- Renaming cascades: items carry the category name denormalized, and the
+  update rewrites it everywhere (the response is confirmation-gated; the
+  summary says it cascades).
+- Deleting a non-empty category is REFUSED with the exact count and the
+  move-first recipe (`update_item { id, categoryId/categoryName }`). The
+  app's default category is protected.
+- `update_item` remains the way to move an item BETWEEN categories
+  (see Flow 1b).
+
+### Flow 7 — Buyer logistics: "assign default transport to these buyers"
+
+```
+create_buyer { name: "New Buyer", transportName: "Sharma Transport" }   // at creation
+update_buyer { id: "byr_...", transportName: "Sharma Transport" }        // or later
+```
+
+- `transportId`/`transportName` are accepted by BOTH tools; a missing
+  transport is auto-created (check-then-create, reported in `autoCreated`).
+- On `update_buyer` the assignment is spelled out in the confirmation
+  summary: `Update buyer byr_x: ASSIGN default transport → Sharma Transport`.
+- Same fields update everything else the buyer dialog holds: city,
+  contactPerson, openingBalance, creditLimit, address, stateCode — full
+  create/update parity on both buyers and suppliers.
+
 ## Golden habits (what a year of experience looks like)
 
 1. **Read first**: `get_app_guide` → `server_status` → `whoami` at session
@@ -246,7 +279,7 @@ Every create path funnels through `com.invoicestudio.mcp.McpEnsure`:
 | Tool | Dependency checks | Idempotency | Rollback | Response additions |
 |---|---|---|---|---|
 | `create_item` | category (id→name) | by item name | category rolled back if item save unverified | `existed`, `autoCreated` |
-| `create_buyer` | — (leaf) | by name | — | `existed`, `autoCreated` |
+| `create_buyer` | default transport (id→name) | by name | — | `existed`, `autoCreated` (buyer itself + any transport) |
 | `create_supplier` | — (leaf) | by name | — | `existed`, `autoCreated` |
 | `create_transport` | — (leaf) | by name | — | `existed` |
 | `create_template` | — (leaf) | by name | — | `existed`, `warnings` (type downgrades) |
