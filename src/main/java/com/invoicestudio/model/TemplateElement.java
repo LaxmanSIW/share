@@ -87,6 +87,7 @@ public class TemplateElement {
     private double rowHeight = 7.0; // mm
     private String borderStyle = "grid"; // grid, rows, outline, none
     private boolean showZebra = true;
+    private int minRows = 0; // TABLE: render at least N data rows so column lines + borders fill the full height (0 = off)
     private String tableBorderColor = "#c8c8c8";
     private double tableBorderWidth = 0.26; // mm (~1px @96dpi)
     private Boolean borderTop = true;
@@ -314,6 +315,10 @@ public class TemplateElement {
 
     public double getRowHeight() { return rowHeight; }
     public void setRowHeight(double rowHeight) { this.rowHeight = rowHeight; }
+
+    /** Minimum number of data rows the table renders (borders only when empty). 0 = natural size. */
+    public int getMinRows() { return minRows; }
+    public void setMinRows(int minRows) { this.minRows = Math.max(0, minRows); }
 
     public String getBorderStyle() { return borderStyle != null ? borderStyle : "grid"; }
     public void setBorderStyle(String borderStyle) { this.borderStyle = borderStyle; }
@@ -753,6 +758,7 @@ public class TemplateElement {
         c.headerColor = this.headerColor;
         c.tableBorderColor = this.tableBorderColor;
         c.rowHeight = this.rowHeight;
+        c.minRows = this.minRows;
         c.showZebra = this.showZebra;
         c.zebraColor = this.zebraColor;
         c.rowBg = this.rowBg;

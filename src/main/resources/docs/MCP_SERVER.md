@@ -185,6 +185,23 @@ update_buyer { id: "byr_...", transportName: "Sharma Transport" }        // or l
   contactPerson, openingBalance, creditLimit, address, stateCode — full
   create/update parity on both buyers and suppliers.
 
+### Flow 8 — Transport masters are first-class (update + delete)
+
+```
+update_transport { id: "trn_...", phone: "9999999999", vehicleNumber: "MH14 XY 9999" }
+delete_transport { id: "trn_..." }              // refuses while buyers reference it
+delete_transport { id: "trn_...", force: true } // clears buyer references + deletes
+```
+
+- `update_transport` accepts name/phone/vehicleNumber (whatever the
+  Transports dialog holds); the confirmation summary lists every change.
+- `delete_transport` is reference-guarded: buyers carry `defaultTransportId`,
+  so a delete that would leave them dangling is REFUSED with the reference
+  count and two remedies — reassign each buyer via `update_buyer`, or pass
+  `force: true` to clear their default-transport assignment automatically
+  (spelled out in the confirmation summary). Unreferenced transports delete
+  directly.
+
 ## Golden habits (what a year of experience looks like)
 
 1. **Read first**: `get_app_guide` → `server_status` → `whoami` at session
@@ -295,6 +312,11 @@ re-validate existence at execution time. Exception to "unchanged":
 `update_item` now also runs a dependency check — its `categoryId`/`categoryName`
 reference is resolved via the same check-then-create path (auto-create + race
 safety + no dangling ids), so category reassignment is first-class there.
+
+Transport parity: `update_transport` (name/phone/vehicleNumber) and
+`delete_transport` (reference-guarded — refuses while buyers still use it as
+their default; `force: true` clears those assignments then deletes, nothing
+left dangling). See Flow 8.
 
 ## Template design tools — full vocabulary exposure + sight
 

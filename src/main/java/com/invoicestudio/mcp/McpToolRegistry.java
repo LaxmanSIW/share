@@ -242,6 +242,14 @@ public final class McpToolRegistry {
                 obj("name", str("Transport name"),
                         "phone", str("Phone"),
                         "vehicleNumber", str("Vehicle number")), true, false));
+        t.add(new ToolDef("update_transport", "Update an existing transport (logistics) partner: name, phone, vehicleNumber. Requires user confirmation.",
+                obj("id", str("Transport id"),
+                        "name", str("New name (optional)"),
+                        "phone", str("New phone (optional)"),
+                        "vehicleNumber", str("New vehicle number (optional)")), true, true));
+        t.add(new ToolDef("delete_transport", "Delete a transport (logistics) partner. Refuses while buyers still reference it as their default (the error tells you how many). Pass force:true to clear the default-transport assignment on those buyers automatically and proceed. Requires user confirmation.",
+                obj("id", str("Transport id"),
+                        "force", str("Optional. true = clear the default transport on referencing buyers and delete anyway")), true, true));
         t.add(new ToolDef("create_backup", "Export a full data backup (all users' records in scope of the DB) to a JSON file. Default location: app data dir /backups.",
                 obj("path", str("Optional destination file path")), true, false));
         t.add(new ToolDef("whoami", "Which user's books this server is operating on (Firebase account email, display name, session expiry). Answers 'how does authentication work here'. Never returns secrets.",
@@ -471,6 +479,40 @@ public final class McpToolRegistry {
             case "create_variable": return createVariable(dm, args);
             case "delete_variable": return confirmable("delete_variable", args, () -> dm.variables().deleteVariable(str(args, "key")));
             case "create_transport": return createTransport(dm, args);
+            case "update_transport": return confirmable("update_transport", args, () -> {
+                com.invoicestudio.model.Transport tr = requireTransport(dm, str(args, "id"));
+                boolean changed = false;
+                if (args.containsKey("name") && !strOr(args, "name", "").isBlank()) {
+                    tr.setName(str(args, "name").trim());
+                    changed = true;
+                }
+                if (args.containsKey("phone")) { tr.setPhone(strOr(args, "phone", "")); changed = true; }
+                if (args.containsKey("vehicleNumber")) { tr.setVehicleNumber(strOr(args, "vehicleNumber", "")); changed = true; }
+                if (!changed) throw new IllegalArgumentException("Nothing to update: pass name, phone and/or vehicleNumber");
+                dm.saveTransport(tr);
+            });
+            case "delete_transport": return confirmable("delete_transport", args, () -> {
+                String id = str(args, "id");
+                com.invoicestudio.model.Transport tr = requireTransport(dm, id);
+                // Buyers carry defaultTransportId — refuse while references exist
+                // so no buyer is left pointing at a deleted transport.
+                java.util.List<com.invoicestudio.model.Buyer> referencing = new java.util.ArrayList<>();
+                for (com.invoicestudio.model.Buyer b : dm.getAllBuyers()) {
+                    if (id.equals(b.getDefaultTransportId())) referencing.add(b);
+                }
+                if (!referencing.isEmpty() && !"true".equalsIgnoreCase(strOr(args, "force", ""))) {
+                    throw new IllegalArgumentException("Transport '" + tr.getName() + "' is the default transport of "
+                            + referencing.size() + " buyer(s). Reassign them first with update_buyer { id, transportName/transportId }, "
+                            + "or call delete_transport again with force:true to clear their default transport automatically.");
+                }
+                if (!referencing.isEmpty()) {
+                    for (com.invoicestudio.model.Buyer b : referencing) {
+                        b.setDefaultTransportId("");
+                        dm.buyers().saveBuyer(b);
+                    }
+                }
+                dm.deleteTransport(id);
+            });
             case "create_backup": return createBackup(dm, args);
             case "whoami": return whoami();
 
@@ -548,12 +590,32 @@ public final class McpToolRegistry {
     }
 
     private static String describeOp(String tool, Map<String, Object> args) {
+        return describeOpForTest(tool, args);
+    }
+
+    /** Package-visible bridge so MCP tests can assert the confirmation summary text. */
+    static String describeOpForTest(String tool, Map<String, Object> args) {
         switch (tool) {
             case "delete_bill": return "Delete invoice " + str(args, "id") + " (stock rows reversed)";
             case "delete_purchase": return "Delete purchase bill " + str(args, "id") + " (stock rows reversed)";
             case "delete_buyer": return "Permanently delete buyer " + str(args, "id");
             case "delete_supplier": return "Permanently delete supplier " + str(args, "id");
             case "delete_item": return "Permanently delete catalog item " + str(args, "id");
+            case "update_transport": {
+                StringBuilder sb = new StringBuilder("Update transport ").append(str(args, "id"));
+                List<String> changes = new ArrayList<>();
+                if (args.containsKey("name")) changes.add("name → " + str(args, "name"));
+                if (args.containsKey("phone")) changes.add("phone → " + str(args, "phone"));
+                if (args.containsKey("vehicleNumber")) changes.add("vehicleNumber → " + str(args, "vehicleNumber"));
+                if (!changes.isEmpty()) sb.append(": ").append(String.join(", ", changes));
+                return sb.toString();
+            }
+            case "delete_transport": {
+                boolean force = "true".equalsIgnoreCase(strOr(args, "force", ""));
+                return "Delete transport " + str(args, "id")
+                        + (force ? " and CLEAR the default-transport assignment of every buyer using it"
+                                 : " (refused while buyers still reference it as their default)");
+            }
             case "update_buyer": {
                 StringBuilder sb = new StringBuilder("Update buyer ").append(str(args, "id"));
                 List<String> changes = new ArrayList<>();
@@ -1480,6 +1542,13 @@ public final class McpToolRegistry {
                 name.trim(), strOr(args, "phone", ""), strOr(args, "vehicleNumber", ""));
         dm.saveTransport(tr);
         return mapOf("ok", true, "id", tr.getId(), "name", tr.getName(), "existed", false);
+    }
+
+    private static com.invoicestudio.model.Transport requireTransport(DataManager dm, String id) {
+        if (id == null || id.isBlank()) throw new IllegalArgumentException("Transport id is required");
+        com.invoicestudio.model.Transport tr = dm.getTransportById(id.trim());
+        if (tr == null) throw new IllegalArgumentException("Transport not found: " + id);
+        return tr;
     }
 
     private static Map<String, Object> createCategory(DataManager dm, Map<String, Object> args) throws Exception {

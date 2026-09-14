@@ -46,8 +46,14 @@ public class BillPreviewPane extends StackPane {
 
     public void setZoom(double zoom) {
         this.zoom = Math.max(0.2, Math.min(3.0, zoom));
-        scaleGroup.setScaleX(this.zoom);
-        scaleGroup.setScaleY(this.zoom);
+        // Scale the CHILD (pagePane), not the Group: JavaFX excludes a node's
+        // OWN transforms from its layoutBounds, so scaling the Group made the
+        // StackPane lay out the page at unzoomed size while the visual grew
+        // beyond it (bottom padding vanished, zoomed content scrolled out of
+        // reach at the top). Scaling the child feeds the Group's layoutBounds
+        // so every container sizes/scrolls correctly at any zoom.
+        pagePane.setScaleX(this.zoom);
+        pagePane.setScaleY(this.zoom);
         if (currentTemplate != null) {
             updatePrefSize();
         }
@@ -328,26 +334,33 @@ public class BillPreviewPane extends StackPane {
         String rowTextCol = isMono ? "#000000" : el.getRowColor();
         String zebraCol = isMono ? "#ffffff" : el.getZebraColor();
 
-        for (int i = 0; i < items.size(); i++) {
-            BillItem item = items.get(i);
+        // minRows: fill the declared band with grid rows (no text) so the
+        // column dividers run the full height — mirrors PdfExportService.
+        int minRows = el.getMinRows();
+        int rowsToDraw = Math.max(items.size(), minRows);
+
+        for (int i = 0; i < rowsToDraw; i++) {
+            BillItem item = i < items.size() ? items.get(i) : null;
             HBox row = new HBox(0);
             row.setPrefHeight(rowHeightPx);
-            String rBg = el.isShowZebra() && (i % 2 == 1) ? zebraCol : rowBgCol;
+            String rBg = (item != null && el.isShowZebra() && (i % 2 == 1)) ? zebraCol : rowBgCol;
             row.setStyle("-fx-background-color: " + rBg + ";"
                     + (innerLines ? " -fx-border-color: transparent transparent " + bc + " transparent; -fx-border-width: 0 0 " + bw + " 0;" : ""));
 
-            for (int ci = 0; ci < cols.size(); ci++) {
-                TableColumn c = cols.get(ci);
-                double cW = (c.getWidth() / 100.0) * w;
-                boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
-                String val = getItemColumnValue(c.getKey(), item, i + 1, cur);
-                Label lbl = new Label(val);
-                lbl.setPrefWidth(cW);
-                lbl.setPrefHeight(rowHeightPx);
-                lbl.setStyle("-fx-font-size: " + fontPx + "px; -fx-text-fill: " + rowTextCol + "; -fx-padding: 0 4;"
-                        + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
-                lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
-                row.getChildren().add(lbl);
+            if (item != null) {
+                for (int ci = 0; ci < cols.size(); ci++) {
+                    TableColumn c = cols.get(ci);
+                    double cW = (c.getWidth() / 100.0) * w;
+                    boolean vSep = "grid".equals(bStyle) && ci < cols.size() - 1;
+                    String val = getItemColumnValue(c.getKey(), item, i + 1, cur);
+                    Label lbl = new Label(val);
+                    lbl.setPrefWidth(cW);
+                    lbl.setPrefHeight(rowHeightPx);
+                    lbl.setStyle("-fx-font-size: " + fontPx + "px; -fx-text-fill: " + rowTextCol + "; -fx-padding: 0 4;"
+                            + (vSep ? " -fx-border-color: transparent " + bc + " transparent transparent; -fx-border-width: 0 " + bw + " 0 0;" : ""));
+                    lbl.setAlignment("right".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER_RIGHT : ("center".equalsIgnoreCase(c.getAlign()) ? Pos.CENTER : Pos.CENTER_LEFT));
+                    row.getChildren().add(lbl);
+                }
             }
             box.getChildren().add(row);
         }

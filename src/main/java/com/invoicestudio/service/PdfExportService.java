@@ -919,14 +919,20 @@ public class PdfExportService {
         double curY = y + headerHeightPx;
         String currency = settings != null ? settings.getCurrency() : "₹";
 
-        for (int i = 0; i < items.size(); i++) {
-            BillItem item = items.get(i);
+        // minRows: Indian GST layouts need the item grid to fill a fixed band —
+        // render at least N data rows (borders only when empty) so the column
+        // dividers run the full height instead of stopping after 1-2 items.
+        int minRows = el.getMinRows();
+        int rowsToDraw = Math.max(items.size(), minRows);
+
+        for (int i = 0; i < rowsToDraw; i++) {
+            BillItem item = i < items.size() ? items.get(i) : null;
             boolean isEven = (i % 2 == 0);
 
             // Row background, then zebra stripe overlay when enabled
             g2.setColor(rowBgColor);
             g2.fill(new Rectangle2D.Double(x, curY, w, rowHeightPx));
-            if (el.isShowZebra() && !isEven) {
+            if (item != null && el.isShowZebra() && !isEven) {
                 g2.setColor(zebraBgColor);
                 g2.fill(new Rectangle2D.Double(x, curY, w, rowHeightPx));
             }
@@ -934,6 +940,19 @@ public class PdfExportService {
             if (innerLines) {
                 g2.setColor(borderColor);
                 g2.draw(new Line2D.Double(x, curY + rowHeightPx, x + w, curY + rowHeightPx));
+            }
+
+            if (item == null) { // filler row: grid only, no text
+                double fillerColX = x;
+                for (int ci = 0; ci < cols.size() - 1; ci++) {
+                    fillerColX += (cols.get(ci).getWidth() / 100.0) * w;
+                    if (gridLines) {
+                        g2.setColor(borderColor);
+                        g2.draw(new Line2D.Double(fillerColX, curY, fillerColX, curY + rowHeightPx));
+                    }
+                }
+                curY += rowHeightPx;
+                continue;
             }
 
             double rowColX = x;
@@ -954,14 +973,36 @@ public class PdfExportService {
             curY += rowHeightPx;
         }
 
+        // Void filler: when the element declares more height than the drawn
+        // rows consume, extend the column dividers + bottom border through the
+        // remainder so the grid is continuous down to the summary bar.
+        double bottomY = curY;
+        if (minRows > 0 && y + h > curY + 0.5) {
+            g2.setColor(rowBgColor);
+            g2.fill(new Rectangle2D.Double(x, curY, w, y + h - curY));
+            if (gridLines) {
+                g2.setColor(borderColor);
+                double colLineX = x;
+                for (int ci = 0; ci < cols.size() - 1; ci++) {
+                    colLineX += (cols.get(ci).getWidth() / 100.0) * w;
+                    g2.draw(new Line2D.Double(colLineX, curY, colLineX, y + h));
+                }
+            }
+            if (innerLines) {
+                g2.setColor(borderColor);
+                g2.draw(new Line2D.Double(x, y + h, x + w, y + h));
+            }
+            bottomY = y + h;
+        }
+
         // Outer border — drawn per enabled side
         if (drawOuter) {
             g2.setColor(borderColor);
             g2.setStroke(borderStroke);
             if (el.isBorderTop())    g2.draw(new Line2D.Double(x, y, x + w, y));
-            if (el.isBorderBottom()) g2.draw(new Line2D.Double(x, curY, x + w, curY));
-            if (el.isBorderLeft())   g2.draw(new Line2D.Double(x, y, x, curY));
-            if (el.isBorderRight())  g2.draw(new Line2D.Double(x + w, y, x + w, curY));
+            if (el.isBorderBottom()) g2.draw(new Line2D.Double(x, y, x + w, bottomY));
+            if (el.isBorderLeft())   g2.draw(new Line2D.Double(x, y, x, bottomY));
+            if (el.isBorderRight())  g2.draw(new Line2D.Double(x + w, y, x + w, bottomY));
         }
     }
 

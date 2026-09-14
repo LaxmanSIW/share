@@ -96,6 +96,40 @@ when the bound variable is empty — use for optional fields like GSTIN),
 `opacity` (0..1), `clipEnabled` + `clipShape` (`circle`, `rounded_rect`),
 `scaleX/scaleY`, `flipHorizontal/flipVertical`.
 
+#### zIndex layering convention (use it for every overlapping design)
+
+Elements are painted in ascending `zIndex` (ties fall back to list order).
+Overlapping designs (invoice cards over party frames, ribbons over panels,
+signature stamps over text) become unmaintainable when everything is `0` —
+stick to this 4-tier hierarchy:
+
+| Tier | zIndex | Paints |
+|---|---|---|
+| 1 | 1–10 | Background fills, letterhead bands, corner artwork, watermark |
+| 2 | 11–30 | Outlined boxes, party frames, the item-table grid |
+| 3 | 31–60 | Text labels, bound values, logos, QR/barcodes |
+| 4 | 61–100 | Overlapping badges, ribbons, signature stamps, status overlays |
+
+#### Coordinate convention for POLYGON / POLYLINE / PATH / FREEHAND
+
+`points` and `pathData` are **element-local**: each coordinate is ADDED to
+the element's `x, y` (`final = elementX + pointX`). Pick ONE of two modes
+and never mix them:
+
+- **Local mode (recommended):** set `x, y, w, h` as the shape's container
+  box and write points relative to `(0,0)` — e.g. a right-pointing triangle
+  filling a 20×10 box at position (120,40): `x: 120, y: 40, w: 20, h: 10,
+  points: "0,0 20,5 0,10"`. The preview warnings will flag shapes whose
+  local coordinates exceed the box.
+- **Page-absolute mode:** set `x: 0, y: 0` and write full-page mm
+  coordinates directly in `points` (e.g. a bottom ribbon across an A4:
+  `points: "0,277 210,277 210,287 0,287"`). With `x/y = 0` the offset is a
+  no-op, so absolute coordinates land exactly where you wrote them.
+
+`PATH` `pathData` follows the same rule: `M 10 5` means "10 mm right and
+5 mm down from the element's x,y". Commands: `M` move, `L` line, `C`/`Q`
+curves, `A` arc, `Z` close.
+
 **Typography** (TEXT, PAGENO, table cells): `fontFamily` (e.g. "Segoe UI",
 "Arial"), `fontSize` (pt), `fontWeight` (400 or 700), `italic`,
 `underline`, `strikethrough`, `uppercase`, `color` (#RRGGBB), `align`
@@ -173,8 +207,28 @@ The table renders the bill's line items. Configure:
 - `rowHeight` (mm per row, default 7), `borderStyle`
   (`grid | rows | outline | none`), `tableBorderColor`, `tableBorderWidth`,
   per-side `borderTop/Bottom/Left/Right`.
+- **`minRows`** (default 0): render at least N data rows so the grid fills a
+  fixed band even for 1–2 item invoices — empty rows draw borders only, no
+  text. This is the key to the Indian-GST "continuous column line" look:
+  set the TABLE's `h` to the full band (e.g. 70 mm) and `minRows` to
+  `ceil((h − header ≈ 8 mm) / rowHeight)` (e.g. 70/7 → 9). When the drawn
+  rows don't reach the declared `h`, the column dividers and bottom border
+  are **extended automatically through the remainder** — no more hand-placed
+  LINE elements to fake the grid.
 - Typography of cells follows the element's font properties; header row is
   bold automatically.
+
+#### Continuous column line formula (when you position things manually)
+
+The x-position of the divider after column i (0-based) is:
+
+```
+x_i = tableX + tableW × (colWidth_0 + colWidth_1 + … + colWidth_i) / 100
+```
+
+With `minRows` you normally never need this — but it is how the reference
+invoices align the summary bar's `{{parcel}}`, `{{total_qty}}` and
+`{{taxable}}` under specific table columns.
 
 ### Column keys
 
@@ -200,8 +254,17 @@ The table renders the bill's line items. Configure:
 - Any picture: `src` = a base64 data URI embedded directly in the template,
   e.g. `"data:image/png;base64,iVBORw0KG..."`. JPEG also works
   (`data:image/jpeg;base64,...`).
+- **Transparency is fully supported**: 32-bit ARGB PNGs keep their alpha —
+  the render engine composites them with `SRC_OVER`, so transparent
+  backgrounds blend with whatever is behind (panel colors, header bands).
+  Use transparent PNGs for signatures, brand badges and corner geometry
+  instead of flattening white boxes behind them.
 - `objectFit`: `contain` (default, no distortion), `cover` (fills, crops),
   `fill` (stretches).
+- Recommended printed sizes:
+  - Brand logos: 60–80 mm wide, 20–30 mm tall.
+  - Signatures: 30–40 mm wide, 10–15 mm tall.
+  - Corner artwork / flourishes: 30–45 mm wide and tall.
 - Keep embedded images small (< 300 KB base64): they live inside the
   template JSON and every tool call carries them.
 - If the user asks for a *new* logo/artwork, that is image **generation** —
@@ -270,12 +333,70 @@ will show it and the print will too.
 
 - All elements inside page bounds minus 8 mm margins (`warnings` catches
   hard overflows).
-- Table starts high enough for ~15 rows on A4, or page is autoHeight.
+- Table starts high enough for ~15 rows on A4, or page is autoHeight; for a
+  fixed grid band set `minRows` (see §4) instead of hand-placing lines.
 - Totals sit below the table's grown extent, never under it.
 - Every `{{binding}}` resolves (warnings list unknown keys).
 - QR ≥ 20×20 mm for reliable phone scanning; barcode ≥ 30 mm wide.
 - Colors pass the mono-print test: preview still readable in grayscale.
 - `hideWhenBlank` on optional fields (GSTIN for B2C, transport fields).
+- Overlapping elements follow the zIndex tiers (§2).
+
+### 6.4 Pre-baked blocks for standard Indian GST invoices
+
+95% of trade invoices reuse these five blocks. Coordinates assume A4
+portrait (210 mm wide); scale proportionally for other sizes.
+
+**① Double-decker invoice card (top-right)** — header-value stack:
+```
+RECT  x=130 y=10 w=70 h=22  bg #f3ede4, borderRadius 2
+TEXT  "INVOICE NO."  x=132 y=12 w=66 h=5  7pt gray #6b7280, bg #f3ede4
+TEXT  {{invoice_no}} x=132 y=17 w=66 h=6  12pt bold #1a1a1a, bg #f3ede4
+LINE  x=133 y=24.5 w=64 (h, 0.26mm, #d8cfc0)
+TEXT  "INVOICE DATE" x=132 y=25.5 w=32 h=4  6.5pt gray
+TEXT  {{invoice_date}} x=132 y=29 w=32 h=5  8pt #1a1a1a
+```
+
+**② Split party block (middle)** — Shipped-to left, Billed-to right:
+```
+RECT frame ×2:  x=10 / x=108, y=34, w=96/92, h=26, 0.3mm #1a1a1a border
+Left  (Consignee): "Consignee (Shipped to)" 7pt bold on #f3ede4 band,
+      {{buyer_name}} 9pt bold, {{buyer_address}} 7.5pt,
+      GSTIN {{buyer_gstin}} 7.5pt, State: {{buyer_state}} ({{buyer_state_code}}) 7.5pt
+Right (Receiver):  "Receiver (Billed to)", {{buyer_name}},
+      {{buyer_address}}, GSTIN {{buyer_gstin}}
+Transport strip between/below: {{transport_name}} · {{vehicle_no}} · {{po_no}}
+```
+
+**③ Table summary bar (directly under the TABLE)** — aligns with columns
+using the divider formula from §4 (example for sr6/desc34/hsn10/qty8
+widths, tableX=10):
+```
+RECT x=10 y={tableY+tableH} w=190 h=6 bg #f3ede4
+TEXT "PARCEL QUANTITY : {{parcel}}"  x=12  …  7.5pt bold
+TEXT {{total_qty}}  x=10+190×0.58  …  right-aligned under qty column
+TEXT {{taxable}}    x=10+190×0.74  …  right-aligned under taxable column
+```
+
+**④ Bank details & terms (left, below table)**:
+```
+RECT "BANK DETAILS" band  x=10 y=240 w=95 h=5.5 bg #ded1c1, 7.5pt bold
+TEXT bank_name / A/c {{bank_account}} / IFSC {{bank_ifsc}}  7.5pt, 4.2mm apart
+TEXT "GST NO." + {{business_gst}}  7.5pt
+TEXT {{terms}}  x=10 y=262 w=95 h=28  6.5pt #4b5563 (7 standard points)
+```
+
+**⑤ Tax summary & signatory (right, below table)**:
+```
+Rows 4.5mm apart, x=130..200 right column: Taxable {{taxable}},
+CGST {{cgst}}, SGST {{sgst}}, (IGST {{igst}} hideWhenBlank), Round off {{round_off}}
+RECT GRAND TOTAL band x=130 y=... w=70 h=9 bg #1a1a1a,
+     "GRAND TOTAL" white 8pt left + {{grand_total}} white 10.5pt bold right
+TEXT "For, {{business_name}}"   x=132 y=272  8pt
+IMAGE signature  x=150 y=273 w=35 h=12 (transparent PNG, ARGB)
+LINE  signature rule  x=140 y=287 w=45
+TEXT "Authorised Signatory"  x=140 y=288  7pt centered
+```
 
 ## 7. Tool cheat-sheet for template work
 
@@ -302,5 +423,7 @@ will show it and the print will too.
   (saved/draft), and `warnings` — out-of-bounds elements and unresolved
   bindings, each naming the offending element. Fix every warning before
   saving.
-- `dpi` 72–300 (default 150). Use 300 only for fine print checks; previews
-  travel as base64, so 150 keeps payloads lean.
+- `dpi` 72–300 (default 150). Every dpi renders the **complete page** — the
+  renderer self-scales its 300-dpi drawing to the requested canvas, so a
+  150-dpi preview is uncropped and faithful. Use 150 for iteration (lean
+  payloads) and 300 only for fine print/edge checks.

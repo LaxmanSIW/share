@@ -6,7 +6,7 @@ aliases: [MCP Server, MCP, Model Context Protocol]
 # 08 — MCP Server (`com.invoicestudio.mcp`)
 
 Localhost MCP (Model Context Protocol) server embedded in the app: exposes the
-desktop's capabilities as ~48 JSON-RPC tools to AI clients (Claude, Cursor, VS
+desktop's capabilities as ~50 JSON-RPC tools to AI clients (Claude, Cursor, VS
 Code). Started from **Settings → MCP Server**; binds `127.0.0.1:<port>/mcp`
 with a bearer token; dies with the app; every call audited.
 
@@ -15,7 +15,7 @@ with a bearer token; dies with the app; every call audited.
 ```mermaid
 flowchart LR
   CLIENT["AI client (Claude/Cursor)"] -->|Bearer token| SRV["McpServer (HTTP JSON-RPC)"]
-  SRV --> REG["McpToolRegistry (~48 tools)"]
+  SRV --> REG["McpToolRegistry (~50 tools)"]
   SRV --> IMG["McpImageResult → native image blocks"]
   REG --> ENS["McpEnsure — check-then-create"]
   REG --> PREV["TemplatePreviewService — print-true PNG"]
@@ -66,6 +66,12 @@ openingBalance, creditPeriodDays / creditLimit, city, contactPerson) — the
 confirm summaries spell out every field change incl. `ASSIGN default
 transport → X`.
 
+Transports are fully first-class too: `update_transport`
+(name/phone/vehicleNumber) and `delete_transport` with a reference guard —
+refuses while buyers carry the transport as `defaultTransportId`; `force:
+true` clears those assignments then deletes (no dangling buyer references).
+`DataManager.getTransportById` reads through the transports cache.
+
 | Reference | Missing dependency → |
 |---|---|
 | item → category | auto-create category (unique index `idx_categories_user_name` backstops races) |
@@ -92,7 +98,8 @@ transport → X`.
 Docs (operator + developer guide, per-tool contract): `src/main/resources/docs/MCP_SERVER.md`
 Tests: `McpServerTest` (protocol/e2e, 20) · `McpEnsureHardeningTest` (both
 branches per tool + race + rollback + category reassignment + buyer transport
-+ category CRUD lifecycle, 27) · `McpTemplateDesignTest` (design guide
++ category CRUD lifecycle, 27) · `McpTransportCrudTest` (update/delete
+transport + reference guard + force, 7) · `McpTemplateDesignTest` (design guide
 completeness, styling round-trip, previews + warnings, thermal geometry, 6).
 
 Related: [[01 Architecture]] · [[02 Database Layer]] · [[03 Service Layer]] · [[07 Branches and Versions]]

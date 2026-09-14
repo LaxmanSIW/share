@@ -39,6 +39,15 @@ public final class TemplatePreviewService {
     private static final double MAX_DPI = 300.0;
 
     /**
+     * Reference DPI the shared Java2D renderer ({@link PdfExportService}) draws
+     * at — every mm coordinate is multiplied by {@code PX_PER_MM = 300/25.4}.
+     * Previews at any other DPI must scale the graphics context to match, or
+     * elements land on a smaller canvas and the page gets cropped (~60% lost
+     * at 150 dpi).
+     */
+    public static final double BASE_DPI = 300.0;
+
+    /**
      * Renders the template to a PNG byte array.
      *
      * @param template the template to render (never null)
@@ -60,6 +69,7 @@ public final class TemplatePreviewService {
             heightMm = PdfExportService.calculateEffectiveHeight(template, itemCount);
         }
 
+        // Canvas at the REQUESTED dpi...
         int imgW = (int) Math.max(100, Math.round(widthMm * effDpi / 25.4));
         int imgH = (int) Math.max(100, Math.round(heightMm * effDpi / 25.4));
 
@@ -69,8 +79,16 @@ public final class TemplatePreviewService {
         g2.setColor(Color.WHITE);
         g2.fillRect(0, 0, imgW, imgH);
 
+        // ...but the renderer draws in 300-dpi coordinates — scale the context
+        // so the full page fits the canvas at every dpi (150 dpi previews are
+        // now complete, not cropped).
+        g2.scale(effDpi / BASE_DPI, effDpi / BASE_DPI);
+
+        int baseW = (int) Math.max(100, Math.round(widthMm * BASE_DPI / 25.4));
+        int baseH = (int) Math.max(100, Math.round(heightMm * BASE_DPI / 25.4));
+
         RenderContext ctx = new RenderContext(sample, settings, 0, 1, 1);
-        PdfExportService.renderTemplateToGraphics(g2, template, sample, settings, ctx, imgW, imgH);
+        PdfExportService.renderTemplateToGraphics(g2, template, sample, settings, ctx, baseW, baseH);
         g2.dispose();
 
         ByteArrayOutputStream out = new ByteArrayOutputStream(64 * 1024);

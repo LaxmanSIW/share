@@ -691,7 +691,7 @@ public class CreateBillView extends BorderPane {
             updateZoom.run();
         });
         zIn.setOnAction(e -> {
-            previewPane.setZoom(Math.min(2.0, previewPane.getZoom() + 0.1));
+            previewPane.setZoom(Math.min(3.0, previewPane.getZoom() + 0.1));
             updateZoom.run();
         });
         z100.setOnAction(e -> {
@@ -707,7 +707,10 @@ public class CreateBillView extends BorderPane {
 
         ScrollPane previewScroll = new ScrollPane(previewPane);
         previewScroll.setFitToWidth(true);
-        previewScroll.setFitToHeight(true);
+        // fitToHeight OFF — forcing viewport height collapses the scroll range
+        // when zoomed (bottom space vanishes, top unreachable). Same fix as
+        // the History bill viewer.
+        previewScroll.setFitToHeight(false);
         previewScroll.getStyleClass().add("scroll-deep");
         VBox.setVgrow(previewScroll, Priority.ALWAYS);
 

@@ -411,7 +411,7 @@ public class HistoryView extends BorderPane {
         };
 
         zoomInBtn.setOnAction(e -> {
-            currentZoom[0] = Math.min(2.5, currentZoom[0] + 0.15);
+            currentZoom[0] = Math.min(3.0, currentZoom[0] + 0.15);
             updateZoomUI.run();
         });
 
@@ -469,7 +469,10 @@ public class HistoryView extends BorderPane {
 
         ScrollPane sp = new ScrollPane(previewWrapper);
         sp.setFitToWidth(true);
-        sp.setFitToHeight(true);
+        // fitToHeight must stay OFF: forcing the wrapper to the viewport height
+        // collapses the scroll range when the page is zoomed larger than the
+        // viewport (top unreachable, bottom padding eaten).
+        sp.setFitToHeight(false);
         sp.getStyleClass().add("scroll-pane");
 
         zoomFitBtn.setOnAction(e -> {
@@ -477,7 +480,7 @@ public class HistoryView extends BorderPane {
             double pageMm = finalTemplate.getPage() != null ? finalTemplate.getPage().getWidth() : 210.0;
             double pagePx = pageMm * 3.7795275591;
             if (pagePx > 0 && availWidth > 0) {
-                currentZoom[0] = Math.max(0.3, Math.min(2.0, availWidth / pagePx));
+                currentZoom[0] = Math.max(0.3, Math.min(3.0, availWidth / pagePx));
                 updateZoomUI.run();
             }
         });

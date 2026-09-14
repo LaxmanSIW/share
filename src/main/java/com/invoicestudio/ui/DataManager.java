@@ -353,6 +353,19 @@ public final class DataManager {
         }
     }
 
+    public com.invoicestudio.model.Transport getTransportById(String id) {
+        if (id == null || id.isBlank()) return null;
+        synchronized (this) {
+            if (transportsCache != null) {
+                for (com.invoicestudio.model.Transport t : transportsCache) {
+                    if (id.equals(t.getId())) return t;
+                }
+                return null;
+            }
+        }
+        return transportDao.getTransportById(id);
+    }
+
     public void saveTransport(com.invoicestudio.model.Transport t) {
         transportDao.saveTransport(t);
         invalidateTransports();
