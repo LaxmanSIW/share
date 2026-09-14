@@ -176,13 +176,23 @@ public final class McpToolRegistry {
         t.add(new ToolDef("list_categories", "List item categories.", obj(), false, false));
         t.add(new ToolDef("list_transports", "List transports (logistics partners).", obj(), false, false));
         t.add(new ToolDef("list_templates", "List print templates with element counts and page sizes.", obj(), false, false));
-        t.add(new ToolDef("get_template", "Get one print template in full: page size and every positioned element (type, x/y/w/h in mm, text, variable binding). Read this + get_app_guide to learn how templates work.",
+        t.add(new ToolDef("get_template_design_guide",
+                "TEMPLATE DESIGN REFERENCE — the complete design vocabulary of print templates: all 23 element types, every styling property (positioning mm, typography, borders, gradients, shadows, images, QR/barcode, table columns), every variable binding, page sizes, proven A4/thermal layout recipes and the recommended design workflow (duplicate → update → render_template_preview → fix warnings). Read this before designing or editing any template.",
+                obj(), false, false));
+        t.add(new ToolDef("render_template_preview",
+                "Render a print template to a PNG image EXACTLY as it will print (same engine as PDF export, realistic sample data) so you can visually verify a design and iterate BEFORE saving. Pass id to render a saved template, OR draft {name, pageSize, elements} to render an unsaved element list (nothing is written to the database). Returns a native image content block plus meta: page size, pixel size, elementCount and warnings (out-of-bounds elements, unresolved bindings). Pair with get_template_design_guide for the property vocabulary.",
+                obj("id", str("Saved template id (use this OR draft)"),
+                        "draft", obj("name", str("Draft name"),
+                                "pageSize", str("A4 | A5 | LETTER | LEGAL | THERMAL_80 | THERMAL_58 | CUSTOM (default A4)"),
+                                "elements", arr("Element list — same shape as create_template")),
+                        "dpi", num("Render resolution 72-300 (default 150)")), false, false));
+        t.add(new ToolDef("get_template", "Get one print template in full: page config and EVERY element with EVERY property (type, x/y/w/h mm, typography, colors, borders, image src, QR/barcode config, table columns, bindings). This is lossless — what you read here you can round-trip into update_template. Read get_template_design_guide for the property vocabulary.",
                 obj("id", str("Template id")), false, false));
-        t.add(new ToolDef("create_template", "Create a print template. Elements: [{type: TEXT|TABLE|LINE|RECT|QRCODE..., name, x, y, w, h (mm), text?, variable binding?}] — binding binds a Field to a variable (see list_variables). Idempotent by name: returns the existing template (existed=true) instead of duplicating.",
+        t.add(new ToolDef("create_template", "Create a print template. Elements accept the FULL design vocabulary per element: {type: TEXT|TABLE|IMAGE|QRCODE|BARCODE|RECT|CIRCLE|ELLIPSE|LINE|PAGENO|POLYLINE|POLYGON|ARC|PATH|STAR|ARROW|DIVIDER|FREEHAND|WATERMARK|SVG|ICON|GROUP|COMPONENT, name, x, y, w, h (mm), text?, binding? {{var}}, fontFamily?, fontSize?, fontWeight?, color?, bg?, align?, borderWidth?, borderRadius?, columns? (TABLE), src?/useBusinessLogo? (IMAGE), qrSource? (QRCODE), barcodeData? ...} — see get_template_design_guide for every property. Recommended workflow: duplicate_template a preset, or create then iterate with render_template_preview (draft mode) before finalizing. Idempotent by name: returns the existing template (existed=true) instead of duplicating.",
                 obj("name", str("Template name"),
-                        "pageSize", str("A4 | A5 | THERMAL_80 | THERMAL_58 (default A4)"),
+                        "pageSize", str("A4 | A5 | LETTER | LEGAL | THERMAL_80 | THERMAL_58 | CUSTOM (default A4)"),
                         "elements", arr("Element list (can be empty and edited later)")), true, false));
-        t.add(new ToolDef("update_template", "Update a template's name, page size or replace its elements. Requires user confirmation.",
+        t.add(new ToolDef("update_template", "Update a template's name, page size or replace its elements. Elements accept the FULL design vocabulary (see get_template_design_guide); the element list you pass fully replaces the previous one — get_template first and edit what you read. Requires user confirmation.",
                 obj("id", str("Template id"),
                         "name", str("New name"),
                         "pageSize", str("New page size"),
@@ -364,6 +374,8 @@ public final class McpToolRegistry {
                     "id", tr.getId(), "name", tr.getName(), "phone", tr.getPhone(),
                     "vehicleNumber", tr.getVehicleNumber())).collect(java.util.stream.Collectors.toList());
             case "list_templates": return templatesMap(dm);
+            case "get_template_design_guide": return GuideContent.templateDesignGuide();
+            case "render_template_preview": return renderTemplatePreview(dm, args);
             case "get_template": return templateFull(requireTemplate(dm, str(args, "id")));
             case "create_template": return createTemplate(dm, args);
             case "update_template": return confirmable("update_template", args, () -> {
@@ -850,18 +862,102 @@ public final class McpToolRegistry {
     private static Map<String, Object> templateFull(Template t) {
         List<Map<String, Object>> els = new ArrayList<>();
         if (t.getElements() != null) {
-            for (var e : t.getElements()) {
-                els.add(mapOf("id", e.getId(), "name", e.getName(),
-                        "type", String.valueOf(e.getType()),
-                        "x", e.getX(), "y", e.getY(), "w", e.getW(), "h", e.getH(),
-                        "text", e.getText(), "binding", e.getBinding()));
-            }
+            for (var e : t.getElements()) els.add(elementFull(e));
         }
         return mapOf("id", t.getId(), "name", t.getName(),
                 "pageSize", String.valueOf(t.getPage().getSizeName()),
                 "orientation", t.getPage().getOrientation(),
                 "widthMm", t.getPage().getWidth(), "heightMm", t.getPage().getHeight(),
+                "autoHeight", t.getPage().isAutoHeight(),
+                "margins", mapOf("top", t.getPage().getMargin().getTop(), "right", t.getPage().getMargin().getRight(),
+                        "bottom", t.getPage().getMargin().getBottom(), "left", t.getPage().getMargin().getLeft()),
                 "elements", els);
+    }
+
+    /** Lossless element readback — every design property the model supports, so get_template round-trips into update_template. */
+    private static Map<String, Object> elementFull(com.invoicestudio.model.TemplateElement e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", e.getId());
+        m.put("name", e.getName());
+        m.put("type", String.valueOf(e.getType()));
+        // position & layout
+        m.put("x", e.getX()); m.put("y", e.getY()); m.put("w", e.getW()); m.put("h", e.getH());
+        m.put("zIndex", e.getZIndex()); m.put("rotation", e.getRotation());
+        m.put("locked", e.isLocked()); m.put("hidden", e.isHidden());
+        m.put("repeatOnPages", e.isRepeatOnPages()); m.put("hideWhenBlank", e.isHideWhenBlank());
+        m.put("opacity", e.getOpacity());
+        m.put("clipEnabled", e.isClipEnabled()); m.put("clipShape", e.getClipShape());
+        m.put("scaleX", e.getScaleX()); m.put("scaleY", e.getScaleY());
+        m.put("flipHorizontal", e.isFlipHorizontal()); m.put("flipVertical", e.isFlipVertical());
+        // typography
+        m.put("text", e.getText()); m.put("binding", e.getBinding());
+        m.put("fontFamily", e.getFontFamily()); m.put("fontSize", e.getFontSize());
+        m.put("fontWeight", e.getFontWeight()); m.put("italic", e.isItalic());
+        m.put("underline", e.isUnderline()); m.put("strikethrough", e.isStrikethrough());
+        m.put("uppercase", e.isUppercase()); m.put("color", e.getColor());
+        m.put("align", e.getAlign()); m.put("vAlign", e.getVAlign());
+        m.put("lineHeight", e.getLineHeight()); m.put("letterSpacing", e.getLetterSpacing());
+        m.put("wordSpacing", e.getWordSpacing()); m.put("textTransform", e.getTextTransform());
+        // box & border
+        m.put("bg", e.getBg()); m.put("borderWidth", e.getBorderWidth());
+        m.put("borderColor", e.getBorderColor()); m.put("borderRadius", e.getBorderRadius());
+        m.put("padding", e.getPadding());
+        m.put("borderTop", e.isBorderTop()); m.put("borderBottom", e.isBorderBottom());
+        m.put("borderLeft", e.isBorderLeft()); m.put("borderRight", e.isBorderRight());
+        m.put("individualBorders", e.isIndividualBorders());
+        m.put("borderTopWidth", e.getBorderTopWidth()); m.put("borderTopColor", e.getBorderTopColor()); m.put("borderTopStyle", e.getBorderTopStyle());
+        m.put("borderBottomWidth", e.getBorderBottomWidth()); m.put("borderBottomColor", e.getBorderBottomColor()); m.put("borderBottomStyle", e.getBorderBottomStyle());
+        m.put("borderLeftWidth", e.getBorderLeftWidth()); m.put("borderLeftColor", e.getBorderLeftColor()); m.put("borderLeftStyle", e.getBorderLeftStyle());
+        m.put("borderRightWidth", e.getBorderRightWidth()); m.put("borderRightColor", e.getBorderRightColor()); m.put("borderRightStyle", e.getBorderRightStyle());
+        // fill & gradient
+        m.put("fillType", e.getFillType());
+        m.put("gradientStartColor", e.getGradientStartColor()); m.put("gradientEndColor", e.getGradientEndColor());
+        m.put("gradientAngle", e.getGradientAngle()); m.put("gradientCenterX", e.getGradientCenterX());
+        m.put("gradientCenterY", e.getGradientCenterY()); m.put("gradientRadius", e.getGradientRadius());
+        // stroke & dash
+        m.put("strokeEnabled", e.isStrokeEnabled()); m.put("strokeType", e.getStrokeType());
+        m.put("lineCap", e.getLineCap()); m.put("lineJoin", e.getLineJoin());
+        m.put("dashPattern", e.getDashPattern()); m.put("dashOffset", e.getDashOffset());
+        // image
+        m.put("src", e.getSrc()); m.put("objectFit", e.getObjectFit()); m.put("useBusinessLogo", e.isUseBusinessLogo());
+        // qr / barcode
+        m.put("qrSource", e.getQrSource()); m.put("qrCustom", e.getQrCustom()); m.put("qrColor", e.getQrColor());
+        m.put("barcodeData", e.getBarcodeData()); m.put("barcodeColor", e.getBarcodeColor()); m.put("barcodeShowText", e.isBarcodeShowText());
+        // line / divider
+        m.put("direction", e.getDirection());
+        m.put("dividerOrientation", e.getDividerOrientation()); m.put("dividerStyle", e.getDividerStyle());
+        // table
+        if (e.getColumns() != null && !e.getColumns().isEmpty()) {
+            List<Map<String, Object>> cols = new ArrayList<>();
+            for (var c : e.getColumns()) cols.add(mapOf("key", c.getKey(), "label", c.getLabel(),
+                    "width", c.getWidth(), "align", c.getAlign()));
+            m.put("columns", cols);
+        }
+        m.put("headerBg", e.getHeaderBg()); m.put("headerColor", e.getHeaderColor());
+        m.put("rowHeight", e.getRowHeight()); m.put("borderStyle", e.getBorderStyle());
+        m.put("showZebra", e.isShowZebra()); m.put("tableBorderColor", e.getTableBorderColor());
+        m.put("tableBorderWidth", e.getTableBorderWidth());
+        m.put("rowBg", e.getRowBg()); m.put("rowColor", e.getRowColor()); m.put("zebraColor", e.getZebraColor());
+        // shapes & geometry
+        m.put("radius", e.getRadius()); m.put("radiusX", e.getRadiusX()); m.put("radiusY", e.getRadiusY());
+        m.put("points", e.getPoints()); m.put("startAngle", e.getStartAngle());
+        m.put("arcLength", e.getArcLength()); m.put("arcType", e.getArcType());
+        m.put("pathData", e.getPathData()); m.put("starPoints", e.getStarPoints());
+        m.put("innerRadius", e.getInnerRadius()); m.put("outerRadius", e.getOuterRadius());
+        m.put("arrowShaftWidth", e.getArrowShaftWidth()); m.put("arrowHeadLength", e.getArrowHeadLength());
+        m.put("arrowHeadWidth", e.getArrowHeadWidth()); m.put("arrowHeadStyle", e.getArrowHeadStyle());
+        // watermark / svg / icon / group / component
+        m.put("watermarkText", e.getWatermarkText()); m.put("watermarkOpacity", e.getWatermarkOpacity()); m.put("watermarkAngle", e.getWatermarkAngle());
+        m.put("svgSource", e.getSvgSource()); m.put("iconName", e.getIconName());
+        m.put("groupId", e.getGroupId()); m.put("componentType", e.getComponentType());
+        // effects
+        m.put("shadowEnabled", e.isShadowEnabled()); m.put("shadowColor", e.getShadowColor());
+        m.put("shadowBlur", e.getShadowBlur()); m.put("shadowOffsetX", e.getShadowOffsetX());
+        m.put("shadowOffsetY", e.getShadowOffsetY()); m.put("shadowOpacity", e.getShadowOpacity());
+        m.put("blurEnabled", e.isBlurEnabled()); m.put("blurRadius", e.getBlurRadius());
+        // conditions
+        m.put("visibleCondition", e.getVisibleCondition());
+        return m;
     }
 
     private static Map<String, Object> createTemplate(DataManager dm, Map<String, Object> args) throws Exception {
@@ -875,15 +971,19 @@ public final class McpToolRegistry {
                     "existed", true, "matchedBy", "name",
                     "note", "Existing template returned unchanged; use update_template to modify it.");
         }
+        List<String> warnings = new ArrayList<>();
         Template t = new Template();
         t.setId("tpl_mcp_" + UUID.randomUUID().toString().substring(0, 8));
         t.setName(name.trim());
         t.setPage(pageFor(strOr(args, "pageSize", "A4"), null));
-        if (args.get("elements") instanceof List<?> els) t.setElements(elementsFrom(els));
+        if (args.get("elements") instanceof List<?> els) t.setElements(elementsFrom(els, warnings));
         dm.templates().saveTemplate(t);
-        return mapOf("ok", true, "id", t.getId(), "name", t.getName(),
+        Map<String, Object> resp = mapOf("ok", true, "id", t.getId(), "name", t.getName(),
                 "elements", t.getElements() == null ? 0 : t.getElements().size(),
                 "existed", false);
+        if (!warnings.isEmpty()) resp.put("warnings", warnings);
+        resp.put("next", "Render it with render_template_preview {id: '" + t.getId() + "'} and iterate before use.");
+        return resp;
     }
 
     private static Map<String, Object> duplicateTemplate(DataManager dm, Map<String, Object> args) throws Exception {
@@ -907,8 +1007,125 @@ public final class McpToolRegistry {
         return mapOf("ok", true, "id", copy.getId(), "name", copy.getName(), "existed", false);
     }
 
+    /**
+     * render_template_preview — renders a saved template OR an unsaved draft
+     * to a PNG using the real print engine (PdfExportService + RenderContext
+     * with a realistic sample bill), returning a native MCP image content
+     * block plus structured meta (page size, warnings for out-of-bounds
+     * elements and unresolved bindings) so the AI can self-correct a design
+     * without ever touching the database.
+     */
+    private static Object renderTemplatePreview(DataManager dm, Map<String, Object> args) throws Exception {
+        Map<String, Object> draft = null;
+        if (args.get("draft") instanceof Map<?, ?> d) draft = (Map<String, Object>) d;
+
+        Template t;
+        String mode;
+        if (draft != null) {
+            mode = "draft";
+            t = new Template();
+            t.setId("draft");
+            t.setName(strOr(draft, "name", "Draft"));
+            t.setPage(pageFor(strOr(draft, "pageSize", "A4"), null));
+            t.setElements(new ArrayList<>());
+            if (draft.get("elements") instanceof List<?> els) t.setElements(elementsFrom(els));
+        } else {
+            mode = "saved";
+            t = requireTemplate(dm, str(args, "id"));
+        }
+
+        double dpi = dbl(args, "dpi", com.invoicestudio.service.TemplatePreviewService.DEFAULT_DPI);
+        byte[] png = com.invoicestudio.service.TemplatePreviewService.renderPng(t, dm.getSettings(), dpi);
+        double[] page = com.invoicestudio.service.TemplatePreviewService.effectivePageSize(t, dm.getSettings());
+
+        int pxW = (int) Math.round(page[0] * Math.max(72, Math.min(300, dpi)) / 25.4);
+        int pxH = (int) Math.round(page[1] * Math.max(72, Math.min(300, dpi)) / 25.4);
+
+        List<String> warnings = designWarnings(dm, t, page[0], page[1]);
+        Map<String, Object> meta = mapOf(
+                "ok", true,
+                "mode", mode,
+                "templateName", t.getName(),
+                "templateId", t.getId(),
+                "pageSize", String.valueOf(t.getPage().getSizeName()),
+                "widthMm", page[0], "heightMm", page[1],
+                "pixelWidth", pxW, "pixelHeight", pxH,
+                "dpi", Math.max(72, Math.min(300, dpi)),
+                "elementCount", t.getElements() == null ? 0 : t.getElements().size(),
+                "warnings", warnings,
+                "note", warnings.isEmpty()
+                        ? "Rendered with the same engine as PDF export on sample data. No warnings."
+                        : "Rendered with the same engine as PDF export on sample data. Fix the warnings, re-render, then save/update.");
+        return new McpImageResult("image/png", png, meta);
+    }
+
+    /** Out-of-bounds + unresolved-binding detection for a template at its effective page size. */
+    private static List<String> designWarnings(DataManager dm, Template t, double widthMm, double heightMm) {
+        List<String> warnings = new ArrayList<>();
+        if (t.getElements() == null) return warnings;
+
+        // Known binding keys: fixed RenderContext keys + custom variables.
+        java.util.Set<String> known = new java.util.HashSet<>();
+        try {
+            com.invoicestudio.service.RenderContext probe = new com.invoicestudio.service.RenderContext(null, null, 0, 1, 1);
+            known.addAll(probe.getValues().keySet());
+        } catch (Exception ignored) {
+            // fall through to custom variables only
+        }
+        try {
+            for (VariableDef v : dm.variables().getAllVariables()) known.add(v.getKey());
+        } catch (Exception ignored) {}
+
+        java.util.regex.Pattern var = java.util.regex.Pattern.compile("\\{\\{\\s*([a-zA-Z0-9_]+)\\s*\\}\\}");
+        double margin = 0.5; // tiny tolerance for rounding
+        for (var e : t.getElements()) {
+            if (e.isHidden()) continue;
+            if (e.getX() < -margin || e.getY() < -margin
+                    || e.getX() + e.getW() > widthMm + margin
+                    || e.getY() + e.getH() > heightMm + margin) {
+                warnings.add("Element '" + (e.getName() == null || e.getName().isBlank() ? e.getId() : e.getName())
+                        + "' (" + e.getType() + ") is outside the page: x=" + fmt(e.getX()) + " y=" + fmt(e.getY())
+                        + " w=" + fmt(e.getW()) + " h=" + fmt(e.getH())
+                        + " vs page " + fmt(widthMm) + "x" + fmt(heightMm) + " mm — move or resize it");
+            }
+            java.util.Set<String> used = new java.util.HashSet<>();
+            if (e.getBinding() != null && !e.getBinding().isBlank()) used.add(e.getBinding().trim());
+            if (e.getText() != null) {
+                java.util.regex.Matcher m = var.matcher(e.getText());
+                while (m.find()) used.add(m.group(1));
+            }
+            if (e.getBarcodeData() != null) {
+                java.util.regex.Matcher m = var.matcher(e.getBarcodeData());
+                while (m.find()) used.add(m.group(1));
+            }
+            for (String key : used) {
+                if (!key.isBlank() && !known.contains(key)) {
+                    warnings.add("Element '" + (e.getName() == null || e.getName().isBlank() ? e.getId() : e.getName())
+                            + "' references unknown variable {{" + key + "}} — check list_variables or create it");
+                }
+            }
+        }
+        return warnings;
+    }
+
+    private static String fmt(double d) {
+        return d == Math.rint(d) ? String.valueOf((long) d) : String.format(Locale.ROOT, "%.1f", d);
+    }
+
     @SuppressWarnings("unchecked")
     private static List<com.invoicestudio.model.TemplateElement> elementsFrom(List<?> raw) {
+        List<String> ignored = new ArrayList<>();
+        return elementsFrom(raw, ignored);
+    }
+
+    /**
+     * Lossless element parsing — accepts the FULL design vocabulary
+     * (see TEMPLATE_DESIGN_GUIDE.md). Every property the JSON carries is
+     * applied; unknown element types degrade to TEXT and are REPORTED in
+     * {@code warnings} (never silently dropped).
+     */
+    @SuppressWarnings("unchecked")
+    private static List<com.invoicestudio.model.TemplateElement> elementsFrom(List<?> raw, List<String> warnings) {
         List<com.invoicestudio.model.TemplateElement> out = new ArrayList<>();
         for (Object o : raw) {
             Map<String, Object> m = (Map<String, Object>) o;
@@ -920,16 +1137,147 @@ public final class McpToolRegistry {
                 e.setType(com.invoicestudio.model.ElementType.valueOf(type));
             } catch (IllegalArgumentException ex) {
                 e.setType(com.invoicestudio.model.ElementType.TEXT);
+                warnings.add("Element '" + strOr(m, "name", "unnamed") + "': unknown type '" + type
+                        + "' downgraded to TEXT");
             }
-            e.setX(dbl(m, "x", 10.0));
-            e.setY(dbl(m, "y", 10.0));
-            e.setW(dbl(m, "w", 40.0));
-            e.setH(dbl(m, "h", 10.0));
-            e.setText(str(m, "text"));
-            e.setBinding(str(m, "binding"));
+            // position & layout
+            e.setX(dbl(m, "x", 10.0)); e.setY(dbl(m, "y", 10.0));
+            e.setW(dbl(m, "w", 40.0)); e.setH(dbl(m, "h", 10.0));
+            e.setZIndex(intVal(m, "zIndex", 0)); e.setRotation(dbl(m, "rotation", 0.0));
+            e.setLocked(boolVal(m, "locked", false)); e.setHidden(boolVal(m, "hidden", false));
+            e.setRepeatOnPages(boolVal(m, "repeatOnPages", false));
+            e.setHideWhenBlank(boolVal(m, "hideWhenBlank", false));
+            e.setOpacity(dbl(m, "opacity", 1.0));
+            e.setClipEnabled(boolVal(m, "clipEnabled", false)); e.setClipShape(strOr(m, "clipShape", "none"));
+            e.setScaleX(dbl(m, "scaleX", 1.0)); e.setScaleY(dbl(m, "scaleY", 1.0));
+            e.setFlipHorizontal(boolVal(m, "flipHorizontal", false)); e.setFlipVertical(boolVal(m, "flipVertical", false));
+            // typography
+            e.setText(str(m, "text")); e.setBinding(str(m, "binding"));
+            if (str(m, "fontFamily") != null && !str(m, "fontFamily").isBlank()) e.setFontFamily(str(m, "fontFamily"));
+            e.setFontSize(dbl(m, "fontSize", e.getFontSize()));
+            e.setFontWeight(intVal(m, "fontWeight", e.getFontWeight()));
+            e.setItalic(boolVal(m, "italic", false)); e.setUnderline(boolVal(m, "underline", false));
+            e.setStrikethrough(boolVal(m, "strikethrough", false)); e.setUppercase(boolVal(m, "uppercase", false));
+            if (str(m, "color") != null && !str(m, "color").isBlank()) e.setColor(str(m, "color"));
+            if (str(m, "align") != null && !str(m, "align").isBlank()) e.setAlign(str(m, "align"));
+            if (str(m, "vAlign") != null && !str(m, "vAlign").isBlank()) e.setVAlign(str(m, "vAlign"));
+            e.setLineHeight(dbl(m, "lineHeight", e.getLineHeight()));
+            e.setLineSpacing(dbl(m, "lineSpacing", e.getLineSpacing()));
+            e.setLetterSpacing(dbl(m, "letterSpacing", e.getLetterSpacing()));
+            e.setWordSpacing(dbl(m, "wordSpacing", e.getWordSpacing()));
+            if (str(m, "textTransform") != null && !str(m, "textTransform").isBlank()) e.setTextTransform(str(m, "textTransform"));
+            // box & border
+            if (str(m, "bg") != null && !str(m, "bg").isBlank()) e.setBg(str(m, "bg"));
+            e.setBorderWidth(dbl(m, "borderWidth", e.getBorderWidth()));
+            if (str(m, "borderColor") != null && !str(m, "borderColor").isBlank()) e.setBorderColor(str(m, "borderColor"));
+            e.setBorderRadius(dbl(m, "borderRadius", e.getBorderRadius()));
+            e.setPadding(dbl(m, "padding", e.getPadding()));
+            e.setBorderTop(boolVal(m, "borderTop", e.isBorderTop())); e.setBorderBottom(boolVal(m, "borderBottom", e.isBorderBottom()));
+            e.setBorderLeft(boolVal(m, "borderLeft", e.isBorderLeft())); e.setBorderRight(boolVal(m, "borderRight", e.isBorderRight()));
+            e.setIndividualBorders(boolVal(m, "individualBorders", e.isIndividualBorders()));
+            if (m.containsKey("borderTopWidth")) e.setBorderTopWidth(doubleOrNull(m, "borderTopWidth"));
+            if (str(m, "borderTopColor") != null && !str(m, "borderTopColor").isBlank()) e.setBorderTopColor(str(m, "borderTopColor"));
+            if (str(m, "borderTopStyle") != null && !str(m, "borderTopStyle").isBlank()) e.setBorderTopStyle(str(m, "borderTopStyle"));
+            if (m.containsKey("borderBottomWidth")) e.setBorderBottomWidth(doubleOrNull(m, "borderBottomWidth"));
+            if (str(m, "borderBottomColor") != null && !str(m, "borderBottomColor").isBlank()) e.setBorderBottomColor(str(m, "borderBottomColor"));
+            if (str(m, "borderBottomStyle") != null && !str(m, "borderBottomStyle").isBlank()) e.setBorderBottomStyle(str(m, "borderBottomStyle"));
+            if (m.containsKey("borderLeftWidth")) e.setBorderLeftWidth(doubleOrNull(m, "borderLeftWidth"));
+            if (str(m, "borderLeftColor") != null && !str(m, "borderLeftColor").isBlank()) e.setBorderLeftColor(str(m, "borderLeftColor"));
+            if (str(m, "borderLeftStyle") != null && !str(m, "borderLeftStyle").isBlank()) e.setBorderLeftStyle(str(m, "borderLeftStyle"));
+            if (m.containsKey("borderRightWidth")) e.setBorderRightWidth(doubleOrNull(m, "borderRightWidth"));
+            if (str(m, "borderRightColor") != null && !str(m, "borderRightColor").isBlank()) e.setBorderRightColor(str(m, "borderRightColor"));
+            if (str(m, "borderRightStyle") != null && !str(m, "borderRightStyle").isBlank()) e.setBorderRightStyle(str(m, "borderRightStyle"));
+            // fill & gradient
+            if (str(m, "fillType") != null && !str(m, "fillType").isBlank()) e.setFillType(str(m, "fillType"));
+            if (str(m, "gradientStartColor") != null && !str(m, "gradientStartColor").isBlank()) e.setGradientStartColor(str(m, "gradientStartColor"));
+            if (str(m, "gradientEndColor") != null && !str(m, "gradientEndColor").isBlank()) e.setGradientEndColor(str(m, "gradientEndColor"));
+            e.setGradientAngle(dbl(m, "gradientAngle", e.getGradientAngle()));
+            e.setGradientCenterX(dbl(m, "gradientCenterX", e.getGradientCenterX()));
+            e.setGradientCenterY(dbl(m, "gradientCenterY", e.getGradientCenterY()));
+            e.setGradientRadius(dbl(m, "gradientRadius", e.getGradientRadius()));
+            // stroke & dash
+            e.setStrokeEnabled(boolVal(m, "strokeEnabled", e.isStrokeEnabled()));
+            if (str(m, "strokeType") != null && !str(m, "strokeType").isBlank()) e.setStrokeType(str(m, "strokeType"));
+            if (str(m, "lineCap") != null && !str(m, "lineCap").isBlank()) e.setLineCap(str(m, "lineCap"));
+            if (str(m, "lineJoin") != null && !str(m, "lineJoin").isBlank()) e.setLineJoin(str(m, "lineJoin"));
+            if (m.containsKey("dashPattern")) e.setDashPattern(str(m, "dashPattern"));
+            e.setDashOffset(dbl(m, "dashOffset", e.getDashOffset()));
+            // image
+            if (m.containsKey("src") && !str(m, "src").isBlank()) e.setSrc(str(m, "src"));
+            if (str(m, "objectFit") != null && !str(m, "objectFit").isBlank()) e.setObjectFit(str(m, "objectFit"));
+            e.setUseBusinessLogo(boolVal(m, "useBusinessLogo", e.isUseBusinessLogo()));
+            // qr / barcode
+            if (str(m, "qrSource") != null && !str(m, "qrSource").isBlank()) e.setQrSource(str(m, "qrSource"));
+            if (m.containsKey("qrCustom")) e.setQrCustom(str(m, "qrCustom"));
+            if (str(m, "qrColor") != null && !str(m, "qrColor").isBlank()) e.setQrColor(str(m, "qrColor"));
+            if (m.containsKey("barcodeData") && !str(m, "barcodeData").isBlank()) e.setBarcodeData(str(m, "barcodeData"));
+            if (str(m, "barcodeColor") != null && !str(m, "barcodeColor").isBlank()) e.setBarcodeColor(str(m, "barcodeColor"));
+            e.setBarcodeShowText(boolVal(m, "barcodeShowText", e.isBarcodeShowText()));
+            // line / divider
+            if (str(m, "direction") != null && !str(m, "direction").isBlank()) e.setDirection(str(m, "direction"));
+            if (str(m, "dividerOrientation") != null && !str(m, "dividerOrientation").isBlank()) e.setDividerOrientation(str(m, "dividerOrientation"));
+            if (str(m, "dividerStyle") != null && !str(m, "dividerStyle").isBlank()) e.setDividerStyle(str(m, "dividerStyle"));
+            // table
+            if (m.get("columns") instanceof List<?> cols) {
+                List<com.invoicestudio.model.TableColumn> parsed = new ArrayList<>();
+                for (Object c : cols) {
+                    if (!(c instanceof Map)) continue;
+                    Map<String, Object> cm = (Map<String, Object>) c;
+                    parsed.add(new com.invoicestudio.model.TableColumn(
+                            strOr(cm, "key", "desc"), strOr(cm, "label", strOr(cm, "key", "Column")),
+                            dbl(cm, "width", 20.0), strOr(cm, "align", "left")));
+                }
+                if (!parsed.isEmpty()) e.setColumns(parsed);
+            }
+            if (str(m, "headerBg") != null && !str(m, "headerBg").isBlank()) e.setHeaderBg(str(m, "headerBg"));
+            if (str(m, "headerColor") != null && !str(m, "headerColor").isBlank()) e.setHeaderColor(str(m, "headerColor"));
+            e.setRowHeight(dbl(m, "rowHeight", e.getRowHeight()));
+            if (str(m, "borderStyle") != null && !str(m, "borderStyle").isBlank()) e.setBorderStyle(str(m, "borderStyle"));
+            e.setShowZebra(boolVal(m, "showZebra", e.isShowZebra()));
+            if (str(m, "tableBorderColor") != null && !str(m, "tableBorderColor").isBlank()) e.setTableBorderColor(str(m, "tableBorderColor"));
+            e.setTableBorderWidth(dbl(m, "tableBorderWidth", e.getTableBorderWidth()));
+            if (str(m, "rowBg") != null && !str(m, "rowBg").isBlank()) e.setRowBg(str(m, "rowBg"));
+            if (str(m, "rowColor") != null && !str(m, "rowColor").isBlank()) e.setRowColor(str(m, "rowColor"));
+            if (str(m, "zebraColor") != null && !str(m, "zebraColor").isBlank()) e.setZebraColor(str(m, "zebraColor"));
+            // shapes & geometry
+            e.setRadius(dbl(m, "radius", e.getRadius())); e.setRadiusX(dbl(m, "radiusX", e.getRadiusX())); e.setRadiusY(dbl(m, "radiusY", e.getRadiusY()));
+            if (m.containsKey("points")) e.setPoints(str(m, "points"));
+            e.setStartAngle(dbl(m, "startAngle", e.getStartAngle())); e.setArcLength(dbl(m, "arcLength", e.getArcLength()));
+            if (str(m, "arcType") != null && !str(m, "arcType").isBlank()) e.setArcType(str(m, "arcType"));
+            if (m.containsKey("pathData")) e.setPathData(str(m, "pathData"));
+            e.setStarPoints(intVal(m, "starPoints", e.getStarPoints()));
+            e.setInnerRadius(dbl(m, "innerRadius", e.getInnerRadius())); e.setOuterRadius(dbl(m, "outerRadius", e.getOuterRadius()));
+            e.setArrowShaftWidth(dbl(m, "arrowShaftWidth", e.getArrowShaftWidth()));
+            e.setArrowHeadLength(dbl(m, "arrowHeadLength", e.getArrowHeadLength()));
+            e.setArrowHeadWidth(dbl(m, "arrowHeadWidth", e.getArrowHeadWidth()));
+            if (str(m, "arrowHeadStyle") != null && !str(m, "arrowHeadStyle").isBlank()) e.setArrowHeadStyle(str(m, "arrowHeadStyle"));
+            // watermark / svg / icon / group / component
+            if (m.containsKey("watermarkText")) e.setWatermarkText(str(m, "watermarkText"));
+            e.setWatermarkOpacity(dbl(m, "watermarkOpacity", e.getWatermarkOpacity()));
+            e.setWatermarkAngle(dbl(m, "watermarkAngle", e.getWatermarkAngle()));
+            if (m.containsKey("svgSource")) e.setSvgSource(str(m, "svgSource"));
+            if (m.containsKey("iconName")) e.setIconName(str(m, "iconName"));
+            if (m.containsKey("groupId")) e.setGroupId(str(m, "groupId"));
+            if (m.containsKey("componentType")) e.setComponentType(str(m, "componentType"));
+            // effects
+            e.setShadowEnabled(boolVal(m, "shadowEnabled", e.isShadowEnabled()));
+            if (str(m, "shadowColor") != null && !str(m, "shadowColor").isBlank()) e.setShadowColor(str(m, "shadowColor"));
+            e.setShadowBlur(dbl(m, "shadowBlur", e.getShadowBlur()));
+            e.setShadowOffsetX(dbl(m, "shadowOffsetX", e.getShadowOffsetX()));
+            e.setShadowOffsetY(dbl(m, "shadowOffsetY", e.getShadowOffsetY()));
+            e.setShadowOpacity(dbl(m, "shadowOpacity", e.getShadowOpacity()));
+            e.setBlurEnabled(boolVal(m, "blurEnabled", e.isBlurEnabled()));
+            e.setBlurRadius(dbl(m, "blurRadius", e.getBlurRadius()));
+            // conditions
+            if (m.containsKey("visibleCondition")) e.setVisibleCondition(str(m, "visibleCondition"));
             out.add(e);
         }
         return out;
+    }
+
+    private static Double doubleOrNull(Map<String, Object> m, String key) {
+        if (m == null || !m.containsKey(key) || m.get(key) == null) return null;
+        return dbl(m, key, 0.0);
     }
 
     private static com.invoicestudio.model.PageConfig pageFor(String sizeName, com.invoicestudio.model.PageConfig fallback) {
@@ -937,7 +1285,16 @@ public final class McpToolRegistry {
         if (sizeName != null && !sizeName.isBlank()) {
             String s = sizeName.trim().toUpperCase(Locale.ROOT).replace(' ', '_');
             try {
-                pc.setSizeName(com.invoicestudio.model.PageSizeName.valueOf(s));
+                com.invoicestudio.model.PageSizeName size = com.invoicestudio.model.PageSizeName.valueOf(s);
+                pc.setSizeName(size);
+                // Keep the page geometry in sync with the named size (thermal rolls get auto-height).
+                pc.setWidth(size.getDefaultWidth());
+                pc.setHeight(size.getDefaultHeight());
+                pc.setAutoHeight(size == com.invoicestudio.model.PageSizeName.THERMAL_58
+                        || size == com.invoicestudio.model.PageSizeName.THERMAL_80);
+                if (pc.isAutoHeight() && pc.getMargin().getLeft() > 3) {
+                    pc.setMargin(new com.invoicestudio.model.PageConfig.Margins(3, 2, 3, 2));
+                }
             } catch (IllegalArgumentException ignored) {
                 // keep default A4 for unrecognized names
             }

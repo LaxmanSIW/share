@@ -133,7 +133,8 @@ public class PdfExportService {
         g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
     }
 
-    private static double calculateEffectiveHeight(Template template, int itemCount) {
+    /** Effective page height for auto-height (thermal roll) templates. Public: reused by the MCP template preview. */
+    public static double calculateEffectiveHeight(Template template, int itemCount) {
         double maxBottom = 0;
         double tableY = 0;
         double rowHeight = 7.0;
@@ -161,8 +162,9 @@ public class PdfExportService {
         return Math.max(80.0, maxBottom + 12.0);
     }
 
-    private static void renderTemplateToGraphics(Graphics2D g2, Template template, Bill bill, Settings settings,
-                                                 RenderContext ctx, int imgW, int imgH) {
+    /** Draws a whole template onto a Graphics2D surface. Public: reused by the MCP template preview (headless PNG). */
+    public static void renderTemplateToGraphics(Graphics2D g2, Template template, Bill bill, Settings settings,
+                                                RenderContext ctx, int imgW, int imgH) {
         List<TemplateElement> elements = new ArrayList<>(template.getElements());
         elements.sort((a, b) -> Integer.compare(a.getZIndex(), b.getZIndex()));
 

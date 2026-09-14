@@ -133,7 +133,8 @@ P&L). Mode + reference are recorded for the cash book.
    variables defined in Variables view (`list_variables` over MCP).
 6. Ctrl+S saves. Templates are chosen per-bill at invoice time.
 
-**Programmatic route (AI):** `duplicate_template` a preset → `get_template`
+**Programmatic route (AI):** `get_template_design_guide` for the full design
+vocabulary → `duplicate_template` a preset → `get_template`
 to read its anatomy → `update_template` with an edited element list. See
 MCP_SERVER.md for the confirmation rules on updates/deletes.
 

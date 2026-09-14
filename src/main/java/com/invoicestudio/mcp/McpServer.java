@@ -203,9 +203,22 @@ public final class McpServer {
                     McpAuditLog.log("[TOOL] " + name + " " + abbreviate(args));
                     try {
                         Object out = McpToolRegistry.call(name, args);
-                        result = Map.of("content", List.of(Map.of("type", "text", "text",
-                                out instanceof String s ? s : MAPPER.writerWithDefaultPrettyPrinter()
-                                        .writeValueAsString(out))));
+                        if (out instanceof McpImageResult img) {
+                            // Native MCP image content block (vision clients see the PNG) + text meta.
+                            Map<String, Object> imageBlock = Map.of(
+                                    "type", "image",
+                                    "data", img.base64(),
+                                    "mimeType", img.getMimeType());
+                            String metaJson = img.getMeta() != null
+                                    ? MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(img.getMeta())
+                                    : "{}";
+                            Map<String, Object> textBlock = Map.of("type", "text", "text", metaJson);
+                            result = Map.of("content", List.of(imageBlock, textBlock));
+                        } else {
+                            result = Map.of("content", List.of(Map.of("type", "text", "text",
+                                    out instanceof String s ? s : MAPPER.writerWithDefaultPrettyPrinter()
+                                            .writeValueAsString(out))));
+                        }
                     } catch (IllegalArgumentException e) {
                         McpAuditLog.log("[TOOL-ERROR] " + name + ": " + e.getMessage());
                         sendJson(exchange, 200, rpcError(id, -32002, e.getMessage()));

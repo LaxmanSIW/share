@@ -8,6 +8,7 @@ public final class GuideContent {
 
     private static final String GUIDE = "/docs/APP_GUIDE.md";
     private static final String MCP_DOCS = "/docs/MCP_SERVER.md";
+    private static final String TEMPLATE_DESIGN = "/docs/TEMPLATE_DESIGN_GUIDE.md";
 
     private GuideContent() {}
 
@@ -19,6 +20,11 @@ public final class GuideContent {
     /** MCP server documentation (protocol, tools, safety model). */
     public static String mcpDocs() {
         return read(MCP_DOCS);
+    }
+
+    /** Full print-template design reference: element types, properties, bindings, workflows. */
+    public static String templateDesignGuide() {
+        return read(TEMPLATE_DESIGN);
     }
 
     private static String read(String resource) {

@@ -232,7 +232,7 @@ Every create path funnels through `com.invoicestudio.mcp.McpEnsure`:
 | `create_buyer` | — (leaf) | by name | — | `existed`, `autoCreated` |
 | `create_supplier` | — (leaf) | by name | — | `existed`, `autoCreated` |
 | `create_transport` | — (leaf) | by name | — | `existed` |
-| `create_template` | — (leaf) | by name | — | `existed` |
+| `create_template` | — (leaf) | by name | — | `existed`, `warnings` (type downgrades) |
 | `duplicate_template` | source id must exist | by newName | — | `existed` |
 | `create_variable` | — (leaf) | by key, **never overwrites** | — | `existed` |
 | `create_bill` | buyer (id→name), each line item (id→name) | bill not deduped (invoices are intentionally append-only; numbering prevents confusion) | buyer+items rolled back on any failure | `autoCreated` |
@@ -242,6 +242,42 @@ Every create path funnels through `com.invoicestudio.mcp.McpEnsure`:
 
 Update/delete tools: unchanged — they queue a `PendingOperations` op
 (confirmation-gated) and re-validate existence at execution time.
+
+## Template design tools — full vocabulary exposure + sight
+
+Templates are the one place where the AI is a *designer*, so the server
+exposes the complete design surface instead of a lossy subset:
+
+- **`get_template_design_guide`** — the full design reference
+  (`TEMPLATE_DESIGN_GUIDE.md` embedded in the jar via `GuideContent`): all
+  23 element types, every property, variable bindings, page geometry, A4 /
+  thermal layout recipes, and the golden loop. Read before designing.
+- **Lossless element I/O** — `create_template` / `update_template` accept
+  and `get_template` returns EVERY `TemplateElement` property (position,
+  typography, borders, gradients, images, QR/barcode, table columns,
+  watermark, effects, conditions). Unknown element types degrade to TEXT
+  **and are reported** in the response `warnings` — nothing is silently
+  dropped. `get_template` round-trips into `update_template`.
+- **`render_template_preview`** — renders a saved template (`id`) or an
+  UNSAVED draft (`draft: {name, pageSize, elements}`; nothing is written)
+  to a PNG using the real print engine (`PdfExportService` → Java2D, sample
+  bill data, auto-height honored). Response = a native MCP **image content
+  block** (`{type:"image", data, mimeType}` — vision clients see the bill)
+  + a text block of meta: effective page size, pixel size, `elementCount`
+  and `warnings` — out-of-bounds elements and unresolved `{{bindings}}`,
+  each naming the offending element. Design loop: duplicate → update →
+  preview → fix warnings → repeat.
+- **Page geometry integrity** — named page sizes (`A4`…`THERMAL_58/80`)
+  now always carry their real dimensions; thermal sizes also get
+  `autoHeight: true` and tight margins, so MCP-created thermal templates
+  print correctly instead of inheriting A4 geometry.
+
+Where: registry `renderTemplatePreview` / `elementFull` / `elementsFrom(raw,
+warnings)`, `service/TemplatePreviewService` (headless PNG),
+`McpImageResult` (image content block carrier in `McpServer`). Tests:
+`McpTemplateDesignTest` (guide completeness, styling round-trip, saved +
+draft previews, bounds/binding warnings, thermal geometry, draft never
+persists).
 
 ## Error & response shapes
 
@@ -293,6 +329,9 @@ rolled back).
 |---|---|
 | HTTP/JSON-RPC endpoint, bearer auth | `mcp/McpServer.java` |
 | Tool catalogue + dispatch + create flows | `mcp/McpToolRegistry.java` |
+| Image tool results (native MCP image blocks) | `mcp/McpImageResult.java` |
+| Headless template → PNG preview (print-true) | `service/TemplatePreviewService.java` |
+| Template design reference (embedded) | `resources/docs/TEMPLATE_DESIGN_GUIDE.md` via `GuideContent` |
 | Existence layer + check-then-create + rollback | `mcp/McpEnsure.java` |
 | Confirmation queue for update/delete | `mcp/PendingOperations.java` |
 | Audit trail | `mcp/McpAuditLog.java` (+ `mcp-audit.log`) |
