@@ -264,6 +264,34 @@ Label {
     -fx-padding: 2 8 2 8;
 }
 
+/* Scope / category pill variants (Variables view, badges) */
+.pill-accent {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-accent;
+    -fx-background-color: -color-accent-subtle;
+    -fx-background-radius: 4;
+    -fx-padding: 2 8 2 8;
+}
+
+.pill-info {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-info;
+    -fx-background-color: rgba(56, 189, 248, 0.12);
+    -fx-background-radius: 4;
+    -fx-padding: 2 8 2 8;
+}
+
+.pill-success {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #10B981;
+    -fx-background-color: rgba(16, 185, 129, 0.12);
+    -fx-background-radius: 4;
+    -fx-padding: 2 8 2 8;
+}
+
 .badge-hsn {
     -fx-font-family: -font-family-mono;
     -fx-font-size: 10px;

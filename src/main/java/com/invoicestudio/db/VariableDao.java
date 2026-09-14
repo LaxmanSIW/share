@@ -15,7 +15,7 @@ public class VariableDao {
         this.db = db;
     }
 
-    /** Reads all columns including the new scope and default_value columns. */
+    /** Reads all columns including scope, default_value and choices. */
     private VariableDef fromResultSet(ResultSet rs) throws Exception {
         VariableDef v = new VariableDef(
             rs.getString("key"),
@@ -27,6 +27,12 @@ public class VariableDao {
         v.setScope(scope != null ? scope : "fixed");
         String defVal = rs.getString("default_value");
         v.setDefaultValue(defVal != null ? defVal : "");
+        try {
+            String choices = rs.getString("choices");
+            v.setChoices(choices != null ? choices : "");
+        } catch (Exception ignored) {
+            // Older schema without the choices column — leave empty.
+        }
         return v;
     }
 
@@ -112,14 +118,32 @@ public class VariableDao {
         return list;
     }
 
+    /** Returns only user-created variables with scope = 'barcode' (Bulk Label Print variables). */
+    public List<VariableDef> getBarcodeScopeVariables() {
+        List<VariableDef> list = new ArrayList<>();
+        String uid = getEffectiveUserId();
+        if (uid.isEmpty()) return list;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT * FROM variables WHERE builtin = 0 AND scope = 'barcode' AND user_id = ? ORDER BY label ASC")) {
+            ps.setString(1, uid);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(fromResultSet(rs));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
     public void saveVariable(VariableDef v) {
         String uid = getEffectiveUserId();
         if (uid.isEmpty() || v == null) return;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO variables (key, user_id, label, type, builtin, scope, default_value) VALUES (?, ?, ?, ?, ?, ?, ?) " +
+                     "INSERT INTO variables (key, user_id, label, type, builtin, scope, default_value, choices) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
                      "ON CONFLICT(key) DO UPDATE SET user_id = excluded.user_id, label = excluded.label, type = excluded.type, " +
-                     "scope = excluded.scope, default_value = excluded.default_value WHERE variables.builtin = 0")) {
+                     "scope = excluded.scope, default_value = excluded.default_value, choices = excluded.choices WHERE variables.builtin = 0")) {
             ps.setString(1, v.getKey());
             ps.setString(2, uid);
             ps.setString(3, v.getLabel());
@@ -127,6 +151,7 @@ public class VariableDao {
             ps.setInt(5, v.isBuiltin() ? 1 : 0);
             ps.setString(6, v.getScope());
             ps.setString(7, v.getDefaultValue());
+            ps.setString(8, v.getChoices());
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();

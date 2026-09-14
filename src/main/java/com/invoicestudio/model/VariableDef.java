@@ -1,6 +1,8 @@
 package com.invoicestudio.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.util.ArrayList;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class VariableDef {
@@ -21,6 +23,13 @@ public class VariableDef {
      * CreateBillView input field when starting a new bill.  Empty = no pre-fill.
      */
     private String defaultValue = "";
+
+    /**
+     * Barcode-scope variables: comma-separated list of the possible values this
+     * variable can take (e.g. "S,M,L,XL,XXL"). Shown as quick-pick options in
+     * the Bulk Label Print popup; free-text typing always stays possible.
+     */
+    private String choices = "";
 
     public VariableDef() {}
 
@@ -48,6 +57,21 @@ public class VariableDef {
 
     public String getDefaultValue() { return defaultValue != null ? defaultValue : ""; }
     public void setDefaultValue(String defaultValue) { this.defaultValue = defaultValue != null ? defaultValue : ""; }
+
+    public String getChoices() { return choices != null ? choices : ""; }
+    public void setChoices(String choices) { this.choices = choices != null ? choices : ""; }
+
+    /** Parsed possible-values list (trimmed, blanks dropped). */
+    public List<String> choicesList() {
+        List<String> out = new ArrayList<>();
+        if (choices != null && !choices.isBlank()) {
+            for (String c : choices.split(",")) {
+                String t = c.trim();
+                if (!t.isEmpty()) out.add(t);
+            }
+        }
+        return out;
+    }
 
     @Override
     public String toString() { return label + " (" + key + ")"; }

@@ -599,7 +599,7 @@ public class PdfExportService {
             }
             case BARCODE -> {
                 String payload = ctx.getBarcodePayload(el);
-                BufferedImage bar = BarcodeService.generateBarcodeBufferedImage(payload, (int) Math.round(w), (int) Math.round(h), el.isBarcodeShowText());
+                BufferedImage bar = BarcodeService.generateBarcodeBufferedImage(payload, (int) Math.round(w), (int) Math.round(h), el.isBarcodeShowText(), el.getBarcodeFormat());
                 if (bar != null) {
                     g2.drawImage(bar, (int) Math.round(x), (int) Math.round(y), (int) Math.round(w), (int) Math.round(h), null);
                 }

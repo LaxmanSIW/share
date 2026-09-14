@@ -7,6 +7,7 @@ import com.invoicestudio.model.*;
 import com.invoicestudio.model.TableColumn;
 import com.invoicestudio.service.BarcodeService;
 import com.invoicestudio.service.CustomComponentManager;
+import com.invoicestudio.service.LabelGeometryService;
 import com.invoicestudio.service.RenderContext;
 import com.invoicestudio.ui.CustomColorChooserDialog;
 import com.invoicestudio.ui.DialogHelper;
@@ -131,6 +132,12 @@ public class TemplateDesigner extends BorderPane {
     private Button panToolBtn;
     private Button penToolBtn;
 
+    /* ---- Barcode (label) mode ---- */
+    private Button barcodeModeBtn;
+    private Button labelSettingsBtn;
+    private Button stripPreviewBtn;
+    private Button bulkPrintBtn;
+
     private Spinner<Double> geoXSpin;
     private Spinner<Double> geoYSpin;
     private Spinner<Double> geoWSpin;
@@ -164,6 +171,11 @@ public class TemplateDesigner extends BorderPane {
         this.variableDao = new VariableDao(app.getDb());
         loadSessionVariables();
         this.template = template != null ? template : PresetTemplates.buildClassic();
+        if (this.template.isLabelMode()) {
+            // Opened a saved label template: canvas must equal the label cell.
+            this.template.labelOrNew().sanitize();
+            syncPageFromLabelConfig();
+        }
 
         getStyleClass().add("bg-app");
         canvas.getStyleClass().add("bill-sheet-canvas");
@@ -263,6 +275,13 @@ public class TemplateDesigner extends BorderPane {
         homeTabBtn.setStyle("-fx-font-weight: bold; -fx-padding: 4 16; -fx-cursor: hand;");
         homeTabBtn.setTooltip(new Tooltip("Home Tab: Core element creation, drawing tools, and page layout"));
 
+        // Barcode Mode pill — switches the designer into thermal label design.
+        barcodeModeBtn = new Button("▦ Barcode Mode");
+        barcodeModeBtn.getStyleClass().addAll("button-sm");
+        barcodeModeBtn.setTooltip(new Tooltip("Barcode Mode: design ONE label cell and bulk-print it on label strip stock (e.g. TSC TA210)"));
+        barcodeModeBtn.setOnAction(e -> toggleBarcodeMode());
+        styleBarcodeModeButton();
+
         Region topSpacer = new Region();
         HBox.setHgrow(topSpacer, Priority.ALWAYS);
 
@@ -272,7 +291,7 @@ public class TemplateDesigner extends BorderPane {
         saveBtn.setTooltip(new Tooltip("Save template changes to database (Ctrl S)"));
         saveBtn.setOnAction(e -> saveTemplate());
 
-        topBar.getChildren().addAll(backBtn, nameField, topSep, homeTabBtn, topSpacer, saveBtn);
+        topBar.getChildren().addAll(backBtn, nameField, topSep, homeTabBtn, barcodeModeBtn, topSpacer, saveBtn);
 
         // 2. Home Tab Grouped Ribbon
         HBox ribbon = new HBox(6);
@@ -386,7 +405,14 @@ public class TemplateDesigner extends BorderPane {
         HBox pageGroup = new HBox(6);
         pageGroup.setAlignment(Pos.CENTER_LEFT);
 
-        Button pageBtn = createToolbarBtn("⚙ Page", "Configure page dimensions, paper size & margins", this::showPageSettingsDialog);
+        Button pageBtn = createToolbarBtn("⚙ Page", "Configure page dimensions, paper size & margins",
+                () -> { if (template.isLabelMode()) showLabelSettingsDialog(); else showPageSettingsDialog(); });
+
+        // Barcode-mode-only controls (hidden on normal bill templates)
+        labelSettingsBtn = createToolbarBtn("🏷 Label Stock", "Label strip settings: columns, label size, gaps, margins, corners, orientation", this::showLabelSettingsDialog);
+        stripPreviewBtn = createToolbarBtn("🔍 Strip Preview", "Preview how the label strip looks (columns × rows, gaps & rounded corners)", this::showStripPreviewDialog);
+        bulkPrintBtn = createToolbarBtn("🖨 Bulk Print", "Print hundreds of labels with different variable values", this::showBulkPrintDialog);
+        updateLabelButtonsVisibility();
 
         CheckBox gridCb = new CheckBox("Grid");
         gridCb.setSelected(true);
@@ -409,7 +435,7 @@ public class TemplateDesigner extends BorderPane {
         magnetCb.setTooltip(new Tooltip("Snap object borders to align and collapse with other objects and margins"));
         magnetCb.selectedProperty().addListener((obs, old, val) -> magnetSnapping = val);
 
-        pageGroup.getChildren().addAll(pageBtn, gridCb, snapCb, magnetCb);
+        pageGroup.getChildren().addAll(pageBtn, labelSettingsBtn, stripPreviewBtn, bulkPrintBtn, gridCb, snapCb, magnetCb);
 
         Separator s3 = new Separator(javafx.geometry.Orientation.VERTICAL);
 
@@ -526,7 +552,7 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void setZoom(double z) {
-        this.zoom = Math.max(0.3, Math.min(2.5, z));
+        this.zoom = Math.max(0.3, Math.min(3.0, z));
         scaleGroup.setScaleX(zoom);
         scaleGroup.setScaleY(zoom);
         zoomLabel.setText((int) Math.round(zoom * 100) + "%");
@@ -589,7 +615,7 @@ public class TemplateDesigner extends BorderPane {
         zoomMinusBtn.setTooltip(new Tooltip("Zoom out (Ctrl -)"));
         zoomMinusBtn.setOnAction(e -> setZoom(zoom - 0.1));
 
-        zoomSlider = new Slider(0.3, 2.5, zoom);
+        zoomSlider = new Slider(0.3, 3.0, zoom);
         zoomSlider.getStyleClass().add("designer-footer-slider");
         zoomSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
             if (!updatingZoom && newVal != null) {
@@ -627,8 +653,18 @@ public class TemplateDesigner extends BorderPane {
         if (template != null && template.getPage() != null) {
             PageConfig p = template.getPage();
             String name = p.getSizeName() != null ? p.getSizeName().name() : "CUSTOM";
-            pageFormatLabel.setText(String.format(Locale.US, "%s (%d × %d mm)",
-                    name, (int) Math.round(p.getWidth()), (int) Math.round(p.getHeight())));
+            if (template.isLabelMode()) {
+                com.invoicestudio.model.LabelConfig cfg = template.labelOrNew();
+                pageFormatLabel.setText(String.format(Locale.US,
+                        "LABEL %d × %d mm · %d across · strip %d mm",
+                        (int) Math.round(cfg.getLabelWidth()),
+                        (int) Math.round(cfg.getLabelHeight()),
+                        cfg.getColumns(),
+                        (int) Math.round(cfg.getStripWidth())));
+            } else {
+                pageFormatLabel.setText(String.format(Locale.US, "%s (%d × %d mm)",
+                        name, (int) Math.round(p.getWidth()), (int) Math.round(p.getHeight())));
+            }
         } else {
             pageFormatLabel.setText("A4 (210 × 297 mm)");
         }
@@ -3138,14 +3174,20 @@ public class TemplateDesigner extends BorderPane {
         title.getStyleClass().add("prop-title");
 
         TextField tf = new TextField(el.getBarcodeData());
-        tf.setPromptText("e.g. {{invoice_no}} or {{po_no}}");
+        tf.setPromptText("e.g. {{invoice_no}} or {{barcode}}");
         tf.textProperty().addListener((obs, o, v) -> { el.setBarcodeData(v); refreshCanvas(); });
+
+        // Symbology — CODE_128 default keeps every pre-existing template identical.
+        ComboBox<String> fmtCb = new ComboBox<>(FXCollections.observableArrayList(BarcodeService.FORMATS));
+        fmtCb.setValue(el.getBarcodeFormat());
+        fmtCb.setTooltip(new Tooltip("EAN_13/UPC_A need 13/12 digits, ITF needs an even digit count — otherwise Code 128 is used as a safe fallback"));
+        fmtCb.valueProperty().addListener((obs, o, v) -> { if (v != null) { el.setBarcodeFormat(v); refreshCanvas(); } });
 
         CheckBox textCb = new CheckBox("Show text below barcode lines");
         textCb.setSelected(el.isBarcodeShowText());
         textCb.setOnAction(e -> { el.setBarcodeShowText(textCb.isSelected()); refreshCanvas(); });
 
-        sec.getChildren().addAll(title, new Label("Payload:"), tf, textCb);
+        sec.getChildren().addAll(title, new Label("Payload:"), tf, new Label("Symbology:"), fmtCb, textCb);
         addPropertyNode(sec);
     }
 
@@ -5599,6 +5641,295 @@ public class TemplateDesigner extends BorderPane {
         });
     }
 
+    // ==================================================================
+    // Barcode (label) mode — thermal strip stock, e.g. TSC TA210
+    // ==================================================================
+
+    private double preLabelPageW = -1;
+    private double preLabelPageH = -1;
+
+    /** Enters / leaves Barcode Mode, remembering the bill page size across the switch. */
+    private void toggleBarcodeMode() {
+        if (template.isLabelMode()) {
+            // Leave label mode → restore the bill page we came from
+            template.setMode("bill");
+            if (preLabelPageW > 0 && preLabelPageH > 0) {
+                template.getPage().setWidth(preLabelPageW);
+                template.getPage().setHeight(preLabelPageH);
+                template.getPage().setSizeName(PageSizeName.CUSTOM);
+            }
+        } else {
+            template.setMode("label");
+            preLabelPageW = template.getPage().getWidth();
+            preLabelPageH = template.getPage().getHeight();
+
+            LabelConfig cfg = template.labelOrNew();
+            // First entry: seed the label cell from the current canvas when it
+            // already looks like a label, else fall back to a common 50×25 tag.
+            if (cfg.getLabelWidth() <= 0 || cfg.getLabelHeight() <= 0) {
+                cfg.setLabelWidth(Math.max(20, Math.min(120, template.getPage().getWidth())));
+                cfg.setLabelHeight(Math.max(15, Math.min(120, template.getPage().getHeight())));
+            }
+            cfg.sanitize();
+
+            if (template.getElements().isEmpty()) {
+                TemplateElement item = new TemplateElement();
+                item.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
+                item.setType(ElementType.TEXT);
+                item.setName("Item Line");
+                item.setX(3); item.setY(2); item.setW(cfg.getLabelWidth() - 6); item.setH(7);
+                item.setText("{{item_name}}");
+                item.setFontSize(9); item.setBold(true); item.setAlign("left");
+                template.getElements().add(item);
+
+                TemplateElement code = new TemplateElement();
+                code.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
+                code.setType(ElementType.BARCODE);
+                code.setName("Barcode");
+                code.setX(3); code.setY(10); code.setW(cfg.getLabelWidth() - 6); code.setH(11);
+                code.setBarcodeData("{{barcode}}");
+                template.getElements().add(code);
+            }
+            Toast.show(app.getRootPane(), "Barcode Mode",
+                    "Design ONE label cell now. Create variables like {{item_name}} under Catalog → Variables "
+                    + "with scope 'Barcode Label' so Bulk Print can ask for their values.", false);
+        }
+
+        if (template.isLabelMode()) syncPageFromLabelConfig();
+        styleBarcodeModeButton();
+        updateLabelButtonsVisibility();
+        selectedElement = null;
+        saveState();
+        refreshCanvas();
+        updatePropertiesPanel();
+        refreshLayersList();
+    }
+
+    private void styleBarcodeModeButton() {
+        if (barcodeModeBtn == null) return;
+        boolean active = template.isLabelMode();
+        barcodeModeBtn.setText(active ? "▦ Barcode Mode ✓" : "▦ Barcode Mode");
+        styleToolButton(barcodeModeBtn, active);
+    }
+
+    private void updateLabelButtonsVisibility() {
+        boolean label = template.isLabelMode();
+        if (labelSettingsBtn != null) { labelSettingsBtn.setVisible(label); labelSettingsBtn.setManaged(label); }
+        if (stripPreviewBtn != null) { stripPreviewBtn.setVisible(label); stripPreviewBtn.setManaged(label); }
+        if (bulkPrintBtn != null) { bulkPrintBtn.setVisible(label); bulkPrintBtn.setManaged(label); }
+    }
+
+    /** Canvas (page) always equals the label design cell while in Barcode Mode. */
+    private void syncPageFromLabelConfig() {
+        LabelConfig cfg = template.labelOrNew();
+        cfg.sanitize();
+        template.getPage().setWidth(cfg.getLabelWidth());
+        template.getPage().setHeight(cfg.getLabelHeight());
+        template.getPage().setSizeName(PageSizeName.CUSTOM);
+        updatePageFormatLabel();
+    }
+
+    /** Strip-stock settings dialog — the "barcode page setting" (hidden in normal mode). */
+    private void showLabelSettingsDialog() {
+        LabelConfig cfg = template.labelOrNew();
+        cfg.sanitize();
+
+        Dialog<Boolean> dlg = new Dialog<>();
+        DialogHelper.styleDialog(dlg);
+        dlg.setTitle("Label Stock Settings");
+        dlg.setHeaderText("Barcode Mode — Strip & Die-Cut Geometry");
+
+        GridPane g = new GridPane();
+        g.setHgap(10); g.setVgap(10); g.setPadding(new Insets(16));
+
+        Spinner<Integer> colsSpin = new Spinner<>(1, 8, cfg.getColumns());
+        colsSpin.setPrefWidth(90);
+        Spinner<Double> stripWSpin = new Spinner<>(20.0, 300.0, cfg.getStripWidth(), 0.5);
+        configureNumberSpinner(stripWSpin); stripWSpin.setPrefWidth(90);
+        Spinner<Double> labelWSpin = new Spinner<>(10.0, 200.0, cfg.getLabelWidth(), 0.5);
+        configureNumberSpinner(labelWSpin); labelWSpin.setPrefWidth(90);
+        Spinner<Double> labelHSpin = new Spinner<>(10.0, 200.0, cfg.getLabelHeight(), 0.5);
+        configureNumberSpinner(labelHSpin); labelHSpin.setPrefWidth(90);
+        Spinner<Double> gapXSpin = new Spinner<>(0.0, 40.0, cfg.getGapX(), 0.5);
+        configureNumberSpinner(gapXSpin); gapXSpin.setPrefWidth(90);
+        Spinner<Double> gapYSpin = new Spinner<>(0.0, 40.0, cfg.getGapY(), 0.5);
+        configureNumberSpinner(gapYSpin); gapYSpin.setPrefWidth(90);
+        Spinner<Double> cornerSpin = new Spinner<>(0.0, 12.0, cfg.getCornerRadius(), 0.5);
+        configureNumberSpinner(cornerSpin); cornerSpin.setPrefWidth(90);
+        ComboBox<String> orientCb = new ComboBox<>(FXCollections.observableArrayList("0", "90", "180", "270"));
+        orientCb.setValue(cfg.getOrientation());
+        Spinner<Double> mlSpin = new Spinner<>(0.0, 60.0, cfg.getMarginL(), 0.5);
+        configureNumberSpinner(mlSpin); mlSpin.setPrefWidth(90);
+        Spinner<Double> mrSpin = new Spinner<>(0.0, 60.0, cfg.getMarginR(), 0.5);
+        configureNumberSpinner(mrSpin); mrSpin.setPrefWidth(90);
+        ComboBox<String> stockCb = new ComboBox<>(FXCollections.observableArrayList("gap", "continuous"));
+        stockCb.setValue(cfg.getStockType());
+
+        Label needLbl = new Label();
+        needLbl.getStyleClass().add("text-muted");
+
+        int r = 0;
+        g.add(new Label("Columns across strip:"), 0, r); g.add(colsSpin, 1, r);
+        g.add(new Label("Strip (liner) width (mm):"), 2, r); g.add(stripWSpin, 3, r); r++;
+        g.add(new Label("Label width (mm):"), 0, r); g.add(labelWSpin, 1, r);
+        g.add(new Label("Label height (mm):"), 2, r); g.add(labelHSpin, 3, r); r++;
+        g.add(new Label("Gap between columns (mm):"), 0, r); g.add(gapXSpin, 1, r);
+        g.add(new Label("Feed gap / rows (mm):"), 2, r); g.add(gapYSpin, 3, r); r++;
+        g.add(new Label("Corner radius (mm):"), 0, r); g.add(cornerSpin, 1, r);
+        g.add(new Label("Print orientation:"), 2, r); g.add(orientCb, 3, r); r++;
+        g.add(new Label("Left margin (mm):"), 0, r); g.add(mlSpin, 1, r);
+        g.add(new Label("Right margin (mm):"), 2, r); g.add(mrSpin, 3, r); r++;
+        g.add(new Label("Stock type:"), 0, r); g.add(stockCb, 1, r); r++;
+
+        Runnable upd = () -> {
+            LabelConfig tmp = new LabelConfig();
+            tmp.setStripWidth(stripWSpin.getValue());
+            tmp.setColumns(colsSpin.getValue());
+            tmp.setLabelWidth(labelWSpin.getValue());
+            tmp.setLabelHeight(labelHSpin.getValue());
+            tmp.setGapX(gapXSpin.getValue());
+            tmp.setGapY(gapYSpin.getValue());
+            tmp.setMarginL(mlSpin.getValue());
+            tmp.setMarginR(mrSpin.getValue());
+            tmp.sanitize();
+            boolean fits = LabelGeometryService.fitsStrip(tmp);
+            needLbl.setText(String.format(java.util.Locale.US,
+                    "%s Labels need %.1f mm; strip is %.1f mm · feed pitch %.1f mm",
+                    fits ? "✓" : "⚠", LabelGeometryService.requiredStripWidth(tmp),
+                    tmp.getStripWidth(), LabelGeometryService.feedPitchMm(tmp)));
+            needLbl.setStyle(fits ? "-fx-text-fill: #16a34a;" : "-fx-text-fill: #dc2626;");
+        };
+        upd.run();
+        colsSpin.valueProperty().addListener((o, a, b) -> upd.run());
+        for (Spinner<Double> s : List.of(stripWSpin, labelWSpin, labelHSpin, gapXSpin, gapYSpin, mlSpin, mrSpin)) {
+            s.valueProperty().addListener((o, a, b) -> upd.run());
+        }
+        g.add(needLbl, 0, r, 4, 1); r++;
+
+        Label hint = new Label("The designer canvas is ONE label cell (label width × height). "
+                + "Print orientation rotates the finished artwork when the printer feeds labels sideways.");
+        hint.setWrapText(true); hint.getStyleClass().add("text-muted");
+        g.add(hint, 0, r, 4, 1);
+
+        dlg.getDialogPane().setContent(g);
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dlg.setResultConverter(btn -> btn == ButtonType.OK);
+        dlg.showAndWait().ifPresent(ok -> {
+            if (ok) {
+                cfg.setColumns(colsSpin.getValue());
+                cfg.setStripWidth(stripWSpin.getValue());
+                cfg.setLabelWidth(labelWSpin.getValue());
+                cfg.setLabelHeight(labelHSpin.getValue());
+                cfg.setGapX(gapXSpin.getValue());
+                cfg.setGapY(gapYSpin.getValue());
+                cfg.setCornerRadius(cornerSpin.getValue());
+                cfg.setOrientation(orientCb.getValue());
+                cfg.setMarginL(mlSpin.getValue());
+                cfg.setMarginR(mrSpin.getValue());
+                cfg.setStockType(stockCb.getValue());
+                cfg.sanitize();
+
+                syncPageFromLabelConfig();
+                refreshCanvas();
+                updatePropertiesPanel();
+                saveState();
+                Toast.show(app.getRootPane(), "Label Stock Updated",
+                        "Strip " + (int) Math.round(cfg.getStripWidth()) + " mm · " + cfg.getColumns()
+                        + " across · label " + (int) Math.round(cfg.getLabelWidth()) + "×"
+                        + (int) Math.round(cfg.getLabelHeight()) + " mm.", false);
+            }
+        });
+    }
+
+    /** Shows how the strip looks — columns × 5 rows with gaps & rounded corners. */
+    private void showStripPreviewDialog() {
+        if (!template.isLabelMode()) return;
+        template.labelOrNew().sanitize();
+        try {
+            new com.invoicestudio.ui.LabelStripPreviewDialog(
+                    app.getPrimaryStage(), template, settingsDao.getSettings(), buildSampleLabelValues()).showAndWait();
+        } catch (Exception ex) {
+            Toast.show(app.getRootPane(), "Strip Preview", "Could not open preview: " + ex.getMessage(), true);
+        }
+    }
+
+    /** Opens the keyboard-first bulk print popup. */
+    private void showBulkPrintDialog() {
+        if (!template.isLabelMode()) return;
+        template.labelOrNew().sanitize();
+
+        List<VariableDef> vars = new ArrayList<>();
+        try {
+            vars.addAll(variableDao.getBarcodeScopeVariables());
+        } catch (Exception ignored) {}
+
+        // Any placeholder typed on the label but not defined as a barcode
+        // variable still gets a column, so a run is never blocked.
+        Set<String> seen = new LinkedHashSet<>();
+        for (VariableDef v : vars) seen.add(v.getKey());
+        for (String key : collectTemplatePlaceholders()) {
+            if (seen.add(key)) {
+                vars.add(new VariableDef(key, key, "text", false));
+            }
+        }
+
+        try {
+            new com.invoicestudio.ui.LabelBulkPrintDialog(
+                    app.getPrimaryStage(), template, settingsDao.getSettings(), vars,
+                    template.labelOrNew()).showAndWait();
+        } catch (Exception ex) {
+            Toast.show(app.getRootPane(), "Bulk Print", "Could not open: " + ex.getMessage(), true);
+        }
+    }
+
+    /** All {{keys}} used anywhere on this label (text payloads + barcode data). */
+    private List<String> collectTemplatePlaceholders() {
+        Set<String> keys = new LinkedHashSet<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\\{\\{\\s*([a-zA-Z0-9_]+)\\s*\\}\\}").matcher("");
+        if (template.getElements() != null) {
+            for (TemplateElement el : template.getElements()) {
+                String[] sources = { el.getText(), el.getBarcodeData(), el.getQrCustom() };
+                for (String src : sources) {
+                    if (src == null) continue;
+                    m.reset(src);
+                    while (m.find()) keys.add(m.group(1));
+                }
+            }
+        }
+        // Not variables of the bill pipeline — labels want their own dynamic set.
+        keys.removeAll(List.of("invoice_no", "invoice_date", "buyer_name", "buyer_gst",
+                "business_name", "business_gst", "page_no", "page_count", "grand_total"));
+        return new ArrayList<>(keys);
+    }
+
+    /** Cross-product sample values so the strip preview shows variety. */
+    private List<Map<String, String>> buildSampleLabelValues() {
+        List<Map<String, String>> out = new ArrayList<>();
+        List<VariableDef> vars = new ArrayList<>();
+        try {
+            vars.addAll(variableDao.getBarcodeScopeVariables());
+        } catch (Exception ignored) {}
+        if (vars.isEmpty()) {
+            out.add(new LinkedHashMap<>());
+            return out;
+        }
+        int tiles = Math.max(1, template.labelOrNew().getColumns()) * 5;
+        for (int i = 0; i < tiles; i++) {
+            Map<String, String> vals = new LinkedHashMap<>();
+            for (VariableDef v : vars) {
+                List<String> choices = v.choicesList();
+                if (choices.isEmpty()) {
+                    vals.put(v.getKey(), v.getKey());
+                } else {
+                    vals.put(v.getKey(), choices.get(i % choices.size()));
+                }
+            }
+            out.add(vals);
+        }
+        return out;
+    }
+
     private void buildPageAndMarginProperties() {
         PageConfig page = template.getPage();
         PageConfig.Margins mg = page.getMargin();
@@ -5620,6 +5951,15 @@ public class TemplateDesigner extends BorderPane {
         badge.getStyleClass().add("type-badge");
         headerRow.getChildren().addAll(titleLbl, spacer, badge);
         addPropertyNode(headerRow);
+
+        // Barcode Mode: the canvas is the label cell — point users to the right dialog.
+        if (template.isLabelMode()) {
+            Label note = new Label("Barcode Mode active — this canvas is ONE label cell. "
+                    + "Use ⚙ Page (or 🏷 Label Stock) to edit strip columns, gaps, margins, corners & print orientation.");
+            note.setWrapText(true);
+            note.setStyle("-fx-text-fill: #b45309; -fx-background-color: rgba(245,158,11,0.12); -fx-padding: 6 10; -fx-background-radius: 4;");
+            addPropertyNode(note);
+        }
 
         // Section 1: Dimensions
         TitledPane dimPane = new TitledPane();

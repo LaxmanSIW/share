@@ -521,7 +521,8 @@ public class DesignObjectRenderer {
 
     private static Node renderBarcode(TemplateElement el, RenderContext ctx, double w, double h) {
         String payload = ctx != null ? ctx.getBarcodePayload(el) : "INV-0001";
-        Image barImg = BarcodeService.generateBarcodeFxImage(payload, (int) (w * 2), (int) (h * 2), el.isBarcodeShowText());
+        Image barImg = BarcodeService.generateBarcodeFxImage(payload, (int) (w * 2), (int) (h * 2),
+                el.isBarcodeShowText(), el.getBarcodeFormat());
         ImageView iv = new ImageView(barImg);
         iv.setFitWidth(w);
         iv.setFitHeight(h);

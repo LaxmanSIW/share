@@ -278,7 +278,15 @@ invoices align the summary bar's `{{parcel}}`, `{{total_qty}}` and
 - `qrColor` for the modules; keep quiet-zone white for scannability.
 
 **BARCODE element** — `barcodeData` (default `{{invoice_no}}`),
-`barcodeColor`, `barcodeShowText`.
+`barcodeColor`, `barcodeShowText`, and `barcodeFormat`:
+- `barcodeFormat` (symbology): `CODE_128` (default — every template without
+  the field keeps Code 128), `EAN_13`, `EAN_8`, `CODE_39`, `ITF`, `UPC_A`,
+  `QR_CODE`.
+- Numeric symbologies validate the payload: EAN_13 needs exactly 13 digits,
+  EAN_8 → 8, UPC_A → 12, ITF → even digit count. A wrong payload silently
+  falls back to Code 128 so a mis-typed size code never blocks a print run.
+- For retail price tags use EAN_13; for garment tags Code 128 with
+  `{{barcode}}` is the norm.
 
 ## 6. Proven design recipes
 
@@ -427,3 +435,120 @@ TEXT "Authorised Signatory"  x=140 y=288  7pt centered
   renderer self-scales its 300-dpi drawing to the requested canvas, so a
   150-dpi preview is uncropped and faithful. Use 150 for iteration (lean
   payloads) and 300 only for fine print/edge checks.
+
+## 8. Barcode Mode — label design & bulk print (thermal strip stock)
+
+Barcode Mode turns the designer into a **label editor** for thermal label
+printers (TSC TA210 and friends). The core idea: you design **ONE label
+cell**; the print engine tiles it across the strip, substitutes variables
+per label, and can output hundreds of labels in one click.
+
+### 8.1 The mental model (die-cut strip)
+
+```
+ |←mL→| label 1 |←gapX→| label 2 |→mR|     ← strip (liner) width = printed page
+ |------------ labelHeight ------------|   ← feed gap (gapY) is advanced by the
+                                              printer's gap sensor, never printed
+```
+
+- **Canvas = one label cell** (`labelWidth` × `labelHeight` mm). Rulers,
+  snapping, margins and zoom all behave exactly like bill templates.
+- **One printed page = one strip row** carrying up to `columns` labels.
+  Slots fill left → right from the print queue; the last page simply
+  leaves the remaining columns blank.
+- Elements are positioned in mm relative to the cell origin (0,0) — same
+  as any template.
+
+### 8.2 Template JSON additions
+
+Top level (both optional; absent = normal bill template):
+
+```json
+{
+  "id": "tpl_label_1",
+  "name": "Garment Size Tag",
+  "mode": "label",
+  "labelConfig": {
+    "stripWidth": 108,      // liner width mm (TA210 prints up to ~108 mm)
+    "columns": 2,           // labels across the strip (1 = standard roll)
+    "labelWidth": 50,       // design cell width mm  = designer canvas width
+    "labelHeight": 25,      // design cell height mm = designer canvas height
+    "gapX": 3,              // gap between columns mm
+    "gapY": 3,              // feed-direction gap mm (driver handles)
+    "cornerRadius": 2,      // die-cut corner radius mm (preview guides)
+    "orientation": "0",     // artwork rotation at print time: 0|90|180|270
+    "marginL": 0, "marginR": 0,   // strip side margins mm
+    "stockType": "gap"      // gap (die-cut roll) | continuous
+  },
+  "elements": [ ...normal elements... ]
+}
+```
+
+Rules the engine enforces:
+- `mode: "label"` + `labelConfig` never break old templates: JSON without
+  them loads as `mode "bill"` and `labelOrNew()` hands out safe defaults.
+- With `orientation` 90/270 the **physical** cell on the strip is the
+  design cell transposed (design height becomes strip width). Strip-fit
+  math, page size and feed pitch all use the physical cell; the designer
+  canvas stays in design orientation, so you never redesign for a rotated
+  print — you just pick the angle.
+- Labels are centered inside any strip slack (marginL/R + leftover width),
+  so slightly-wider stock still prints symmetrically.
+- Extra dynamic variables available on every label: `{{label_date}}`
+  (dd-MM-yyyy) and `{{label_time}}` (HH:mm) — handy for "Packed on" marks.
+
+### 8.3 Barcode variables (possible values / quick-picks)
+
+Create variables with **scope `barcode`** (Catalog → Variables → Barcode
+Label pill). `choices` holds the possible values, comma separated:
+
+```json
+{ "key": "size", "label": "Size", "scope": "barcode", "choices": "S,M,L,XL,XXL" }
+```
+
+- Drop them on the label as `{{size}}`, `{{item_name}}`, `{{length}}` …
+  exactly like bill variables; they also work inside `barcodeData`.
+- The Bulk Print popup gives each variable its own column with a
+  quick-pick combo (typing a custom value is always allowed).
+- Any `{{placeholder}}` typed on the label without a matching variable
+  still gets a column in the popup, so a run is never blocked.
+
+### 8.4 Bulk print workflow (keyboard-first)
+
+Templates → open a label template → **🖨 Bulk Print**:
+
+1. One table row = one print line: variable columns + **Copies**.
+2. Type values into the combos, set copies — e.g.
+   `A / 19 / S × 20`, `A / 20 / M × 10`, `B / 19 / S × 11`.
+3. **Print All** expands the queue into physical labels, fills the strip
+   rows and streams the pages to the printer. Each run is appended to
+   Catalog → **Label Print History** (when, template, printer, size,
+   columns, pages, labels, the queue summary).
+
+Keyboard map in the popup:
+
+| Key | Action |
+|---|---|
+| Enter | commit cell, move DOWN (adds a fresh row at the end) |
+| Tab / Shift+Tab | next / previous cell |
+| ↑ ↓ ← → | move between rows / cells |
+| Insert / Alt+N | add row |
+| Ctrl+Delete | remove selected row |
+| Ctrl+Enter | Print All |
+| F4 | close |
+
+Use **Test Print (1)** first: it outputs one label with the first row's
+values so you can verify alignment against the die-cut before committing
+a 500-label run.
+
+### 8.5 TSC TA210 driver notes
+
+- Create the label stock in the driver (Size = label width × feed pitch
+  = `labelHeight + gapY`), gap-sensed media, then just print — the app
+  matches the printer's supported paper forms to the strip automatically.
+- For sideways labels (vertical dispensers) design upright and set
+  `orientation: "90"` — the artwork rotates at print time.
+- Keep `stripWidth` within the print head (TA210 ≈ 108 mm); the strip
+  preview flags overflow and the label-settings dialog warns above 118 mm.
+- Label Print History is an info-only audit: it never blocks or limits
+  printing and is partitioned per user.

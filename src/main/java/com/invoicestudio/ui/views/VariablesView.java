@@ -20,9 +20,10 @@ import java.util.List;
  * Custom placeholder management with built-in variable reference,
  * buyer custom fields overview, and the custom variables table.
  *
- * Custom variables now have two scopes:
- *  - "fixed"  → one value per bill (input shown in CreateBillView)
- *  - "table"  → one value per line item (add as a table column via TemplateDesigner)
+ * Custom variables now have three scopes:
+ *  - "fixed"   → one value per bill (input shown in CreateBillView)
+ *  - "table"   → one value per line item (add as a table column via TemplateDesigner)
+ *  - "barcode" → one value per label in Bulk Label Print (with possible values)
  */
 public class VariablesView extends VBox {
 
@@ -33,12 +34,15 @@ public class VariablesView extends VBox {
     private final TextField keyInput    = new TextField();
     private final ComboBox<String> typeSelect = new ComboBox<>();
     private final TextField defaultValueInput = new TextField();
+    private final TextField choicesInput = new TextField();
 
     // Scope selection — uses btn-filter-pill pattern (matches app filter tabs)
-    private boolean scopeIsTable = false;  // false = fixed, true = table
+    private String currentScope = "fixed";  // fixed | table | barcode
     private Button scopeFixedBtn;
     private Button scopeTableBtn;
+    private Button scopeBarcodeBtn;
     private VBox defaultValueRow;
+    private VBox choicesRow;
 
     // Containers rebuilt on reload
     private final VBox customVarsContainer  = new VBox();
@@ -100,8 +104,8 @@ public class VariablesView extends VBox {
         title.getStyleClass().add("view-title");
         titleRow.getChildren().addAll(titleIcon, title);
 
-        Label sub = new Label("Variables are placeholders you drop into templates — they get filled with real values when a bill is generated.\n" +
-                "• Bill Field (fixed) → one value per bill   • Table Column (per item) → one value per line item");
+        Label sub = new Label("Variables are placeholders you drop into templates — they get filled with real values when a bill or label run is generated.\n" +
+                "• Bill Field (fixed) → one value per bill   • Table Column (per item) → one value per line   • Barcode Label → one value per printed label");
         sub.getStyleClass().add("view-subtitle");
         sub.setWrapText(true);
         titleBox.getChildren().addAll(titleRow, sub);
@@ -129,13 +133,17 @@ public class VariablesView extends VBox {
 
         scopeFixedBtn = new Button("🔖  Bill Field (fixed)");
         scopeFixedBtn.getStyleClass().addAll("btn-filter-pill", "active");
-        scopeFixedBtn.setOnAction(e -> setScopeFixed());
+        scopeFixedBtn.setOnAction(e -> setScope("fixed"));
 
         scopeTableBtn = new Button("📋  Table Column (per item)");
         scopeTableBtn.getStyleClass().add("btn-filter-pill");
-        scopeTableBtn.setOnAction(e -> setScopeTable());
+        scopeTableBtn.setOnAction(e -> setScope("table"));
 
-        scopeBar.getChildren().addAll(scopeFixedBtn, scopeTableBtn);
+        scopeBarcodeBtn = new Button("🏷  Barcode Label");
+        scopeBarcodeBtn.getStyleClass().add("btn-filter-pill");
+        scopeBarcodeBtn.setOnAction(e -> setScope("barcode"));
+
+        scopeBar.getChildren().addAll(scopeFixedBtn, scopeTableBtn, scopeBarcodeBtn);
 
         HBox scopeRow = new HBox(10);
         scopeRow.setAlignment(Pos.CENTER_LEFT);
@@ -144,7 +152,7 @@ public class VariablesView extends VBox {
         scopeRow.getChildren().addAll(scopeLbl, scopeBar);
 
         // Show / hide default value row when scope changes
-        // (handled in setScopeFixed / setScopeTable)
+        // (handled in setScope)
 
         // ── Main form row: Label | Key | Type ──
         HBox formRow = new HBox(14);
@@ -207,26 +215,32 @@ public class VariablesView extends VBox {
         defaultValueInput.setMaxWidth(Double.MAX_VALUE);
         defaultValueRow.getChildren().addAll(defLbl, defaultValueInput);
 
-        card.getChildren().addAll(head, scopeRow, formRow, defaultValueRow);
+        // ── Possible Values row (only visible for barcode scope) ──
+        choicesRow = new VBox(6);
+        Label chLbl = new Label("POSSIBLE VALUES (comma separated)");
+        chLbl.getStyleClass().add("field-label");
+        choicesInput.setPromptText("e.g. S, M, L, XL, XXL  — or  Item A, Item B");
+        choicesInput.setMaxWidth(Double.MAX_VALUE);
+        choicesRow.getChildren().addAll(chLbl, choicesInput);
+
+        card.getChildren().addAll(head, scopeRow, formRow, defaultValueRow, choicesRow);
         getChildren().add(card);
     }
 
-    private void setScopeFixed() {
-        scopeIsTable = false;
-        if (!scopeFixedBtn.getStyleClass().contains("active")) {
-            scopeFixedBtn.getStyleClass().add("active");
-        }
-        scopeTableBtn.getStyleClass().remove("active");
-        if (defaultValueRow != null) { defaultValueRow.setVisible(true); defaultValueRow.setManaged(true); }
-    }
-
-    private void setScopeTable() {
-        scopeIsTable = true;
-        if (!scopeTableBtn.getStyleClass().contains("active")) {
-            scopeTableBtn.getStyleClass().add("active");
-        }
+    private void setScope(String scope) {
+        currentScope = scope;
         scopeFixedBtn.getStyleClass().remove("active");
-        if (defaultValueRow != null) { defaultValueRow.setVisible(false); defaultValueRow.setManaged(false); }
+        scopeTableBtn.getStyleClass().remove("active");
+        scopeBarcodeBtn.getStyleClass().remove("active");
+        switch (scope) {
+            case "table" -> scopeTableBtn.getStyleClass().add("active");
+            case "barcode" -> scopeBarcodeBtn.getStyleClass().add("active");
+            default -> scopeFixedBtn.getStyleClass().add("active");
+        }
+        boolean fixed = "fixed".equals(scope);
+        boolean barcode = "barcode".equals(scope);
+        if (defaultValueRow != null) { defaultValueRow.setVisible(fixed); defaultValueRow.setManaged(fixed); }
+        if (choicesRow != null) { choicesRow.setVisible(barcode); choicesRow.setManaged(barcode); }
     }
 
     private void handleAdd() {
@@ -238,7 +252,7 @@ public class VariablesView extends VBox {
             return;
         }
 
-        String scope = scopeIsTable ? "table" : "fixed";
+        String scope = currentScope;
 
         try {
             VariableDef v = new VariableDef();
@@ -248,14 +262,20 @@ public class VariablesView extends VBox {
             v.setBuiltin(false);
             v.setScope(scope);
             v.setDefaultValue("fixed".equals(scope) ? defaultValueInput.getText().trim() : "");
+            v.setChoices("barcode".equals(scope) ? choicesInput.getText().trim() : "");
             app.getData().variables().saveVariable(v);
 
-            String scopeDesc = "table".equals(scope) ? "table column" : "bill field";
+            String scopeDesc = switch (scope) {
+                case "table" -> "table column";
+                case "barcode" -> "barcode label variable";
+                default -> "bill field";
+            };
             Toast.show(this, "Variable Added",
                     "Variable {{" + key + "}} created as " + scopeDesc + ".", false);
             labelInput.clear();
             keyInput.clear();
             defaultValueInput.clear();
+            choicesInput.clear();
             reload();
         } catch (Exception e) {
             e.printStackTrace();
@@ -466,10 +486,18 @@ public class VariablesView extends VBox {
                 HBox scopeCol = new HBox();
                 scopeCol.setAlignment(Pos.CENTER_LEFT);
                 scopeCol.setPrefWidth(110); scopeCol.setMinWidth(110); scopeCol.setMaxWidth(110);
-                boolean isTable = "table".equalsIgnoreCase(vd.getScope());
-                Label scopeBadge = UiTheme.pill(isTable ? "TABLE" : "FIXED");
-                // Subtle colour hint: table = blue-ish style, fixed = default gold
-                scopeBadge.getStyleClass().add(isTable ? "pill-info" : "pill-accent");
+                String scope = vd.getScope() != null ? vd.getScope() : "fixed";
+                Label scopeBadge = UiTheme.pill(switch (scope) {
+                    case "table" -> "TABLE";
+                    case "barcode" -> "BARCODE";
+                    default -> "FIXED";
+                });
+                // Subtle colour hint: barcode = green, table = blue, fixed = default gold
+                scopeBadge.getStyleClass().add(switch (scope) {
+                    case "barcode" -> "pill-success";
+                    case "table" -> "pill-info";
+                    default -> "pill-accent";
+                });
                 scopeCol.getChildren().add(scopeBadge);
 
                 // Column 4: Type

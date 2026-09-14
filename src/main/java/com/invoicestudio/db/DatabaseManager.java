@@ -75,6 +75,13 @@ public class DatabaseManager {
             // v4.1 — variable scope + default value support
             try { stmt.execute("ALTER TABLE variables ADD COLUMN scope TEXT DEFAULT 'fixed'"); } catch (Exception ignored) {}
             try { stmt.execute("ALTER TABLE variables ADD COLUMN default_value TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            // v4.6 — barcode scope: possible values (comma separated) for Bulk Label Print quick-picks
+            try { stmt.execute("ALTER TABLE variables ADD COLUMN choices TEXT DEFAULT ''"); } catch (Exception ignored) {}
+
+            // v4.6 — Bulk Label Print history (info-only audit of label runs)
+            stmt.execute("CREATE TABLE IF NOT EXISTS label_print_history (id TEXT PRIMARY KEY, template_id TEXT, template_name TEXT, printer_name TEXT, label_width REAL, label_height REAL, columns INTEGER, pages INTEGER, labels INTEGER, total_copies INTEGER, summary TEXT, lines_json TEXT, user_id TEXT DEFAULT '', created_at TEXT)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_lph_user ON label_print_history(user_id)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_lph_created ON label_print_history(created_at)");
 
             // v4.2 — user_id multi-user local data partitioning
             try { stmt.execute("ALTER TABLE bills ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
@@ -118,6 +125,7 @@ public class DatabaseManager {
             try { stmt.execute("DELETE FROM expenses WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM transactions WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM label_print_history WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
 
             // MCP hardening: categories are auto-created BY NAME by MCP tools, so
             // (user_id, name) must be unique or two concurrent calls could create

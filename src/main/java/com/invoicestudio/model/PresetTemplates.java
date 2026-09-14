@@ -617,4 +617,66 @@ public class PresetTemplates {
     private static String uid() {
         return "el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
     }
+
+    // ==================================================================
+    // Barcode Mode starter — one garment-tag style label cell for
+    // thermal strip printers (TSC TA210 etc.)
+    // ==================================================================
+
+    public static Template buildLabelTemplate() {
+        String now = Instant.now().toString();
+        Template t = new Template("tpl_label_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
+                "New Label Template",
+                new PageConfig(PageSizeName.CUSTOM, 50, 25, "portrait", new PageConfig.Margins(0, 0, 0, 0)),
+                new ArrayList<>());
+        t.setMode("label");
+        t.setCreatedAt(now);
+        t.setUpdatedAt(now);
+
+        LabelConfig cfg = new LabelConfig();
+        cfg.setStripWidth(108.0);
+        cfg.setColumns(2);
+        cfg.setLabelWidth(50.0);
+        cfg.setLabelHeight(25.0);
+        cfg.setGapX(3.0);
+        cfg.setGapY(3.0);
+        cfg.setCornerRadius(2.0);
+        cfg.setMarginL(0.0);
+        cfg.setMarginR(0.0);
+        t.setLabelConfig(cfg);
+
+        List<TemplateElement> el = t.getElements();
+        int z = 0;
+
+        // Business name (top-left)
+        TemplateElement biz = new TemplateElement();
+        biz.setId(uid()); biz.setType(ElementType.TEXT); biz.setX(2); biz.setY(1.5); biz.setW(30); biz.setH(5);
+        biz.setText("{{business_name}}"); biz.setFontSize(7); biz.setFontWeight(700);
+        biz.setColor("#1a1a1a"); biz.setZIndex(z++); el.add(biz);
+
+        // Item name (dynamic)
+        TemplateElement item = new TemplateElement();
+        item.setId(uid()); item.setType(ElementType.TEXT); item.setX(2); item.setY(7); item.setW(46); item.setH(6);
+        item.setText("{{item_name}}"); item.setFontSize(9); item.setFontWeight(700);
+        item.setColor("#111111"); item.setZIndex(z++); el.add(item);
+
+        // Size / length line (dynamic)
+        TemplateElement size = new TemplateElement();
+        size.setId(uid()); size.setType(ElementType.TEXT); size.setX(2); size.setY(13.5); size.setW(30); size.setH(5);
+        size.setText("Size {{size}} · {{length}}"); size.setFontSize(7.5);
+        size.setColor("#333333"); size.setZIndex(z++); el.add(size);
+
+        // Price (right aligned)
+        TemplateElement mrp = new TemplateElement();
+        mrp.setId(uid()); mrp.setType(ElementType.TEXT); mrp.setX(32); mrp.setY(13.5); mrp.setW(16); mrp.setH(5);
+        mrp.setText("₹{{price}}"); mrp.setFontSize(8); mrp.setFontWeight(700); mrp.setAlign("right");
+        mrp.setColor("#111111"); mrp.setZIndex(z++); el.add(mrp);
+
+        // Barcode (dynamic payload)
+        TemplateElement code = new TemplateElement();
+        code.setId(uid()); code.setType(ElementType.BARCODE); code.setX(2); code.setY(15); code.setW(46); code.setH(8.5);
+        code.setBarcodeData("{{barcode}}"); code.setBarcodeShowText(true); code.setZIndex(z++); el.add(code);
+
+        return t;
+    }
 }

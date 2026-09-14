@@ -15,6 +15,16 @@ public class Template {
     private String createdAt;
     private String updatedAt;
 
+    /**
+     * "bill" (default/legacy/null) = normal document template.
+     * "label" = Barcode Mode: canvas is ONE label cell driven by labelConfig
+     * (thermal strip stock, bulk variable printing).
+     */
+    private String mode = "bill";
+
+    /** Barcode Mode stock geometry — null-safe via {@link #labelOrNew()}. */
+    private LabelConfig labelConfig;
+
     public Template() {}
 
     public Template(String id, String name, PageConfig page, List<TemplateElement> elements) {
@@ -47,6 +57,21 @@ public class Template {
 
     public String getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
+
+    /** "label" = Barcode Mode; anything else (incl. null) is a normal bill template. */
+    public String getMode() { return mode != null ? mode : "bill"; }
+    public void setMode(String mode) { this.mode = mode; }
+
+    public boolean isLabelMode() { return "label".equalsIgnoreCase(getMode()); }
+
+    /** Never-null label config; returns the live instance or a fresh default. */
+    public LabelConfig labelOrNew() {
+        if (labelConfig == null) labelConfig = new LabelConfig();
+        return labelConfig;
+    }
+
+    public LabelConfig getLabelConfig() { return labelConfig; }
+    public void setLabelConfig(LabelConfig labelConfig) { this.labelConfig = labelConfig; }
 
     @Override
     public String toString() { return name; }

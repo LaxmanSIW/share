@@ -299,7 +299,7 @@ public class StudioApp extends Application {
         catalogBtn.getStyleClass().add("sidebar-nav-btn");
         catalogBtn.setMaxWidth(Double.MAX_VALUE);
         catalogBtn.setAlignment(Pos.CENTER_LEFT);
-        catalogBtn.setTooltip(new Tooltip("Buyers, Sellers, Items, Categories, Templates, Transports & Variables"));
+        catalogBtn.setTooltip(new Tooltip("Buyers, Sellers, Items, Categories, Templates, Transports, Variables & Label History"));
         catalogBtn.setOnAction(e -> showCatalogPopup(catalogBtn));
         navButtons.put("catalog", catalogBtn);
         nav.getChildren().add(catalogBtn);
@@ -348,7 +348,7 @@ public class StudioApp extends Application {
         this.currentView = activeId;
         // Views that live inside the collapsed Catalog popup light up the Catalog button.
         boolean catalogGroup = switch (activeId) {
-            case "buyers", "sellers", "items", "categories", "templates", "transports", "variables", "designer" -> true;
+            case "buyers", "sellers", "items", "categories", "templates", "transports", "variables", "labelhistory", "designer" -> true;
             default -> false;
         };
         for (Map.Entry<String, Button> entry : navButtons.entrySet()) {
@@ -375,7 +375,8 @@ public class StudioApp extends Application {
             {"categories", "Categories", "categories"},
             {"templates", "Templates", "templates"},
             {"transports", "Transports", "transport"},
-            {"variables", "Variables", "variables"}
+            {"variables", "Variables", "variables"},
+            {"labelhistory", "Label Print History", "history"}
     };
 
     /** Themed popup listing the Directory & Catalog destinations (same icons/design). */
@@ -414,6 +415,7 @@ public class StudioApp extends Application {
                     case "templates" -> showTemplates();
                     case "transports" -> showTransports();
                     case "variables" -> showVariables();
+                    case "labelhistory" -> showLabelHistory();
                 }
             });
             panel.getChildren().add(b);
@@ -444,6 +446,7 @@ public class StudioApp extends Application {
             case "categories" -> IconHelper.ICON_CATEGORIES;
             case "transports" -> IconHelper.ICON_TRANSPORT;
             case "variables" -> IconHelper.ICON_VARIABLE;
+            case "labelhistory" -> IconHelper.ICON_HISTORY;
             case "settings" -> IconHelper.ICON_SETTINGS;
             default -> IconHelper.ICON_RECEIPT;
         };
@@ -581,6 +584,12 @@ public class StudioApp extends Application {
         setView("variables", cached("variables",
                 () -> new VariablesView(this),
                 () -> ((VariablesView) viewCache.get("variables")).reload()));
+    }
+
+    public void showLabelHistory() {
+        setView("labelhistory", cached("labelhistory",
+                () -> new LabelHistoryView(this),
+                () -> ((LabelHistoryView) viewCache.get("labelhistory")).reload()));
     }
 
     public void showTransactions() {

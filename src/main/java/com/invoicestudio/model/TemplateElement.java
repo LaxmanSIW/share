@@ -76,6 +76,8 @@ public class TemplateElement {
     private String barcodeData = "{{invoice_no}}";
     private String barcodeColor = "#111111";
     private boolean barcodeShowText = true;
+    /** Symbology: CODE_128 (legacy default), EAN_13, EAN_8, CODE_39, ITF, UPC_A, QR_CODE. */
+    private String barcodeFormat = "CODE_128";
 
     /* ---- line ---- */
     private String direction = "h"; // h, v
@@ -300,6 +302,9 @@ public class TemplateElement {
 
     public boolean isBarcodeShowText() { return barcodeShowText; }
     public void setBarcodeShowText(boolean barcodeShowText) { this.barcodeShowText = barcodeShowText; }
+
+    public String getBarcodeFormat() { return barcodeFormat != null && !barcodeFormat.isBlank() ? barcodeFormat : "CODE_128"; }
+    public void setBarcodeFormat(String barcodeFormat) { this.barcodeFormat = barcodeFormat; }
 
     public String getDirection() { return direction; }
     public void setDirection(String direction) { this.direction = direction; }
@@ -750,6 +755,7 @@ public class TemplateElement {
         c.barcodeData = this.barcodeData;
         c.barcodeColor = this.barcodeColor;
         c.barcodeShowText = this.barcodeShowText;
+        c.barcodeFormat = this.barcodeFormat;
 
         if (this.columns != null) {
             c.columns = new ArrayList<>(this.columns);

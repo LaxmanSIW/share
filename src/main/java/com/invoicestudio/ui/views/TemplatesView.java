@@ -88,7 +88,16 @@ public class TemplatesView extends BorderPane {
             app.showTemplateDesigner(blank);
         });
 
-        topBar.getChildren().addAll(titleBox, sp, calibBtn, newBtn);
+        Button newLabelBtn = new Button("+ New Label Template");
+        newLabelBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        newLabelBtn.setTooltip(new Tooltip("Barcode Mode: design ONE label cell and bulk-print it on label strip stock (e.g. TSC TA210)"));
+        newLabelBtn.setOnAction(e -> {
+            Template lbl = PresetTemplates.buildLabelTemplate();
+            templateDao.saveTemplate(lbl);
+            app.showTemplateDesigner(lbl);
+        });
+
+        topBar.getChildren().addAll(titleBox, sp, calibBtn, newLabelBtn, newBtn);
         contentBox.getChildren().add(topBar);
 
         // 2. Built-in Preset Library
@@ -164,11 +173,15 @@ public class TemplatesView extends BorderPane {
         nameLbl.getStyleClass().add("card-title");
         HBox.setHgrow(nameLbl, Priority.ALWAYS);
 
-        Label badge = new Label(t.getPage().getSizeName().getLabel());
+        Label badge = new Label(t.isLabelMode()
+                ? "Label " + (int) t.labelOrNew().getLabelWidth() + "×" + (int) t.labelOrNew().getLabelHeight() + " mm"
+                : t.getPage().getSizeName().getLabel());
         badge.getStyleClass().add("badge-hsn");
         top.getChildren().addAll(nameLbl, badge);
 
-        Label meta = new Label(t.getElements().size() + " layout elements • " + (t.getPage().isAutoHeight() ? "Continuous roll" : (int) t.getPage().getWidth() + "x" + (int) t.getPage().getHeight() + " mm"));
+        Label meta = new Label(t.isLabelMode()
+                ? t.labelOrNew().getColumns() + " across strip · " + t.getElements().size() + " layout elements"
+                : t.getElements().size() + " layout elements • " + (t.getPage().isAutoHeight() ? "Continuous roll" : (int) t.getPage().getWidth() + "x" + (int) t.getPage().getHeight() + " mm"));
         meta.getStyleClass().add("text-dim");
 
         // Action buttons
@@ -178,6 +191,8 @@ public class TemplatesView extends BorderPane {
         Button useBtn = new Button("Create Bill");
         useBtn.getStyleClass().addAll("button-sm", "gold-btn");
         useBtn.setTooltip(new Tooltip("Create invoice with this layout"));
+        useBtn.setManaged(!t.isLabelMode());
+        useBtn.setVisible(!t.isLabelMode());
         useBtn.setOnAction(e -> app.showCreateBill(t.getId(), null));
 
         Button editBtn = new Button("Designer");
