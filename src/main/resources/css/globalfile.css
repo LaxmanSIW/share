@@ -2310,6 +2310,50 @@ Label {
     -fx-font-size: 11px;
 }
 
+/* ------------------------------------------------------------------
+ * Designer ribbon icon buttons — SVG glyph (.toolbar-icon) + label.
+ * Fill is CSS-driven so hover / active recolor without style surgery.
+ * ------------------------------------------------------------------ */
+.toolbar-icon {
+    -fx-fill: #A8B3C4;
+}
+
+.designer-icon-btn .toolbar-icon {
+    -fx-fill: #A8B3C4;
+}
+
+.designer-icon-btn:hover .toolbar-icon,
+.designer-icon-btn:focused .toolbar-icon {
+    -fx-fill: #F1F5F9;
+}
+
+.designer-icon-btn:pressed .toolbar-icon {
+    -fx-fill: #FFFFFF;
+}
+
+.designer-icon-btn.tool-active {
+    -fx-background-color: -color-accent;
+    -fx-text-fill: #0B1120;
+    -fx-font-weight: bold;
+}
+
+.designer-icon-btn.tool-active .toolbar-icon {
+    -fx-fill: #0B1120;
+}
+
+.designer-icon-btn.tool-idle .toolbar-icon {
+    -fx-fill: #A8B3C4;
+}
+
+/* Glyph inside the designer toolbar check boxes (Magnet etc.) */
+.designer-toolbar .check-box .toolbar-icon {
+    -fx-fill: #A8B3C4;
+}
+
+.designer-toolbar .check-box:hover .toolbar-icon {
+    -fx-fill: #E2E8F0;
+}
+
 .element-type-badge {
     -fx-font-weight: bold;
     -fx-font-size: 13px;

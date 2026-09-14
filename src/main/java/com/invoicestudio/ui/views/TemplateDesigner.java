@@ -112,6 +112,8 @@ public class TemplateDesigner extends BorderPane {
     private final Group scaleGroup = new Group(canvasContainer);
 
     private double zoom = 0.9;
+    private double renderedGridStepMm = -1;
+    private Canvas gridCanvasNode;
     private boolean snapToGrid = true;
     private boolean magnetSnapping = true;
     private boolean showGrid = true;
@@ -259,7 +261,7 @@ public class TemplateDesigner extends BorderPane {
         topBar.setPadding(new Insets(5, 10, 4, 10));
         topBar.setStyle("-fx-background-color: #0B1120; -fx-border-color: #1E293B; -fx-border-width: 0 0 1 0;");
 
-        Button backBtn = createToolbarBtn("← Back", "Return to Templates Directory", () -> app.showTemplates());
+        Button backBtn = createIconToolBtn(IconHelper.ICON_NAV_BACK, "Back", "Return to Templates Directory", () -> app.showTemplates());
 
         nameField.setText(template.getName());
         nameField.setPrefWidth(160);
@@ -276,9 +278,11 @@ public class TemplateDesigner extends BorderPane {
         homeTabBtn.setTooltip(new Tooltip("Home Tab: Core element creation, drawing tools, and page layout"));
 
         // Barcode Mode pill — switches the designer into thermal label design.
-        barcodeModeBtn = new Button("▦ Barcode Mode");
-        barcodeModeBtn.getStyleClass().addAll("button-sm");
-        barcodeModeBtn.setTooltip(new Tooltip("Barcode Mode: design ONE label cell and bulk-print it on label strip stock (e.g. TSC TA210)"));
+        barcodeModeBtn = new Button("Barcode Mode");
+        barcodeModeBtn.getStyleClass().addAll("button-sm", "designer-icon-btn");
+        barcodeModeBtn.setGraphic(IconHelper.getToolbarIcon(IconHelper.ICON_LABEL_MODE));
+        barcodeModeBtn.setContentDisplay(javafx.scene.control.ContentDisplay.LEFT);
+        barcodeModeBtn.setTooltip(new Tooltip("Barcode Mode: design ONE label cell and bulk-print it on label strip stock (e.g. TSC TA210) · Ctrl+Shift+L"));
         barcodeModeBtn.setOnAction(e -> toggleBarcodeMode());
         styleBarcodeModeButton();
 
@@ -303,8 +307,8 @@ public class TemplateDesigner extends BorderPane {
         HBox insertGroup = new HBox(4);
         insertGroup.setAlignment(Pos.CENTER_LEFT);
 
-        Button addText = createToolbarBtn("+ Text", "Add dynamic or static text label", () -> addElement(ElementType.TEXT));
-        Button addTable = createToolbarBtn("+ Table", "Add line-item billing table with GST", () -> addElement(ElementType.TABLE));
+        Button addText = createIconToolBtn(IconHelper.ICON_FONT, "Text", "Add dynamic or static text label", () -> addElement(ElementType.TEXT));
+        Button addTable = createIconToolBtn(IconHelper.ICON_TABLE, "Table", "Add line-item billing table with GST", () -> addElement(ElementType.TABLE));
 
         // Shapes Dropdown MenuButton
         MenuButton shapesMenu = new MenuButton("Shapes");
@@ -375,22 +379,24 @@ public class TemplateDesigner extends BorderPane {
         HBox toolsGroup = new HBox(4);
         toolsGroup.setAlignment(Pos.CENTER_LEFT);
 
-        selectToolBtn = createToolbarBtn("↖ Select", "Select & Move Tool (V)", () -> {
+        selectToolBtn = createIconToolBtn(IconHelper.ICON_TOOL_SELECT, "Select", "Select & Move Tool (V)", () -> {
             if (isPenToolMode) cancelPenTool();
             setPanMode(false);
         });
-        panToolBtn = createToolbarBtn("✋ Pan", "Pan Canvas Tool (H / Space)", () -> {
+        panToolBtn = createIconToolBtn(IconHelper.ICON_TOOL_HAND, "Pan", "Pan Canvas Tool (H / Space)", () -> {
             if (isPenToolMode) cancelPenTool();
             setPanMode(true);
         });
-        penToolBtn = createToolbarBtn("✎ Pen", "Vector Pen Tool (P) - Click canvas to place vertices", () -> {
+        penToolBtn = createIconToolBtn(IconHelper.ICON_EDIT, "Pen", "Vector Pen Tool (P) - Click canvas to place vertices", () -> {
             if (isPenToolMode) cancelPenTool();
             else activatePenTool();
         });
-        Button penCurveBtn = createToolbarBtn(penCurveMode ? "〰 Curve" : "📐 Straight", "Toggle Pen Mode: Straight Lines vs Smooth Bezier Curves", null);
+        Button penCurveBtn = createIconToolBtn(penCurveMode ? IconHelper.ICON_CURVE : IconHelper.ICON_TOOL_LINE,
+                penCurveMode ? "Curve" : "Straight", "Toggle Pen Mode: Straight Lines vs Smooth Bezier Curves", null);
         penCurveBtn.setOnAction(e -> {
             penCurveMode = !penCurveMode;
-            penCurveBtn.setText(penCurveMode ? "〰 Curve" : "📐 Straight");
+            penCurveBtn.setText(penCurveMode ? "Curve" : "Straight");
+            penCurveBtn.setGraphic(IconHelper.getToolbarIcon(penCurveMode ? IconHelper.ICON_CURVE : IconHelper.ICON_TOOL_LINE));
             if (isPenToolMode && !penPoints.isEmpty()) {
                 renderPenPreview(penPoints.get(penPoints.size() - 1).getX(), penPoints.get(penPoints.size() - 1).getY());
             }
@@ -405,19 +411,19 @@ public class TemplateDesigner extends BorderPane {
         HBox pageGroup = new HBox(6);
         pageGroup.setAlignment(Pos.CENTER_LEFT);
 
-        Button pageBtn = createToolbarBtn("⚙ Page", "Configure page dimensions, paper size & margins",
+        Button pageBtn = createIconToolBtn(IconHelper.ICON_SETTINGS, "Page", "Configure page dimensions, paper size & margins",
                 () -> { if (template.isLabelMode()) showLabelSettingsDialog(); else showPageSettingsDialog(); });
 
         // Barcode-mode-only controls (hidden on normal bill templates)
-        labelSettingsBtn = createToolbarBtn("🏷 Label Stock", "Label strip settings: columns, label size, gaps, margins, corners, orientation", this::showLabelSettingsDialog);
-        stripPreviewBtn = createToolbarBtn("🔍 Strip Preview", "Preview how the label strip looks (columns × rows, gaps & rounded corners)", this::showStripPreviewDialog);
-        bulkPrintBtn = createToolbarBtn("🖨 Bulk Print", "Print hundreds of labels with different variable values", this::showBulkPrintDialog);
+        labelSettingsBtn = createIconToolBtn(IconHelper.ICON_TAG, "Label Stock", "Label strip settings: columns, label size, gaps, margins, corners, orientation", this::showLabelSettingsDialog);
+        stripPreviewBtn = createIconToolBtn(IconHelper.ICON_STRIP_PREVIEW, "Strip Preview", "Preview how the label strip looks (columns × rows, gaps & rounded corners)", this::showStripPreviewDialog);
+        bulkPrintBtn = createIconToolBtn(IconHelper.ICON_PRINT, "Bulk Print", "Print hundreds of labels with different variable values (Ctrl+Shift+B)", this::showBulkPrintDialog);
         updateLabelButtonsVisibility();
 
         CheckBox gridCb = new CheckBox("Grid");
         gridCb.setSelected(true);
         gridCb.setMinWidth(Region.USE_PREF_SIZE);
-        gridCb.setTooltip(new Tooltip("Toggle 1mm background alignment grid"));
+        gridCb.setTooltip(new Tooltip("Toggle background alignment grid (adapts 10 → 5 → 2 → 1 mm as you zoom in)"));
         gridCb.selectedProperty().addListener((obs, old, val) -> {
             showGrid = val;
             refreshCanvas();
@@ -429,7 +435,9 @@ public class TemplateDesigner extends BorderPane {
         snapCb.setTooltip(new Tooltip("Snap element positioning to 1mm grid"));
         snapCb.selectedProperty().addListener((obs, old, val) -> snapToGrid = val);
 
-        CheckBox magnetCb = new CheckBox("🧲 Magnet");
+        CheckBox magnetCb = new CheckBox("Magnet");
+        magnetCb.setGraphic(IconHelper.getToolbarIcon(IconHelper.ICON_MAGNET));
+        magnetCb.setContentDisplay(javafx.scene.control.ContentDisplay.LEFT);
         magnetCb.setSelected(true);
         magnetCb.setMinWidth(Region.USE_PREF_SIZE);
         magnetCb.setTooltip(new Tooltip("Snap object borders to align and collapse with other objects and margins"));
@@ -442,7 +450,7 @@ public class TemplateDesigner extends BorderPane {
         // --- GROUP 4: Help & Support ---
         HBox helpGroup = new HBox(4);
         helpGroup.setAlignment(Pos.CENTER_LEFT);
-        Button helpBtn = createToolbarBtn("❓ Help", "Keyboard Shortcuts & Designer Guide", this::showShortcutsHelpDialog);
+        Button helpBtn = createIconToolBtn(IconHelper.ICON_HELP, "Help", "Keyboard Shortcuts & Designer Guide (F1)", this::showShortcutsHelpDialog);
         helpGroup.getChildren().add(helpBtn);
 
         Separator s4 = new Separator(javafx.geometry.Orientation.VERTICAL);
@@ -451,8 +459,8 @@ public class TemplateDesigner extends BorderPane {
         HBox viewGroup = new HBox(4);
         viewGroup.setAlignment(Pos.CENTER_LEFT);
 
-        Button undoBtn = createToolbarBtn("↶ Undo", "Undo last change (Ctrl Z)", this::undo);
-        Button redoBtn = createToolbarBtn("↷ Redo", "Redo undone change (Ctrl Y)", this::redo);
+        Button undoBtn = createIconToolBtn(IconHelper.ICON_UNDO, "Undo", "Undo last change (Ctrl Z)", this::undo);
+        Button redoBtn = createIconToolBtn(IconHelper.ICON_REDO, "Redo", "Redo undone change (Ctrl Y)", this::redo);
 
         viewGroup.getChildren().addAll(undoBtn, redoBtn);
 
@@ -551,8 +559,20 @@ public class TemplateDesigner extends BorderPane {
         return b;
     }
 
+    /** Toolbar button with a crisp SVG glyph (CSS-recolorable) + label — replaces emoji text buttons. */
+    private Button createIconToolBtn(String iconName, String text, String tooltip, Runnable action) {
+        Button b = new Button(text);
+        b.getStyleClass().addAll("button-sm", "button-secondary", "designer-icon-btn");
+        b.setGraphic(IconHelper.getToolbarIcon(iconName));
+        b.setContentDisplay(javafx.scene.control.ContentDisplay.LEFT);
+        b.setMinWidth(Region.USE_PREF_SIZE);
+        if (tooltip != null) b.setTooltip(new Tooltip(tooltip));
+        if (action != null) b.setOnAction(e -> action.run());
+        return b;
+    }
+
     private void setZoom(double z) {
-        this.zoom = Math.max(0.3, Math.min(3.0, z));
+        this.zoom = Math.max(0.3, Math.min(4.0, z));
         scaleGroup.setScaleX(zoom);
         scaleGroup.setScaleY(zoom);
         zoomLabel.setText((int) Math.round(zoom * 100) + "%");
@@ -562,6 +582,59 @@ public class TemplateDesigner extends BorderPane {
             updatingZoom = false;
         }
         updateCenterWrapperSize();
+        // Adaptive grid: as you zoom in, the grid refines 10 -> 5 -> 2 -> 1 mm
+        // so cells stay a usable size on screen instead of becoming a wall.
+        double step = gridStepMm();
+        if (renderedGridStepMm > 0 && Math.abs(step - renderedGridStepMm) > 0.01) {
+            rebuildGridForZoom();
+        }
+    }
+
+    /**
+     * Adaptive background-grid step in millimetres, chosen from the zoom level:
+     * up to 105% -> 10 mm, up to 205% -> 5 mm, up to 305% -> 2 mm, beyond -> 1 mm
+     * (one step finer per +100% zoom, keeping on-screen cells roughly constant).
+     */
+    private double gridStepMm() {
+        if (zoom <= 1.05) return 10.0;
+        if (zoom <= 2.05) return 5.0;
+        if (zoom <= 3.05) return 2.0;
+        return 1.0;
+    }
+
+    /** Swaps only the grid canvas (cheap) when the adaptive step changed. */
+    private void rebuildGridForZoom() {
+        PageConfig page = template.getPage();
+        double pageW = page.getWidth() * MM_PX;
+        double pageH = page.getHeight() * MM_PX;
+        if (gridCanvasNode != null) {
+            gridPane.getChildren().remove(gridCanvasNode);
+            gridCanvasNode = null;
+        }
+        buildGridCanvas(pageW, pageH);
+        renderedGridStepMm = gridStepMm();
+        buildRulers(pageW, pageH);
+    }
+
+    /** Renders the background grid canvas with the current adaptive step. */
+    private void buildGridCanvas(double pageW, double pageH) {
+        if (!showGrid) return;
+        double stepMm = gridStepMm();
+        renderedGridStepMm = stepMm;
+        double stepPx = stepMm * MM_PX;
+        Canvas gridCanvas = new Canvas(pageW, pageH);
+        GraphicsContext gc = gridCanvas.getGraphicsContext2D();
+        gc.setStroke(Color.web("#ececec"));
+        gc.setLineWidth(0.5);
+        for (double x = stepPx; x < pageW; x += stepPx) {
+            gc.strokeLine(Math.round(x) + 0.5, 0, Math.round(x) + 0.5, pageH);
+        }
+        for (double y = stepPx; y < pageH; y += stepPx) {
+            gc.strokeLine(0, Math.round(y) + 0.5, pageW, Math.round(y) + 0.5);
+        }
+        gridCanvas.setMouseTransparent(true);
+        gridCanvasNode = gridCanvas;
+        gridPane.getChildren().add(0, gridCanvas);
     }
 
     private void updateCenterWrapperSize() {
@@ -615,7 +688,7 @@ public class TemplateDesigner extends BorderPane {
         zoomMinusBtn.setTooltip(new Tooltip("Zoom out (Ctrl -)"));
         zoomMinusBtn.setOnAction(e -> setZoom(zoom - 0.1));
 
-        zoomSlider = new Slider(0.3, 3.0, zoom);
+        zoomSlider = new Slider(0.3, 4.0, zoom);
         zoomSlider.getStyleClass().add("designer-footer-slider");
         zoomSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
             if (!updatingZoom && newVal != null) {
@@ -1026,18 +1099,24 @@ public class TemplateDesigner extends BorderPane {
         double totalMmW = template.getPage().getWidth();
         double totalMmH = template.getPage().getHeight();
 
+        // Rulers mirror the adaptive canvas grid: major ticks follow the same
+        // step (10/5/2/1 mm) while printed numbers stay far enough apart.
+        double majorStep = gridStepMm();
+        double labelStep = majorStep >= 5 ? 10 : 5;
+
         // Top horizontal ruler
         for (int mm = 0; mm <= (int) totalMmW; mm++) {
             double x = mm * MM_PX;
             if (x > pageW) break;
 
-            int tickH = (mm % 10 == 0) ? 10 : ((mm % 5 == 0) ? 6 : 3);
+            boolean isMajor = mm % (int) majorStep == 0;
+            int tickH = isMajor ? 10 : ((mm % 5 == 0) ? 6 : 3);
             Line tick = new Line(x, RULER_SIZE - tickH, x, RULER_SIZE);
-            tick.setStroke(mm % 10 == 0 ? Color.web("#94a3b8") : Color.web("#475569"));
+            tick.setStroke(isMajor ? Color.web("#94a3b8") : Color.web("#475569"));
             tick.setStrokeWidth(1.0);
             rulerTop.getChildren().add(tick);
 
-            if (mm % 10 == 0 && mm > 0 && mm < totalMmW - 5) {
+            if (mm % (int) labelStep == 0 && mm > 0 && mm < totalMmW - 5) {
                 Label lbl = new Label(String.valueOf(mm));
                 lbl.setStyle("-fx-font-size: 8px; -fx-text-fill: #94a3b8; -fx-font-family: 'Segoe UI', sans-serif;");
                 lbl.setLayoutX(x + 2);
@@ -1051,13 +1130,14 @@ public class TemplateDesigner extends BorderPane {
             double y = mm * MM_PX;
             if (y > pageH) break;
 
-            int tickW = (mm % 10 == 0) ? 10 : ((mm % 5 == 0) ? 6 : 3);
+            boolean isMajor = mm % (int) majorStep == 0;
+            int tickW = isMajor ? 10 : ((mm % 5 == 0) ? 6 : 3);
             Line tick = new Line(RULER_SIZE - tickW, y, RULER_SIZE, y);
-            tick.setStroke(mm % 10 == 0 ? Color.web("#94a3b8") : Color.web("#475569"));
+            tick.setStroke(isMajor ? Color.web("#94a3b8") : Color.web("#475569"));
             tick.setStrokeWidth(1.0);
             rulerLeft.getChildren().add(tick);
 
-            if (mm % 10 == 0 && mm > 0 && mm < totalMmH - 5) {
+            if (mm % (int) labelStep == 0 && mm > 0 && mm < totalMmH - 5) {
                 Label lbl = new Label(String.valueOf(mm));
                 lbl.setStyle("-fx-font-size: 8px; -fx-text-fill: #94a3b8; -fx-font-family: 'Segoe UI', sans-serif;");
                 lbl.setLayoutX(1);
@@ -1092,23 +1172,11 @@ public class TemplateDesigner extends BorderPane {
         buildRulers(pageW, pageH);
         updateCenterWrapperSize();
 
-        // 1. Background Grid (rendered on a single Canvas for maximum layout performance)
+        // 1. Background Grid (rendered on a single Canvas for maximum layout performance;
+        //    the cell size adapts to zoom: 10 -> 5 -> 2 -> 1 mm)
         gridPane.getChildren().clear();
         gridPane.setPrefSize(pageW, pageH);
-        if (showGrid) {
-            Canvas gridCanvas = new Canvas(pageW, pageH);
-            GraphicsContext gc = gridCanvas.getGraphicsContext2D();
-            gc.setStroke(Color.web("#ececec"));
-            gc.setLineWidth(0.5);
-            for (double x = 10 * MM_PX; x < pageW; x += 10 * MM_PX) {
-                gc.strokeLine(Math.round(x) + 0.5, 0, Math.round(x) + 0.5, pageH);
-            }
-            for (double y = 10 * MM_PX; y < pageH; y += 10 * MM_PX) {
-                gc.strokeLine(0, Math.round(y) + 0.5, pageW, Math.round(y) + 0.5);
-            }
-            gridCanvas.setMouseTransparent(true);
-            gridPane.getChildren().add(gridCanvas);
-        }
+        buildGridCanvas(pageW, pageH);
 
         // Margin Guides (Printable Boundary)
         PageConfig.Margins mg = page.getMargin();
@@ -1633,18 +1701,15 @@ public class TemplateDesigner extends BorderPane {
         double hSize = 10.0;
         double hHalf = hSize / 2.0;
 
-        // Clamp handle coordinates so handles never land outside canvas bounds (negative or past page edge)
-        double elX = selectedElement != null ? selectedElement.getX() : 0;
-        double elY = selectedElement != null ? selectedElement.getY() : 0;
-        double pageWPx = template.getPage().getWidth() * MM_PX;
-        double pageHPx = template.getPage().getHeight() * MM_PX;
-
-        double leftX = Math.max(-elX * MM_PX, -hHalf);
-        double rightX = Math.min((pageWPx - elX * MM_PX) - hSize, nwPx - hHalf);
+        // Handles ALWAYS sit on the true corners of the selection box so they
+        // match the dashed border exactly, even when the element extends past
+        // the page edge (clamping here used to leave them stranded mid-air).
+        double leftX = -hHalf;
+        double rightX = nwPx - hHalf;
         double midX = (nwPx / 2.0) - hHalf;
 
-        double topY = Math.max(-elY * MM_PX, -hHalf);
-        double bottomY = Math.min((pageHPx - elY * MM_PX) - hSize, nhPx - hHalf);
+        double topY = -hHalf;
+        double bottomY = nhPx - hHalf;
         double midY = (nhPx / 2.0) - hHalf;
 
         hNW.setLayoutX(leftX);
@@ -5708,8 +5773,27 @@ public class TemplateDesigner extends BorderPane {
     private void styleBarcodeModeButton() {
         if (barcodeModeBtn == null) return;
         boolean active = template.isLabelMode();
-        barcodeModeBtn.setText(active ? "▦ Barcode Mode ✓" : "▦ Barcode Mode");
+        barcodeModeBtn.setText(active ? "Barcode Mode ✓" : "Barcode Mode");
         styleToolButton(barcodeModeBtn, active);
+    }
+
+    /** Ctrl+Shift+L landing point: jump into Barcode Mode on the template being designed. */
+    public void enterBarcodeModeFromShortcut() {
+        if (!template.isLabelMode()) {
+            toggleBarcodeMode();
+        } else {
+            Toast.show(app.getRootPane(), "Barcode Mode", "Already designing a label — canvas equals one label cell.", false);
+        }
+    }
+
+    /** Ctrl+Shift+B landing point: straight into the Bulk Label Print window. */
+    public void openBulkPrintFromShortcut() {
+        if (!template.isLabelMode()) {
+            Toast.show(app.getRootPane(), "Bulk Print",
+                    "Bulk Label Print works in Barcode Mode. Press Ctrl+Shift+L to switch this template first.", false);
+            return;
+        }
+        showBulkPrintDialog();
     }
 
     private void updateLabelButtonsVisibility() {
@@ -6554,6 +6638,8 @@ public class TemplateDesigner extends BorderPane {
         grid.setPadding(new Insets(8, 0, 8, 0));
 
         String[][] shortcuts = {
+                {"Ctrl + Shift + L", "Toggle Barcode Mode (label designer) — also opens Label Designer from anywhere"},
+                {"Ctrl + Shift + B", "Bulk Label Print window (Barcode Mode)"},
                 {"Double-Click (Text)", "Enter inline text editing mode directly on canvas"},
                 {"Enter (Editing)", "Commit and save inline text changes"},
                 {"Shift + Enter (Editing)", "Insert newline in text editor"},
@@ -6561,9 +6647,10 @@ public class TemplateDesigner extends BorderPane {
                 {"V", "Switch to Select & Move tool"},
                 {"H  /  Space (Hold)", "Pan canvas freely with Hand tool"},
                 {"P", "Switch to Vector Pen tool (plot points / curves)"},
-                {"Ctrl + Mouse Wheel", "Zoom canvas in and out"},
-                {"Ctrl + +  /  Ctrl + -", "Zoom in / Zoom out"},
+                {"Ctrl + Mouse Wheel", "Zoom canvas in and out (up to 400%)"},
+                {"Ctrl + +  /  Ctrl + -", "Zoom in / Zoom out (30% – 400%)"},
                 {"Ctrl + 0", "Reset canvas zoom to 100%"},
+                {"Grid", "Background grid adapts to zoom: 10 → 5 → 2 → 1 mm"},
                 {"Ctrl + S", "Save template changes to database"},
                 {"Ctrl + Z", "Undo last designer action"},
                 {"Ctrl + Y  /  Ctrl + Shift + Z", "Redo previously undone action"},
@@ -6694,6 +6781,19 @@ public class TemplateDesigner extends BorderPane {
         } else if (e.getCode() == KeyCode.P && !e.isControlDown()) {
             if (isPenToolMode) cancelPenTool();
             else activatePenTool();
+            e.consume();
+            return;
+        }
+
+        // Barcode (label) mode shortcuts — consumed here so the global
+        // accelerators in StudioApp don't double-fire while designing.
+        if (e.isControlDown() && e.isShiftDown() && e.getCode() == KeyCode.L) {
+            toggleBarcodeMode();
+            e.consume();
+            return;
+        }
+        if (e.isControlDown() && e.isShiftDown() && e.getCode() == KeyCode.B) {
+            openBulkPrintFromShortcut();
             e.consume();
             return;
         }

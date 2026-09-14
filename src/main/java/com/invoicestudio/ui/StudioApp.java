@@ -1,6 +1,7 @@
 package com.invoicestudio.ui;
 
 import com.invoicestudio.db.DatabaseManager;
+import com.invoicestudio.db.TemplateDao;
 import com.invoicestudio.model.*;
 import com.invoicestudio.service.*;
 import com.invoicestudio.ui.auth.AuthView;
@@ -178,6 +179,78 @@ public class StudioApp extends Application {
         scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+E"), this::showExpensesDialog);
         scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+B"), this::showBuyers);
         scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+D"), this::showDashboard);
+        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+Shift+L"), this::openLabelDesignerShortcut);
+        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+Shift+B"), this::openBulkPrintShortcut);
+    }
+
+    // ------------------------------------------------------------------
+    // Label / Barcode quick jumps (Ctrl+Shift+L · Ctrl+Shift+B)
+    // ------------------------------------------------------------------
+
+    /** The designer currently on screen, or null when another view is active. */
+    private com.invoicestudio.ui.views.TemplateDesigner activeDesigner() {
+        if (!"designer".equals(currentView)) return null;
+        for (Node n : mainContentPane.getChildren()) {
+            if (n instanceof com.invoicestudio.ui.views.TemplateDesigner td) return td;
+        }
+        return null;
+    }
+
+    /** Most recently touched label template, or null when none exists yet. */
+    private Template findLatestLabelTemplate() {
+        try {
+            TemplateDao dao = new TemplateDao(DatabaseManager.getInstance());
+            Template best = null;
+            for (Template t : dao.getAllTemplates()) {
+                if (t != null && t.isLabelMode()) {
+                    if (best == null || String.valueOf(t.getUpdatedAt()).compareTo(String.valueOf(best.getUpdatedAt())) >= 0) {
+                        best = t;
+                    }
+                }
+            }
+            return best;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Ctrl+Shift+L — jump straight into the Template Designer in Barcode Mode. */
+    private void openLabelDesignerShortcut() {
+        if (data == null) return;
+        com.invoicestudio.ui.views.TemplateDesigner designer = activeDesigner();
+        if (designer != null) {
+            designer.enterBarcodeModeFromShortcut();
+            return;
+        }
+        Template lbl = findLatestLabelTemplate();
+        if (lbl == null) {
+            // First run: persist the starter label template, then open it.
+            lbl = PresetTemplates.buildLabelTemplate();
+            try {
+                new TemplateDao(DatabaseManager.getInstance()).saveTemplate(lbl);
+            } catch (Exception ignored) {}
+        }
+        showTemplateDesigner(lbl);
+    }
+
+    /** Ctrl+Shift+B — open the Bulk Label Print window (designing first if needed). */
+    private void openBulkPrintShortcut() {
+        if (data == null) return;
+        com.invoicestudio.ui.views.TemplateDesigner designer = activeDesigner();
+        if (designer != null) {
+            designer.openBulkPrintFromShortcut();
+            return;
+        }
+        Template lbl = findLatestLabelTemplate();
+        if (lbl == null) {
+            lbl = PresetTemplates.buildLabelTemplate();
+            try {
+                new TemplateDao(DatabaseManager.getInstance()).saveTemplate(lbl);
+            } catch (Exception ignored) {}
+        }
+        showTemplateDesigner(lbl);
+        designer = activeDesigner();
+        if (designer != null) designer.openBulkPrintFromShortcut();
     }
 
     private void showExpensesDialog() {

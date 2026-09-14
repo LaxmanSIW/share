@@ -552,3 +552,24 @@ a 500-label run.
   preview flags overflow and the label-settings dialog warns above 118 mm.
 - Label Print History is an info-only audit: it never blocks or limits
   printing and is partitioned per user.
+
+### 8.6 Designer zoom, grid & quick jumps
+
+- **Zoom range is 30% – 400%** (footer slider, `Ctrl + Mouse Wheel`,
+  `Ctrl + +/−`, `Ctrl + 0` resets to 100%).
+- The background **grid and rulers adapt to zoom** — every +100% the cell
+  refines one step, `10 → 5 → 2 → 1 mm`, so cells stay a workable size on
+  screen instead of collapsing into a wall of lines:
+  | Zoom | Grid cell | Ruler labels |
+  |---|---|---|
+  | ≤ 105% | 10 mm | every 10 mm |
+  | ≤ 205% | 5 mm | every 10 mm |
+  | ≤ 305% | 2 mm | every 5 mm |
+  | > 305% | 1 mm | every 5 mm |
+- **Selection handles always sit on the true corners** of the element,
+  even when the element extends past the label edge — handles, dashed
+  border and geometry spinner values always agree.
+- Quick jumps: **`Ctrl+Shift+L`** opens the Label Designer (Barcode Mode)
+  from anywhere — or toggles Barcode Mode on the template being designed;
+  **`Ctrl+Shift+B`** opens the Bulk Label Print window directly. All
+  shortcuts are listed in Settings → **Shortcuts** tab and the F1 popup.

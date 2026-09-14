@@ -63,6 +63,18 @@ public class IconHelper {
     public static final String ICON_FONT = "font";
     public static final String ICON_PRINT = "print";
     public static final String ICON_BACKUP = "backup";
+    /* ---- Designer toolbar ---- */
+    public static final String ICON_TOOL_SELECT = "tool-select";
+    public static final String ICON_TOOL_HAND = "tool-hand";
+    public static final String ICON_TOOL_LINE = "tool-line";
+    public static final String ICON_NAV_BACK = "nav-back";
+    public static final String ICON_TABLE = "table";
+    public static final String ICON_UNDO = "undo";
+    public static final String ICON_REDO = "redo";
+    public static final String ICON_HELP = "help";
+    public static final String ICON_STRIP_PREVIEW = "strip-preview";
+    public static final String ICON_LABEL_MODE = "label-mode";
+    public static final String ICON_MAGNET = "magnet";
 
     public static Node getIcon(String name, double size, String colorHex) {
         String path = getSvgPath(name);
@@ -155,6 +167,26 @@ public class IconHelper {
         box.setPrefSize(14, 14);
         box.setMinSize(14, 14);
         box.setMaxSize(14, 14);
+        box.setAlignment(javafx.geometry.Pos.CENTER);
+        return box;
+    }
+
+    /**
+     * 15px toolbar glyph whose fill is driven purely by CSS (".toolbar-icon"),
+     * so hover / active states recolor it without any JavaFX style surgery.
+     */
+    public static Node getToolbarIcon(String name) {
+        SVGPath svg = new SVGPath();
+        String path = getSvgPath(name);
+        svg.setContent(path != null ? path : "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z");
+        svg.getStyleClass().add("toolbar-icon");
+        svg.setScaleX(15.0 / 24.0);
+        svg.setScaleY(15.0 / 24.0);
+        javafx.scene.Group grp = new javafx.scene.Group(svg);
+        javafx.scene.layout.StackPane box = new javafx.scene.layout.StackPane(grp);
+        box.setPrefSize(16, 16);
+        box.setMinSize(16, 16);
+        box.setMaxSize(16, 16);
         box.setAlignment(javafx.geometry.Pos.CENTER);
         return box;
     }
@@ -311,6 +343,29 @@ public class IconHelper {
                 return "M9 4v3h5v12h3V7h5V4H9zm-6 8h3v7h3v-7h3V9H3v3z";
             case "backup":
                 return "M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z";
+            case "tool-select":
+                return "M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z";
+            case "tool-hand":
+                return "M23 5.5V20c0 2.2-1.8 4-4 4h-7.3c-1.08 0-2.1-.43-2.85-1.19L1 14.83s1.26-1.23 1.3-1.25c.22-.19.49-.29.79-.29.22 0 .42.06.6.16.04.01 4.31 2.46 4.31 2.46V4c0-.83.67-1.5 1.5-1.5S11 3.17 11 4v7h1V1.5c0-.83.67-1.5 1.5-1.5S15 .67 15 1.5V11h1V2.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V11h1V5.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5z";
+            case "tool-line":
+                return "M18.4 4.2L4.2 18.4l1.4 1.4L19.8 5.6l-1.4-1.4z";
+            case "nav-back":
+                return "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z";
+            case "table":
+                return "M3 3h18v18H3V3zm2 2v4h14V5H5zm0 6v6h6v-6H5zm8 0v6h6v-6h-6z";
+            case "undo":
+                return "M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z";
+            case "redo":
+                return "M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.06-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z";
+            case "help":
+                return "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z";
+            case "strip-preview":
+                return "M2 4h6v7H2V4zm7 0h6v7H9V4zm7 0h6v7h-6V4zM2 13h6v7H2v-7zm7 0h6v7H9v-7zm7 0h6v7h-6v-7z";
+            case "label-mode":
+            case "tool-barcode":
+                return "M2 4h3v16H2V4zm5 0h1v16H7V4zm3 0h3v16h-3V4zm5 0h2v16h-2V4zm4 0h1v16h-1V4zm3 0h2v16h-2V4z";
+            case "magnet":
+                return "M6 21v-8a6 6 0 0 1 12 0v8h-4v-8a2 2 0 0 0-4 0v8H6z";
             default:
                 return null;
         }

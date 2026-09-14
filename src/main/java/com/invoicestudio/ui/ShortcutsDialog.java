@@ -53,35 +53,8 @@ public class ShortcutsDialog extends StackPane {
         card.getChildren().add(head);
         card.getChildren().add(new Separator());
 
-        // Two-column groups
-        Map<String, String[][]> groups = new LinkedHashMap<>();
-        groups.put("Global (works on every screen)", new String[][]{
-                {"F1", "Open this shortcuts help"},
-                {"Ctrl + N", "New Bill (invoice entry)"},
-                {"Ctrl + P", "Purchases — record a purchase bill"},
-                {"Ctrl + E", "Expenses — new expense voucher"},
-                {"Ctrl + B", "Buyers directory"},
-                {"Ctrl + D", "Dashboard"},
-                {"Esc", "Close dialogs / cancel entry (contextual)"}
-        });
-        groups.put("Billing & Entry Forms", new String[][]{
-                {"Ctrl + S", "Save the bill / purchase / expense being edited"},
-                {"Enter", "Confirm focused dialog (OK)"},
-                {"Tab / Shift + Tab", "Move between fields in entry forms"}
-        });
-        groups.put("Template Designer", new String[][]{
-                {"Ctrl + S", "Save template"},
-                {"Ctrl + Z / Ctrl + Y", "Undo / Redo"},
-                {"Ctrl + C / Ctrl + V", "Copy / Paste element"},
-                {"Ctrl + D", "Duplicate selected element"},
-                {"Ctrl + G", "Toggle grid snap"},
-                {"Delete / Backspace", "Delete selected element"},
-                {"Arrow keys", "Nudge selected element (Shift = fine move)"},
-                {"Ctrl + 0 / Ctrl + +/-", "Zoom fit / zoom in / out"},
-                {"Space", "Toggle pan mode"},
-                {"V / H / P", "Pen tool: vertical / horizontal / free draw"},
-                {"Esc", "Deselect / exit tool"}
-        });
+        // Two-column groups (shared catalog — same data as Settings → Shortcuts)
+        Map<String, String[][]> groups = com.invoicestudio.ui.ShortcutCatalog.groups();
 
         HBox columns = new HBox(24);
         VBox left = new VBox(10);
