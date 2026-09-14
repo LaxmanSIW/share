@@ -40,6 +40,7 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
+import javafx.scene.transform.Scale;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.event.EventHandler;
 import javafx.geometry.Bounds;
@@ -113,6 +114,7 @@ public class TemplateDesigner extends BorderPane {
 
     private double zoom = 0.9;
     private double renderedGridStepMm = -1;
+    private double renderedRulerStepMm = -1;
     private Canvas gridCanvasNode;
     private boolean snapToGrid = true;
     private boolean magnetSnapping = true;
@@ -582,10 +584,11 @@ public class TemplateDesigner extends BorderPane {
             updatingZoom = false;
         }
         updateCenterWrapperSize();
-        // Adaptive grid: as you zoom in, the grid refines 10 -> 5 -> 2 -> 1 mm
-        // so cells stay a usable size on screen instead of becoming a wall.
-        double step = gridStepMm();
-        if (renderedGridStepMm > 0 && Math.abs(step - renderedGridStepMm) > 0.01) {
+        // Re-render the grid on EVERY zoom change: the canvas is drawn at device
+        // resolution so its lines always stay exactly 1 device px (hairline-sharp,
+        // never blurry or thick). The adaptive step additionally refines
+        // 10 -> 5 -> 2 -> 1 mm as you zoom in, keeping cells a usable size.
+        if (showGrid) {
             rebuildGridForZoom();
         }
     }
@@ -602,7 +605,8 @@ public class TemplateDesigner extends BorderPane {
         return 1.0;
     }
 
-    /** Swaps only the grid canvas (cheap) when the adaptive step changed. */
+    /** Swaps only the grid canvas (cheap) on zoom changes; the rulers rebuild
+     *  solely when the adaptive major step changed. */
     private void rebuildGridForZoom() {
         PageConfig page = template.getPage();
         double pageW = page.getWidth() * MM_PX;
@@ -612,25 +616,50 @@ public class TemplateDesigner extends BorderPane {
             gridCanvasNode = null;
         }
         buildGridCanvas(pageW, pageH);
-        renderedGridStepMm = gridStepMm();
-        buildRulers(pageW, pageH);
+        if (Math.abs(gridStepMm() - renderedRulerStepMm) > 0.01) {
+            buildRulers(pageW, pageH);
+        }
     }
 
-    /** Renders the background grid canvas with the current adaptive step. */
+    /**
+     * Renders the background grid canvas at DEVICE resolution with the current
+     * adaptive step. A Canvas is a bitmap: if it were left at 100% size, the
+     * enclosing zoom transform would stretch that bitmap and the lines would
+     * turn thick & blurry. Giving the canvas an inverse scale cancels the group
+     * zoom for the raster, so every line maps 1:1 onto screen pixels, gets
+     * snapped to the pixel grid (+0.5) and stays exactly 1 device px — thin and
+     * sharp at any zoom. Every 5th line is drawn slightly darker for depth.
+     */
     private void buildGridCanvas(double pageW, double pageH) {
         if (!showGrid) return;
         double stepMm = gridStepMm();
         renderedGridStepMm = stepMm;
-        double stepPx = stepMm * MM_PX;
-        Canvas gridCanvas = new Canvas(pageW, pageH);
-        GraphicsContext gc = gridCanvas.getGraphicsContext2D();
-        gc.setStroke(Color.web("#ececec"));
-        gc.setLineWidth(0.5);
-        for (double x = stepPx; x < pageW; x += stepPx) {
-            gc.strokeLine(Math.round(x) + 0.5, 0, Math.round(x) + 0.5, pageH);
+
+        double deviceW = Math.max(1.0, Math.ceil(pageW * zoom));
+        double deviceH = Math.max(1.0, Math.ceil(pageH * zoom));
+        Canvas gridCanvas = new Canvas(deviceW, deviceH);
+        if (Math.abs(zoom - 1.0) > 1e-9) {
+            gridCanvas.getTransforms().add(new Scale(1.0 / zoom, 1.0 / zoom));
         }
-        for (double y = stepPx; y < pageH; y += stepPx) {
-            gc.strokeLine(0, Math.round(y) + 0.5, pageW, Math.round(y) + 0.5);
+
+        GraphicsContext gc = gridCanvas.getGraphicsContext2D();
+        double stepPx = stepMm * MM_PX * zoom;   // cell size in device pixels
+        gc.setLineWidth(1.0);                    // 1 device px — the thinnest possible
+        Color minor = Color.web("#ececee");
+        Color major = Color.web("#d9d9de");
+        int i = 1;
+        for (double x = stepPx; x < deviceW; x += stepPx) {
+            gc.setStroke(i % 5 == 0 ? major : minor);
+            double sx = Math.round(x) + 0.5;
+            gc.strokeLine(sx, 0, sx, deviceH);
+            i++;
+        }
+        i = 1;
+        for (double y = stepPx; y < deviceH; y += stepPx) {
+            gc.setStroke(i % 5 == 0 ? major : minor);
+            double sy = Math.round(y) + 0.5;
+            gc.strokeLine(0, sy, deviceW, sy);
+            i++;
         }
         gridCanvas.setMouseTransparent(true);
         gridCanvasNode = gridCanvas;
@@ -1113,12 +1142,18 @@ public class TemplateDesigner extends BorderPane {
             int tickH = isMajor ? 10 : ((mm % 5 == 0) ? 6 : 3);
             Line tick = new Line(x, RULER_SIZE - tickH, x, RULER_SIZE);
             tick.setStroke(isMajor ? Color.web("#94a3b8") : Color.web("#475569"));
-            tick.setStrokeWidth(1.0);
+            // Hairline: at 200% zoom a 1.0 local-px stroke would render 2 device
+            // px thick & soft — divide by zoom so ticks stay 1 device px sharp.
+            tick.setStrokeWidth(1.0 / Math.max(0.3, zoom));
             rulerTop.getChildren().add(tick);
 
             if (mm % (int) labelStep == 0 && mm > 0 && mm < totalMmW - 5) {
                 Label lbl = new Label(String.valueOf(mm));
-                lbl.setStyle("-fx-font-size: 8px; -fx-text-fill: #94a3b8; -fx-font-family: 'Segoe UI', sans-serif;");
+                // Scale the font down by zoom so numerals keep a constant
+                // on-screen size (and stay vector-crisp) at every zoom level.
+                lbl.setStyle(String.format(java.util.Locale.US,
+                        "-fx-font-size: %.2fpx; -fx-text-fill: #94a3b8; -fx-font-family: 'Segoe UI', sans-serif;",
+                        8.0 / Math.max(0.3, zoom)));
                 lbl.setLayoutX(x + 2);
                 lbl.setLayoutY(1);
                 rulerTop.getChildren().add(lbl);
@@ -1134,17 +1169,21 @@ public class TemplateDesigner extends BorderPane {
             int tickW = isMajor ? 10 : ((mm % 5 == 0) ? 6 : 3);
             Line tick = new Line(RULER_SIZE - tickW, y, RULER_SIZE, y);
             tick.setStroke(isMajor ? Color.web("#94a3b8") : Color.web("#475569"));
-            tick.setStrokeWidth(1.0);
+            tick.setStrokeWidth(1.0 / Math.max(0.3, zoom));
             rulerLeft.getChildren().add(tick);
 
             if (mm % (int) labelStep == 0 && mm > 0 && mm < totalMmH - 5) {
                 Label lbl = new Label(String.valueOf(mm));
-                lbl.setStyle("-fx-font-size: 8px; -fx-text-fill: #94a3b8; -fx-font-family: 'Segoe UI', sans-serif;");
+                lbl.setStyle(String.format(java.util.Locale.US,
+                        "-fx-font-size: %.2fpx; -fx-text-fill: #94a3b8; -fx-font-family: 'Segoe UI', sans-serif;",
+                        8.0 / Math.max(0.3, zoom)));
                 lbl.setLayoutX(1);
                 lbl.setLayoutY(y + 1);
                 rulerLeft.getChildren().add(lbl);
             }
         }
+
+        renderedRulerStepMm = majorStep;
     }
 
     private void refreshCanvas() {
@@ -1186,21 +1225,38 @@ public class TemplateDesigner extends BorderPane {
             double mw = (page.getWidth() - mg.getLeft() - mg.getRight()) * MM_PX;
             double mh = (page.getHeight() - mg.getTop() - mg.getBottom()) * MM_PX;
             if (mw > 0 && mh > 0) {
+                // Guides stay hairline-thin on screen at ANY zoom: a fixed
+                // 1.0 local-px stroke would render zoom× thicker (blurry band
+                // at 300-400%). Dividing by zoom keeps it 1 device px.
+                double hair = 1.0 / Math.max(0.3, zoom);
                 Rectangle marginBox = new Rectangle(mx, my, mw, mh);
                 marginBox.setFill(Color.TRANSPARENT);
                 marginBox.setStroke(Color.web("#3B82F6", 0.65));
-                marginBox.setStrokeWidth(1.0);
-                marginBox.getStrokeDashArray().addAll(4.0, 4.0);
+                marginBox.setStrokeWidth(hair);
+                marginBox.getStrokeDashArray().addAll(4.0 * hair, 4.0 * hair);
                 marginBox.setMouseTransparent(true);
                 gridPane.getChildren().add(marginBox);
 
-                Label mLabel = new Label(String.format("Printable: %.0f×%.0f mm  (Margin: T:%.0f B:%.0f L:%.0f R:%.0f)",
+                // Legend font shrinks as zoom increases (9px / zoom in canvas
+                // space ≈ constant 9px on screen, ever smaller relative to the
+                // artwork) so it never buries the elements underneath it.
+                String legend = String.format(
+                        "Printable: %.0f×%.0f mm  (Margin: T:%.1f B:%.1f L:%.1f R:%.1f)",
                         Math.max(0, page.getWidth() - mg.getLeft() - mg.getRight()),
                         Math.max(0, page.getHeight() - mg.getTop() - mg.getBottom()),
-                        mg.getTop(), mg.getBottom(), mg.getLeft(), mg.getRight()));
-                mLabel.setStyle("-fx-font-size: 9px; -fx-font-family: 'Segoe UI', sans-serif; -fx-text-fill: #3B82F6; -fx-background-color: rgba(59,130,246,0.12); -fx-padding: 1 5; -fx-background-radius: 3;");
-                mLabel.setLayoutX(mx + 4);
-                mLabel.setLayoutY(my + 3);
+                        mg.getTop(), mg.getBottom(), mg.getLeft(), mg.getRight());
+                if (template.isLabelMode()) {
+                    LabelConfig lc = template.labelOrNew();
+                    legend += String.format("  · Stock L:%.1f R:%.1f · %d across",
+                            lc.getMarginL(), lc.getMarginR(), lc.getColumns());
+                }
+                Label mLabel = new Label(legend);
+                mLabel.setStyle(String.format(java.util.Locale.US,
+                        "-fx-font-size: %.2fpx; -fx-font-family: 'Segoe UI', sans-serif; -fx-text-fill: #3B82F6;"
+                                + " -fx-background-color: rgba(59,130,246,0.12); -fx-padding: %.2f %.2f; -fx-background-radius: %.2f;",
+                        9.0 * hair, 1.0 * hair, 5.0 * hair, 3.0 * hair));
+                mLabel.setLayoutX(mx + 4 * hair);
+                mLabel.setLayoutY(my + 3 * hair);
                 mLabel.setMouseTransparent(true);
                 gridPane.getChildren().add(mLabel);
             }
@@ -5684,6 +5740,15 @@ public class TemplateDesigner extends BorderPane {
                     template.getPage().getMargin().setLeft(newLeft);
                     template.getPage().getMargin().setRight(newRight);
 
+                    // Barcode Mode: mirror the L/R margins into the stock so
+                    // the canvas blue line, strip preview & print agree.
+                    if (template.isLabelMode()) {
+                        LabelConfig lc = template.labelOrNew();
+                        lc.setMarginL(newLeft);
+                        lc.setMarginR(newRight);
+                        lc.sanitize();
+                    }
+
                     if (shiftWithMargins) {
                         for (TemplateElement el : template.getElements()) {
                             if (!el.isLocked()) {
@@ -5712,6 +5777,9 @@ public class TemplateDesigner extends BorderPane {
 
     private double preLabelPageW = -1;
     private double preLabelPageH = -1;
+    /** Bill-mode margins remembered while Barcode Mode mirrors the stock's L/R
+     *  margins into the page, restored when leaving Barcode Mode. */
+    private double preLabelMarginT = -1, preLabelMarginB = -1, preLabelMarginL = -1, preLabelMarginR = -1;
 
     /** Enters / leaves Barcode Mode, remembering the bill page size across the switch. */
     private void toggleBarcodeMode() {
@@ -5723,10 +5791,28 @@ public class TemplateDesigner extends BorderPane {
                 template.getPage().setHeight(preLabelPageH);
                 template.getPage().setSizeName(PageSizeName.CUSTOM);
             }
+            if (preLabelMarginT >= 0) {
+                PageConfig.Margins pm = template.getPage().getMargin();
+                if (pm == null) {
+                    pm = new PageConfig.Margins(preLabelMarginT, preLabelMarginR, preLabelMarginB, preLabelMarginL);
+                    template.getPage().setMargin(pm);
+                } else {
+                    pm.setTop(preLabelMarginT);
+                    pm.setRight(preLabelMarginR);
+                    pm.setBottom(preLabelMarginB);
+                    pm.setLeft(preLabelMarginL);
+                }
+                preLabelMarginT = preLabelMarginB = preLabelMarginL = preLabelMarginR = -1;
+            }
         } else {
             template.setMode("label");
             preLabelPageW = template.getPage().getWidth();
             preLabelPageH = template.getPage().getHeight();
+            PageConfig.Margins preM = template.getPage().getMargin();
+            preLabelMarginT = preM.getTop();
+            preLabelMarginB = preM.getBottom();
+            preLabelMarginL = preM.getLeft();
+            preLabelMarginR = preM.getRight();
 
             LabelConfig cfg = template.labelOrNew();
             // First entry: seed the label cell from the current canvas when it
@@ -5803,13 +5889,25 @@ public class TemplateDesigner extends BorderPane {
         if (bulkPrintBtn != null) { bulkPrintBtn.setVisible(label); bulkPrintBtn.setManaged(label); }
     }
 
-    /** Canvas (page) always equals the label design cell while in Barcode Mode. */
+    /** Canvas (page) always equals the label design cell while in Barcode Mode.
+     *  The stock's L/R margins are mirrored into the page margins so the blue
+     *  dashed printable boundary + legend on the canvas react immediately when
+     *  the user edits them in the Label Stock dialog. */
     private void syncPageFromLabelConfig() {
         LabelConfig cfg = template.labelOrNew();
         cfg.sanitize();
         template.getPage().setWidth(cfg.getLabelWidth());
         template.getPage().setHeight(cfg.getLabelHeight());
         template.getPage().setSizeName(PageSizeName.CUSTOM);
+        PageConfig.Margins pm = template.getPage().getMargin();
+        if (pm == null) {
+            pm = new PageConfig.Margins(0, 0, 0, 0);
+            template.getPage().setMargin(pm);
+        }
+        pm.setLeft(cfg.getMarginL());
+        pm.setRight(cfg.getMarginR());
+        pm.setTop(0);
+        pm.setBottom(0);
         updatePageFormatLabel();
     }
 
@@ -6229,6 +6327,18 @@ public class TemplateDesigner extends BorderPane {
             case "right" -> mg.setRight(newVal);
         }
 
+        // Barcode Mode: mirror L/R edits back into the stock geometry so the
+        // canvas guides, strip preview and the actual print all agree.
+        if (template.isLabelMode()) {
+            LabelConfig lc = template.labelOrNew();
+            if ("left".equalsIgnoreCase(side)) {
+                lc.setMarginL(newVal);
+            } else if ("right".equalsIgnoreCase(side)) {
+                lc.setMarginR(newVal);
+            }
+            lc.sanitize();
+        }
+
         if (shift) {
             if ("left".equalsIgnoreCase(side)) {
                 for (TemplateElement el : template.getElements()) {
@@ -6268,6 +6378,14 @@ public class TemplateDesigner extends BorderPane {
         mg.setBottom(bottom);
         mg.setLeft(left);
         mg.setRight(right);
+
+        // Barcode Mode: keep the stock geometry in sync (see updateMargin).
+        if (template.isLabelMode()) {
+            LabelConfig lc = template.labelOrNew();
+            lc.setMarginL(left);
+            lc.setMarginR(right);
+            lc.sanitize();
+        }
 
         if (shiftWithMargins) {
             for (TemplateElement el : template.getElements()) {
