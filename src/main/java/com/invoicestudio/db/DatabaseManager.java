@@ -119,6 +119,22 @@ public class DatabaseManager {
             try { stmt.execute("DELETE FROM bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
             try { stmt.execute("DELETE FROM transactions WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
 
+            // MCP hardening: categories are auto-created BY NAME by MCP tools, so
+            // (user_id, name) must be unique or two concurrent calls could create
+            // duplicates. Merge existing duplicates first (keep the oldest row),
+            // repoint items that referenced a merged-away category, then enforce
+            // uniqueness at the DB level as the race backstop.
+            try {
+                stmt.execute("DELETE FROM categories WHERE rowid NOT IN (SELECT MIN(rowid) FROM categories GROUP BY user_id, LOWER(name))");
+            } catch (Exception e) { e.printStackTrace(); }
+            try {
+                stmt.execute("UPDATE items SET category_id = (SELECT k.id FROM categories k WHERE k.user_id = items.user_id AND LOWER(k.name) = LOWER(items.category_name)) WHERE category_id IS NOT NULL AND category_id <> '' AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.id = items.category_id AND c.user_id = items.user_id)");
+                stmt.execute("UPDATE items SET category_id = NULL, category_name = NULL WHERE category_id IS NOT NULL AND category_id <> '' AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.id = items.category_id AND c.user_id = items.user_id)");
+            } catch (Exception e) { e.printStackTrace(); }
+            try {
+                stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_user_name ON categories(user_id, name COLLATE NOCASE)");
+            } catch (Exception e) { e.printStackTrace(); }
+
             // Ensure built-in system variables exist
             seedVariables(conn);
         } catch (SQLException e) {

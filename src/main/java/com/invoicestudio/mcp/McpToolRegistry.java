@@ -17,6 +17,7 @@ import com.invoicestudio.model.Supplier;
 import com.invoicestudio.model.Template;
 import com.invoicestudio.model.Transaction;
 import com.invoicestudio.model.Transport;
+import com.invoicestudio.model.VariableDef;
 import com.invoicestudio.service.BillingService;
 import com.invoicestudio.service.FinancialService;
 import com.invoicestudio.service.PurchaseService;
@@ -99,7 +100,7 @@ public final class McpToolRegistry {
                 obj(
                         "query", str("Optional search text matched against name, phone, GSTIN, city"),
                         "limit", num("Max rows (default 100)")), false, false));
-        t.add(new ToolDef("create_buyer", "Create a buyer/customer.",
+        t.add(new ToolDef("create_buyer", "Create a buyer/customer. Idempotent by name: if a buyer with the same name already exists it is returned unchanged (existed=true) instead of duplicated.",
                 obj(
                         "name", str("Buyer/firm name (required)"),
                         "phone", str("Phone"),
@@ -123,7 +124,7 @@ public final class McpToolRegistry {
                 obj(
                         "query", str("Optional search text"),
                         "limit", num("Max rows (default 100)")), false, false));
-        t.add(new ToolDef("create_supplier", "Create a seller/supplier.",
+        t.add(new ToolDef("create_supplier", "Create a seller/supplier. Idempotent by name: returns the existing supplier unchanged (existed=true) instead of duplicating.",
                 obj(
                         "name", str("Firm name (required)"),
                         "phone", str("Phone"),
@@ -149,7 +150,7 @@ public final class McpToolRegistry {
                 obj(
                         "query", str("Optional search text"),
                         "limit", num("Max rows (default 100)")), false, false));
-        t.add(new ToolDef("create_item", "Create a catalog item.",
+        t.add(new ToolDef("create_item", "Create a catalog item. Check-then-create: the category (categoryId and/or categoryName) is resolved first and AUTO-CREATED if missing — every auto-creation is listed in response.autoCreated, never silently linked. Idempotent by item name: an existing item is returned (existed=true); use update_item to change it.",
                 obj(
                         "name", str("Item name (required)"),
                         "hsn", str("HSN code"),
@@ -177,7 +178,7 @@ public final class McpToolRegistry {
         t.add(new ToolDef("list_templates", "List print templates with element counts and page sizes.", obj(), false, false));
         t.add(new ToolDef("get_template", "Get one print template in full: page size and every positioned element (type, x/y/w/h in mm, text, variable binding). Read this + get_app_guide to learn how templates work.",
                 obj("id", str("Template id")), false, false));
-        t.add(new ToolDef("create_template", "Create a print template. Elements: [{type: TEXT|TABLE|LINE|RECT|QRCODE..., name, x, y, w, h (mm), text?, binding?}] — binding binds a Field to a variable (see list_variables).",
+        t.add(new ToolDef("create_template", "Create a print template. Elements: [{type: TEXT|TABLE|LINE|RECT|QRCODE..., name, x, y, w, h (mm), text?, variable binding?}] — binding binds a Field to a variable (see list_variables). Idempotent by name: returns the existing template (existed=true) instead of duplicating.",
                 obj("name", str("Template name"),
                         "pageSize", str("A4 | A5 | THERMAL_80 | THERMAL_58 (default A4)"),
                         "elements", arr("Element list (can be empty and edited later)")), true, false));
@@ -186,13 +187,13 @@ public final class McpToolRegistry {
                         "name", str("New name"),
                         "pageSize", str("New page size"),
                         "elements", arr("Replacement element list")), true, true));
-        t.add(new ToolDef("duplicate_template", "Duplicate an existing template under a new name (great starting point: duplicate a preset then edit).",
+        t.add(new ToolDef("duplicate_template", "Duplicate an existing template under a new name (great starting point: duplicate a preset then edit). Idempotent: if newName is already taken the existing template is returned (existed=true).",
                 obj("id", str("Template to copy"),
                         "newName", str("Name for the copy")), true, false));
         t.add(new ToolDef("delete_template", "Delete a print template permanently. Requires user confirmation.",
                 obj("id", str("Template id")), true, true));
         t.add(new ToolDef("list_variables", "List template variables (fixed app variables + custom) usable as element bindings.", obj(), false, false));
-        t.add(new ToolDef("create_variable", "Create a custom template variable.",
+        t.add(new ToolDef("create_variable", "Create a custom template variable. Idempotent by key: an existing key is returned unchanged (existed=true) — this tool never overwrites; use confirm-gated updates instead.",
                 obj("key", str("Snake_case key used in bindings"),
                         "label", str("Human label"),
                         "type", str("text | number | date"),
@@ -200,7 +201,7 @@ public final class McpToolRegistry {
                         "scope", str("fixed | table")), true, false));
         t.add(new ToolDef("delete_variable", "Delete a custom variable. Requires user confirmation.",
                 obj("key", str("Variable key")), true, true));
-        t.add(new ToolDef("create_transport", "Add a transport (logistics) partner.",
+        t.add(new ToolDef("create_transport", "Add a transport (logistics) partner. Idempotent by name: returns the existing transport (existed=true) instead of duplicating.",
                 obj("name", str("Transport name"),
                         "phone", str("Phone"),
                         "vehicleNumber", str("Vehicle number")), true, false));
@@ -217,7 +218,7 @@ public final class McpToolRegistry {
                         "limit", num("Max rows (default 50)")), false, false));
         t.add(new ToolDef("get_bill", "Get one invoice with full item lines, totals and payments.",
                 obj("id", str("Bill id")), false, false));
-        t.add(new ToolDef("create_bill", "Create a tax invoice (same as + New Bill).",
+        t.add(new ToolDef("create_bill", "Create a tax invoice (same as + New Bill). Check-then-create: buyerId/buyerName is resolved against the directory and AUTO-CREATED if unknown (blank = Walk-in Customer); line itemIds are resolved against the catalog and AUTO-CREATED from the line data if missing. Every auto-creation is listed in response.autoCreated. If the invoice itself fails to save, auto-created dependencies are rolled back so nothing is half-done.",
                 obj(
                         "buyerName", str("Buyer name (matched to directory; walk-in if blank)"),
                         "buyerId", str("Buyer id (alternative to buyerName)"),
@@ -238,7 +239,7 @@ public final class McpToolRegistry {
                 obj(
                         "query", str("Optional search text (bill no / supplier name)"),
                         "limit", num("Max rows (default 50)")), false, false));
-        t.add(new ToolDef("create_purchase", "Record a purchase bill from a supplier (stock IN + ITC).",
+        t.add(new ToolDef("create_purchase", "Record a purchase bill from a supplier (stock IN + ITC). Check-then-create: supplierId/supplierName is resolved and the supplier is AUTO-CREATED if unknown (never a hard error); line itemIds are resolved and AUTO-CREATED from line data if missing. Every auto-creation is listed in response.autoCreated; dependencies roll back if the purchase itself fails.",
                 obj(
                         "supplierId", str("Supplier id (or supplierName)"),
                         "supplierName", str("Supplier name"),
@@ -261,7 +262,7 @@ public final class McpToolRegistry {
         // --- Expenses & money ---
         t.add(new ToolDef("list_expenses", "List expense vouchers.",
                 obj("limit", num("Max rows (default 100)")), false, false));
-        t.add(new ToolDef("record_expense", "Record an expense voucher (direct heads hit the Trading Account, indirect hit P&L).",
+        t.add(new ToolDef("record_expense", "Record an expense voucher (direct heads hit the Trading Account, indirect hit P&L). category is a free-text accounting head (e.g. Freight Inward, Office Rent) — deliberately NOT a directory reference, so nothing is auto-created and identical vouchers are allowed.",
                 obj(
                         "category", str("e.g. Freight Inward (direct), Office Rent, Salaries, Electricity, Marketing, Bank Charges (indirect)"),
                         "amount", num("Amount"),
@@ -488,40 +489,79 @@ public final class McpToolRegistry {
     private static Map<String, Object> createBuyer(DataManager dm, Map<String, Object> args) throws Exception {
         String name = str(args, "name");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
-        Buyer b = new Buyer("byr_mcp_" + UUID.randomUUID().toString().substring(0, 8),
-                name.trim(), strOr(args, "address", ""), strOr(args, "gst", "").toUpperCase(Locale.ROOT),
-                strOr(args, "phone", ""), strOr(args, "state", ""));
-        b.setStateCode(strOr(args, "stateCode", ""));
-        dm.buyers().saveBuyer(b);
-        return mapOf("ok", true, "id", b.getId(), "name", b.getName());
+
+        // Idempotent by name — never silently duplicate a directory entry.
+        McpEnsure.Outcome out = McpEnsure.ensureBuyer(dm, null, name);
+        if (!out.created) {
+            return mapOf("ok", true, "id", out.id, "name", out.name,
+                    "existed", true, "matchedBy", out.matchedBy,
+                    "note", "Existing buyer returned unchanged; use update_buyer to modify.");
+        }
+        // enrich the freshly auto-created record with the provided fields
+        Buyer b = dm.buyers().getBuyerById(out.id);
+        if (b != null) {
+            if (!strOr(args, "gst", "").isBlank()) b.setGst(strOr(args, "gst", "").toUpperCase(Locale.ROOT));
+            if (!strOr(args, "phone", "").isBlank()) b.setPhone(strOr(args, "phone", ""));
+            if (!strOr(args, "address", "").isBlank()) b.setAddress(strOr(args, "address", ""));
+            if (!strOr(args, "state", "").isBlank()) b.setState(strOr(args, "state", ""));
+            if (!strOr(args, "stateCode", "").isBlank()) b.setStateCode(strOr(args, "stateCode", ""));
+            dm.buyers().saveBuyer(b);
+        }
+        return mapOf("ok", true, "id", out.id, "name", b != null ? b.getName() : out.name,
+                "existed", false, "autoCreated", List.of(out.asMap("buyer")));
     }
 
     private static Map<String, Object> createSupplier(DataManager dm, Map<String, Object> args) throws Exception {
         String name = str(args, "name");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
-        Supplier s = new Supplier();
-        s.setId("sup_mcp_" + UUID.randomUUID().toString().substring(0, 8));
-        s.setName(name.trim());
-        s.setPhone(strOr(args, "phone", ""));
-        s.setGst(strOr(args, "gst", "").toUpperCase(Locale.ROOT));
-        s.setState(strOr(args, "state", ""));
-        s.setStateCode(strOr(args, "stateCode", ""));
-        s.setCity(strOr(args, "city", ""));
-        s.setAddress(strOr(args, "address", ""));
-        s.setOpeningBalance(dbl(args, "openingBalance", 0.0));
-        s.setCreditPeriodDays((int) dbl(args, "creditPeriodDays", 0));
-        dm.suppliers().saveSupplier(s);
-        return mapOf("ok", true, "id", s.getId(), "name", s.getName());
+
+        // Idempotent by name — never silently duplicate a directory entry.
+        McpEnsure.Outcome out = McpEnsure.ensureSupplier(dm, null, name);
+        if (!out.created) {
+            return mapOf("ok", true, "id", out.id, "name", out.name,
+                    "existed", true, "matchedBy", out.matchedBy,
+                    "note", "Existing supplier returned unchanged; use update_supplier to modify.");
+        }
+        Supplier s = dm.suppliers().getSupplierById(out.id);
+        if (s != null) {
+            s.setPhone(strOr(args, "phone", ""));
+            s.setGst(strOr(args, "gst", "").toUpperCase(Locale.ROOT));
+            s.setState(strOr(args, "state", ""));
+            s.setStateCode(strOr(args, "stateCode", ""));
+            s.setCity(strOr(args, "city", ""));
+            s.setAddress(strOr(args, "address", ""));
+            s.setOpeningBalance(dbl(args, "openingBalance", 0.0));
+            s.setCreditPeriodDays((int) dbl(args, "creditPeriodDays", 0));
+            dm.suppliers().saveSupplier(s);
+        }
+        return mapOf("ok", true, "id", out.id, "name", s != null ? s.getName() : out.name,
+                "existed", false, "autoCreated", List.of(out.asMap("supplier")));
     }
 
     private static Map<String, Object> createItem(DataManager dm, Map<String, Object> args) throws Exception {
         String name = str(args, "name");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
 
+        // Idempotent by name — never silently duplicate a catalog item.
+        ItemRecord dup = McpEnsure.findItem(dm, null, name);
+        if (dup != null) {
+            return mapOf("ok", true, "id", dup.getId(), "name", dup.getName(),
+                    "category", dup.getCategoryName(),
+                    "existed", true, "matchedBy", "name",
+                    "note", "Existing item returned unchanged; use update_item to modify it.");
+        }
+
         String categoryId = strOr(args, "categoryId", "").trim();
         String categoryName = strOr(args, "categoryName", "").trim();
 
-        ItemCategory category = resolveOrCreateCategory(dm, categoryId, categoryName);
+        // Check-then-create: resolve the reference first; auto-create when missing.
+        McpEnsure.Outcome category = McpEnsure.ensureCategory(dm, categoryId, categoryName);
+        List<McpEnsure.Tracked> created = McpEnsure.track();
+        List<Map<String, Object>> autoCreated = new ArrayList<>();
+        if (category != null && category.created) {
+            created.add(new McpEnsure.Tracked("category", category.id));
+            autoCreated.add(category.asMap("category"));
+        }
 
         ItemRecord it = new ItemRecord();
         it.setId("item_mcp_" + UUID.randomUUID().toString().substring(0, 8));
@@ -534,41 +574,20 @@ public final class McpToolRegistry {
         it.setOpeningStock(dbl(args, "openingStock", 0.0));
         it.setReorderLevel(dbl(args, "reorderLevel", 0.0));
         if (category != null) {
-            it.setCategoryId(category.getId());
-            it.setCategoryName(category.getName());
-        } else {
-            it.setCategoryId(categoryId);
-            it.setCategoryName(categoryName);
+            // the reference is guaranteed to exist now — no dangling category_id possible
+            it.setCategoryId(category.id);
+            it.setCategoryName(category.name);
         }
         dm.items().saveItem(it);
-        return mapOf("ok", true, "id", it.getId(), "name", it.getName(), "category", it.getCategoryName());
-    }
-
-    private static ItemCategory resolveOrCreateCategory(DataManager dm, String categoryId, String categoryName) {
-        List<ItemCategory> categories = dm.getAllCategories();
-
-        if (categoryId != null && !categoryId.isBlank()) {
-            for (ItemCategory category : categories) {
-                if (category.getId().equalsIgnoreCase(categoryId)) {
-                    return category;
-                }
-            }
+        // DAOs swallow SQL failures — verify before declaring success.
+        if (dm.items().getItemById(it.getId()) == null) {
+            McpEnsure.rollback(dm, created);
+            throw new IllegalArgumentException(
+                    "Item save failed; auto-created category was rolled back (nothing half-done).");
         }
-
-        if (categoryName != null && !categoryName.isBlank()) {
-            for (ItemCategory category : categories) {
-                if (category.getName().equalsIgnoreCase(categoryName)) {
-                    return category;
-                }
-            }
-
-            ItemCategory newCategory = new ItemCategory();
-            newCategory.setName(categoryName.trim());
-            dm.saveCategory(newCategory);
-            return newCategory;
-        }
-
-        return null;
+        return mapOf("ok", true, "id", it.getId(), "name", it.getName(),
+                "category", it.getCategoryName(),
+                "existed", false, "autoCreated", autoCreated);
     }
 
     @SuppressWarnings("unchecked")
@@ -580,12 +599,25 @@ public final class McpToolRegistry {
         bill.setBillNo(nextNo);
         bill.setDate(strOr(args, "date", LocalDate.now().toString()));
 
-        // Buyer resolution
+        // Check-then-create: resolve the buyer reference; auto-create when unknown.
+        // ANY failure from here until the bill is verified-persisted must roll
+        // back everything this call auto-created (no half-done state).
+        List<McpEnsure.Tracked> created = McpEnsure.track();
+        List<Map<String, Object>> autoCreated = new ArrayList<>();
+        try {
         String buyerId = strOr(args, "buyerId", "");
         String buyerName = strOr(args, "buyerName", "");
         Buyer buyer = null;
-        if (!buyerId.isBlank()) buyer = dm.buyers().getBuyerById(buyerId);
-        if (buyer == null && !buyerName.isBlank()) buyer = dm.buyers().findByName(buyerName);
+        if (!buyerId.isBlank() || !buyerName.isBlank()) {
+            McpEnsure.Outcome buyerRef = McpEnsure.ensureBuyer(dm, buyerId, buyerName);
+            if (buyerRef != null) {
+                buyer = dm.buyers().getBuyerById(buyerRef.id);
+                if (buyerRef.created) {
+                    created.add(new McpEnsure.Tracked("buyer", buyerRef.id));
+                    autoCreated.add(buyerRef.asMap("buyer"));
+                }
+            }
+        }
         if (buyer != null) {
             bill.setBuyerName(buyer.getName());
             buyerName = buyer.getName();
@@ -610,12 +642,23 @@ public final class McpToolRegistry {
             BillItem bi = new BillItem();
             String itemId = str(line, "itemId");
             if (itemId != null && !itemId.isBlank()) {
-                ItemRecord cat = dm.items().getItemById(itemId);
-                if (cat != null) {
-                    bi.setId(cat.getId());
-                    bi.setDesc(cat.getName());
-                    if (!line.containsKey("rate")) bi.setRate(cat.getRate());
-                    if (!line.containsKey("gst")) bi.setGst(cat.getGst());
+                // Check-then-create: an unknown catalog id is auto-created from this
+                // line's own data, so no invoice line can reference a phantom item.
+                McpEnsure.Outcome lineItem = McpEnsure.ensureItemForLine(dm, itemId, str(line, "desc"),
+                        line.containsKey("rate") ? dbl(line, "rate", 0.0) : null,
+                        line.containsKey("gst") ? dbl(line, "gst", 0.0) : null);
+                if (lineItem != null) {
+                    ItemRecord cat = dm.items().getItemById(lineItem.id);
+                    if (cat != null) {
+                        bi.setId(cat.getId());
+                        bi.setDesc(cat.getName());
+                        if (!line.containsKey("rate")) bi.setRate(cat.getRate());
+                        if (!line.containsKey("gst")) bi.setGst(cat.getGst());
+                    }
+                    if (lineItem.created) {
+                        created.add(new McpEnsure.Tracked("item", lineItem.id));
+                        autoCreated.add(lineItem.asMap("item"));
+                    }
                 }
             }
             if (str(line, "desc") != null && !str(line, "desc").isBlank()) bi.setDesc(str(line, "desc").trim());
@@ -642,30 +685,53 @@ public final class McpToolRegistry {
             bill.setPaidAt(LocalDate.now().toString());
         }
         dm.saveBill(bill);
+        // DAOs swallow SQL failures, so verify the write actually landed before
+        // declaring success — otherwise auto-created deps would dangle.
+        if (dm.bills().getBillById(bill.getId()) == null) {
+            throw new IllegalArgumentException(
+                    "Invoice save failed; auto-created dependencies were rolled back (nothing half-done).");
+        }
 
         // Bump the invoice counter only when the generated number was used
         if (nextNo.equals(bill.getBillNo())) {
             st.setBillNoNext(st.getBillNoNext() + 1);
             dm.saveSettings(st);
         }
-        return mapOf("ok", true, "id", bill.getId(), "billNo", bill.getBillNo(),
-                "grandTotal", bill.getTotals().getGrandTotal(),
-                "status", bill.getStatus().name(),
-                "interState", interState);
+        Map<String, Object> respBill = new LinkedHashMap<>();
+        respBill.put("ok", true);
+        respBill.put("id", bill.getId());
+        respBill.put("billNo", bill.getBillNo());
+        respBill.put("grandTotal", bill.getTotals().getGrandTotal());
+        respBill.put("status", bill.getStatus().name());
+        respBill.put("interState", interState);
+        respBill.put("autoCreated", autoCreated);
+        return respBill;
+        } catch (Exception e) {
+            McpEnsure.rollback(dm, created);
+            throw e;
+        }
     }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> createPurchase(DataManager dm, Map<String, Object> args) throws Exception {
-        Supplier supplier;
+        // Check-then-create: resolve the supplier; AUTO-CREATE when unknown —
+        // a missing directory entry is never a hard error.
+        List<McpEnsure.Tracked> created = McpEnsure.track();
+        List<Map<String, Object>> autoCreated = new ArrayList<>();
+        try {
         String sid = strOr(args, "supplierId", "");
         String sname = strOr(args, "supplierName", "");
-        if (!sid.isBlank()) supplier = dm.suppliers().getSupplierById(sid);
-        else if (!sname.isBlank()) {
-            supplier = dm.suppliers().getAllSuppliers().stream()
-                    .filter(s -> s.getName().equalsIgnoreCase(sname.trim())).findFirst().orElse(null);
-        } else supplier = null;
+        if (sid.isBlank() && sname.isBlank()) {
+            throw new IllegalArgumentException("supplierId or supplierName is required");
+        }
+        McpEnsure.Outcome supplierRef = McpEnsure.ensureSupplier(dm, sid, sname);
+        Supplier supplier = dm.suppliers().getSupplierById(supplierRef.id);
+        if (supplierRef.created) {
+            created.add(new McpEnsure.Tracked("supplier", supplierRef.id));
+            autoCreated.add(supplierRef.asMap("supplier"));
+        }
         if (supplier == null) {
-            throw new IllegalArgumentException("supplierId or supplierName must resolve to an existing supplier");
+            throw new IllegalArgumentException("Supplier could not be persisted: " + supplierRef.id);
         }
 
         PurchaseBill pb = new PurchaseBill();
@@ -690,12 +756,22 @@ public final class McpToolRegistry {
             BillItem bi = new BillItem();
             String itemIdArg = str(line, "itemId");
             if (itemIdArg != null && !itemIdArg.isBlank()) {
-                ItemRecord cat = dm.items().getItemById(itemIdArg);
-                if (cat != null) {
-                    bi.setId(cat.getId());
-                    bi.setDesc(cat.getName());
-                    if (!line.containsKey("rate") && cat.getPurchaseRate() > 0) bi.setRate(cat.getPurchaseRate());
-                    if (!line.containsKey("gst")) bi.setGst(cat.getGst());
+                // Check-then-create: unknown catalog id → auto-create from this line.
+                McpEnsure.Outcome lineItem = McpEnsure.ensureItemForLine(dm, itemIdArg, str(line, "desc"),
+                        line.containsKey("rate") ? dbl(line, "rate", 0.0) : null,
+                        line.containsKey("gst") ? dbl(line, "gst", 0.0) : null);
+                if (lineItem != null) {
+                    ItemRecord cat = dm.items().getItemById(lineItem.id);
+                    if (cat != null) {
+                        bi.setId(cat.getId());
+                        bi.setDesc(cat.getName());
+                        if (!line.containsKey("rate") && cat.getPurchaseRate() > 0) bi.setRate(cat.getPurchaseRate());
+                        if (!line.containsKey("gst")) bi.setGst(cat.getGst());
+                    }
+                    if (lineItem.created) {
+                        created.add(new McpEnsure.Tracked("item", lineItem.id));
+                        autoCreated.add(lineItem.asMap("item"));
+                    }
                 }
             }
             if (str(line, "desc") != null && !str(line, "desc").isBlank()) bi.setDesc(str(line, "desc").trim());
@@ -714,13 +790,27 @@ public final class McpToolRegistry {
         pb.setPaid(payNow);
         pb.setPaymentMode(strOr(args, "paymentMode", payNow ? "Cash" : ""));
         dm.savePurchase(pb);
-        return mapOf("ok", true, "id", pb.getId(), "billNo", pb.getBillNo(),
-                "grandTotal", pb.getTotals() != null ? pb.getTotals().getGrandTotal() : 0.0,
-                "itc", pb.getTotals() != null
-                        ? PurchaseService.round2(pb.getTotals().getCgst() + pb.getTotals().getSgst() + pb.getTotals().getIgst())
-                        : 0.0,
-                "interState", interState,
-                "amountPayable", pb.getAmountPayable());
+        // DAOs swallow SQL failures — verify before declaring success.
+        if (dm.purchases().getPurchaseBillById(pb.getId()) == null) {
+            throw new IllegalArgumentException(
+                    "Purchase save failed; auto-created dependencies were rolled back (nothing half-done).");
+        }
+        Map<String, Object> respP = new LinkedHashMap<>();
+        respP.put("ok", true);
+        respP.put("id", pb.getId());
+        respP.put("billNo", pb.getBillNo());
+        respP.put("grandTotal", pb.getTotals() != null ? pb.getTotals().getGrandTotal() : 0.0);
+        respP.put("itc", pb.getTotals() != null
+                ? PurchaseService.round2(pb.getTotals().getCgst() + pb.getTotals().getSgst() + pb.getTotals().getIgst())
+                : 0.0);
+        respP.put("interState", interState);
+        respP.put("amountPayable", pb.getAmountPayable());
+        respP.put("autoCreated", autoCreated);
+        return respP;
+        } catch (Exception e) {
+            McpEnsure.rollback(dm, created);
+            throw e;
+        }
     }
 
     private static Map<String, Object> payPurchase(DataManager dm, Map<String, Object> args) throws Exception {
@@ -777,6 +867,14 @@ public final class McpToolRegistry {
     private static Map<String, Object> createTemplate(DataManager dm, Map<String, Object> args) throws Exception {
         String name = str(args, "name");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
+        // Idempotent by name — never silently duplicate a template.
+        Template existing = McpEnsure.findTemplateByName(dm, name);
+        if (existing != null) {
+            return mapOf("ok", true, "id", existing.getId(), "name", existing.getName(),
+                    "elements", existing.getElements() == null ? 0 : existing.getElements().size(),
+                    "existed", true, "matchedBy", "name",
+                    "note", "Existing template returned unchanged; use update_template to modify it.");
+        }
         Template t = new Template();
         t.setId("tpl_mcp_" + UUID.randomUUID().toString().substring(0, 8));
         t.setName(name.trim());
@@ -784,12 +882,20 @@ public final class McpToolRegistry {
         if (args.get("elements") instanceof List<?> els) t.setElements(elementsFrom(els));
         dm.templates().saveTemplate(t);
         return mapOf("ok", true, "id", t.getId(), "name", t.getName(),
-                "elements", t.getElements() == null ? 0 : t.getElements().size());
+                "elements", t.getElements() == null ? 0 : t.getElements().size(),
+                "existed", false);
     }
 
     private static Map<String, Object> duplicateTemplate(DataManager dm, Map<String, Object> args) throws Exception {
         Template src = requireTemplate(dm, str(args, "id"));
         String newName = strOr(args, "newName", src.getName() + " (copy)");
+        // Idempotent: if the target name is already taken, return that template.
+        Template same = McpEnsure.findTemplateByName(dm, newName);
+        if (same != null) {
+            return mapOf("ok", true, "id", same.getId(), "name", same.getName(),
+                    "existed", true, "matchedBy", "name",
+                    "note", "A template named '" + newName + "' already exists; returning it unchanged.");
+        }
         Template copy = new Template();
         copy.setId("tpl_mcp_" + UUID.randomUUID().toString().substring(0, 8));
         copy.setName(newName);
@@ -798,7 +904,7 @@ public final class McpToolRegistry {
             copy.setElements(new ArrayList<>(src.getElements()));
         }
         dm.templates().saveTemplate(copy);
-        return mapOf("ok", true, "id", copy.getId(), "name", copy.getName());
+        return mapOf("ok", true, "id", copy.getId(), "name", copy.getName(), "existed", false);
     }
 
     @SuppressWarnings("unchecked")
@@ -842,23 +948,37 @@ public final class McpToolRegistry {
     private static Map<String, Object> createVariable(DataManager dm, Map<String, Object> args) throws Exception {
         String key = str(args, "key");
         if (key == null || key.isBlank()) throw new IllegalArgumentException("key is required");
+        // Idempotent by key — an existing variable is returned unchanged, never overwritten.
+        VariableDef dup = McpEnsure.findVariable(dm, key);
+        if (dup != null) {
+            return mapOf("ok", true, "key", dup.getKey(),
+                    "existed", true, "matchedBy", "key",
+                    "note", "Variable already exists; returned unchanged (this tool never overwrites).");
+        }
         com.invoicestudio.model.VariableDef v = new com.invoicestudio.model.VariableDef(
                 key.trim(), strOr(args, "label", key.trim()),
                 strOr(args, "type", "text"), false);
         v.setScope(strOr(args, "scope", "fixed"));
         v.setDefaultValue(str(args, "defaultValue"));
         dm.variables().saveVariable(v);
-        return mapOf("ok", true, "key", v.getKey());
+        return mapOf("ok", true, "key", v.getKey(), "existed", false);
     }
 
     private static Map<String, Object> createTransport(DataManager dm, Map<String, Object> args) throws Exception {
         String name = str(args, "name");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
+        // Idempotent by name — never silently duplicate a transport entry.
+        Transport dup = McpEnsure.findTransportByName(dm, name);
+        if (dup != null) {
+            return mapOf("ok", true, "id", dup.getId(), "name", dup.getName(),
+                    "existed", true, "matchedBy", "name",
+                    "note", "Existing transport returned unchanged.");
+        }
         com.invoicestudio.model.Transport tr = new com.invoicestudio.model.Transport(
                 "trn_mcp_" + UUID.randomUUID().toString().substring(0, 8),
                 name.trim(), strOr(args, "phone", ""), strOr(args, "vehicleNumber", ""));
         dm.saveTransport(tr);
-        return mapOf("ok", true, "id", tr.getId(), "name", tr.getName());
+        return mapOf("ok", true, "id", tr.getId(), "name", tr.getName(), "existed", false);
     }
 
     private static Map<String, Object> createBackup(DataManager dm, Map<String, Object> args) throws Exception {

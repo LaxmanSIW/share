@@ -62,9 +62,23 @@ class WorkshopScenarioTest {
     }
 
     @AfterAll
-    static void tearDown() {
+    static void tearDown() throws Exception {
         AuthSessionManager.clear();
         new File(TEST_DB).delete();
+
+        // DataManager/DatabaseManager are JVM-wide singletons shared with the
+        // other suite classes (surefire runs all classes in one JVM). This
+        // class initialized them, so it must release them — otherwise the next
+        // suite's DataManager.init(db) is a no-op and its assertions read THIS
+        // suite's (deleted) database. Same contract as McpServerTest.tearDown.
+        resetSingleton(com.invoicestudio.db.DatabaseManager.class, "instance");
+        resetSingleton(DataManager.class, "instance");
+    }
+
+    private static void resetSingleton(Class<?> clazz, String fieldName) throws Exception {
+        java.lang.reflect.Field f = clazz.getDeclaredField(fieldName);
+        f.setAccessible(true);
+        f.set(null, null);
     }
 
     // ------------------------------------------------------------------
