@@ -1,106 +1,212 @@
 package com.invoicestudio.service;
 
-import com.invoicestudio.model.Bill;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.Template;
+import com.invoicestudio.ui.BillPreviewPane;
+import com.invoicestudio.ui.PrintPreviewDialog;
 import javafx.print.*;
 import javafx.scene.Node;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
-import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.Window;
 
+import java.util.Optional;
+
 public class PrintingService {
+
+    /**
+     * Screen pixels are 96 DPI (3.78 px/mm); JavaFX printer coordinates are
+     * 72 pt/inch. Ratio 72 / 96 = 0.75 maps screen pixels to 100% physical
+     * size. The node is additionally shrunk only when it cannot physically
+     * fit the printable area (e.g. continuous thermal rolls).
+     */
+    public static final double BASE_SCALE = 0.75;
 
     public static boolean printNode(Node node, Window owner, int copies, String jobName) {
         return printTemplate(node, null, owner, copies, jobName);
     }
 
+    /**
+     * Opens the modern print preview window and prints deterministically.
+     * <p>
+     * ROOT CAUSE NOTE (A4 bills printing at 100x140 mm): the native Windows
+     * print dialog overwrites {@code JobSettings} with the printer driver's
+     * default paper form when OK is pressed. If that form is a small custom
+     * sheet (common on billing PCs), the old code re-fetched the layout and
+     * shrink-fitted the whole A4 bill into it. This pipeline never consults
+     * the driver for page geometry: the PageLayout is built from the paper
+     * chosen in our own dialog and set into JobSettings immediately before
+     * {@code printPage}, so the driver cannot override it.
+     */
     public static boolean printTemplate(Node node, Template template, Window owner, int copies, String jobName) {
+        // 1) Modern print window with live preview + explicit options
+        try {
+            PrintPreviewDialog.PreviewFactory factory = buildPreviewFactory(node);
+            PrintPreviewDialog dlg = new PrintPreviewDialog(
+                    owner, template, factory, copies, jobName,
+                    "Print" + (jobName != null && !jobName.isBlank() ? " — " + jobName : ""));
+            Optional<PrintOptions> chosen = dlg.showAndWait();
+            if (chosen.isEmpty()) return false;
+            return printWithOptions(node, template, chosen.get());
+        } catch (Throwable dialogFailure) {
+            // Headless/test environments or unexpected UI failure:
+            // fall back to the native dialog, but re-assert the layout AFTER
+            // it closes so the driver's default form can never win.
+            return printWithNativeDialog(node, template, owner, copies, jobName);
+        }
+    }
+
+    private static PrintPreviewDialog.PreviewFactory buildPreviewFactory(Node node) {
+        if (node instanceof BillPreviewPane preview) {
+            return effectiveTemplate -> {
+                BillPreviewPane clean = new BillPreviewPane();
+                clean.render(
+                        effectiveTemplate != null ? effectiveTemplate : preview.getCurrentTemplate(),
+                        preview.getCurrentBill(),
+                        preview.getCurrentSettings(),
+                        preview.getCurrentCopyIndex(),
+                        preview.getCurrentPageCount());
+                return clean;
+            };
+        }
+        // Non-bill nodes (calibration sheet etc.): static preview
+        return effectiveTemplate -> node;
+    }
+
+    /** Deterministic print path driven entirely by user-chosen PrintOptions. */
+    private static boolean printWithOptions(Node node, Template template, PrintOptions opts) {
+        Printer printer = opts.getPrinter();
+        PrinterJob job = printer != null ? PrinterJob.createPrinterJob(printer) : PrinterJob.createPrinterJob();
+        if (job == null) return false;
+
+        JobSettings settings = job.getJobSettings();
+        settings.setJobName(opts.getJobName());
+        settings.setCopies(opts.getCopies());
+
+        PageLayout layout = safeLayout(printer, opts.getPaper(), opts.getOrientation());
+        // Asserted AFTER all dialog interaction — nothing downstream can change it
+        if (layout != null) {
+            settings.setPageLayout(layout);
+        } else {
+            layout = settings.getPageLayout();
+        }
+
+        return doPrint(job, layout, node, template);
+    }
+
+    /**
+     * Legacy fallback using the native print dialog. The layout the user gets
+     * is rebuilt from the template on the final printer and RE-ASSERTED into
+     * JobSettings after the dialog returns (the native dialog resets it to the
+     * driver's default form — the historical source of wrong print sizes).
+     */
+    private static boolean printWithNativeDialog(Node node, Template template, Window owner, int copies, String jobName) {
         PrinterJob job = PrinterJob.createPrinterJob();
         if (job == null) return false;
 
         job.getJobSettings().setJobName(jobName != null ? jobName : "InvoiceStudio Print");
         job.getJobSettings().setCopies(Math.max(1, copies));
 
-        Printer printer = job.getPrinter();
-        PageLayout pageLayout = null;
+        boolean proceed = job.showPrintDialog(owner);
+        if (!proceed) return false;
 
-        if (printer != null) {
-            PageOrientation orientation = PageOrientation.PORTRAIT;
-            if (template != null && template.getPage() != null
-                    && "landscape".equalsIgnoreCase(template.getPage().getOrientation())) {
+        // The dialog has closed: rebuild OUR layout and force it back in
+        Printer finalPrinter = job.getPrinter();
+        PageOrientation orientation = PageOrientation.PORTRAIT;
+        Paper targetPaper = Paper.A4;
+        if (template != null && template.getPage() != null) {
+            if ("landscape".equalsIgnoreCase(template.getPage().getOrientation())) {
                 orientation = PageOrientation.LANDSCAPE;
             }
-
-            Paper targetPaper = Paper.A4;
-            if (template != null && template.getPage() != null) {
-                targetPaper = resolvePaper(printer, template.getPage().getSizeName(),
-                        template.getPage().getWidth(), template.getPage().getHeight());
-            }
-
-            try {
-                pageLayout = printer.createPageLayout(
-                        targetPaper,
-                        orientation,
-                        Printer.MarginType.HARDWARE_MINIMUM
-                );
-                job.getJobSettings().setPageLayout(pageLayout);
-            } catch (Exception ignored) {
-                pageLayout = job.getJobSettings().getPageLayout();
-            }
+            targetPaper = resolvePaper(finalPrinter, template.getPage().getSizeName(),
+                    template.getPage().getWidth(), template.getPage().getHeight());
+        }
+        PageLayout asserted = safeLayout(finalPrinter, targetPaper, orientation);
+        if (asserted != null) {
+            job.getJobSettings().setPageLayout(asserted);
         } else {
-            pageLayout = job.getJobSettings().getPageLayout();
+            asserted = job.getJobSettings().getPageLayout();
         }
 
-        boolean proceed = job.showPrintDialog(owner);
-        if (proceed) {
-            // Re-fetch layout in case user changed printer or paper in print dialog
-            PageLayout actualLayout = job.getJobSettings().getPageLayout();
+        return doPrint(job, asserted, node, template);
+    }
 
-            Node printTarget;
-            double sourceW;
-            double sourceH;
+    /** Shared geometry + rendering: maps the (96 DPI) preview node onto the (72 pt/inch) page. */
+    private static boolean doPrint(PrinterJob job, PageLayout layout, Node node, Template template) {
+        Node printTarget;
+        double sourceW;
+        double sourceH;
 
-            if (node instanceof com.invoicestudio.ui.BillPreviewPane preview) {
-                printTarget = preview.createCleanPrintNode();
-                sourceW = ((Pane) printTarget).getPrefWidth();
-                sourceH = ((Pane) printTarget).getPrefHeight();
-            } else {
-                printTarget = node;
-                javafx.geometry.Bounds b = node.getBoundsInLocal();
-                sourceW = b.getWidth() > 0 ? b.getWidth() : actualLayout.getPrintableWidth();
-                sourceH = b.getHeight() > 0 ? b.getHeight() : actualLayout.getPrintableHeight();
-            }
+        if (node instanceof BillPreviewPane preview) {
+            printTarget = preview.createCleanPrintNode();
+            sourceW = ((Pane) printTarget).getPrefWidth();
+            sourceH = ((Pane) printTarget).getPrefHeight();
+        } else {
+            printTarget = node;
+            javafx.geometry.Bounds b = node.getBoundsInLocal();
+            sourceW = b.getWidth() > 0 ? b.getWidth() : layout.getPrintableWidth();
+            sourceH = b.getHeight() > 0 ? b.getHeight() : layout.getPrintableHeight();
+        }
 
-            double printableW = actualLayout.getPrintableWidth();
-            double printableH = actualLayout.getPrintableHeight();
+        double printableW = layout.getPrintableWidth();
+        double printableH = layout.getPrintableHeight();
+        double scale = computePrintScale(sourceW, sourceH, printableW, printableH);
 
-            // Screen pixels are 96 DPI (3.78 px/mm); JavaFX printer coordinates are 72 pt/inch.
-            // Ratio 72 / 96 = 0.75 scales screen pixels to 100% physical size.
-            // In addition, ensure it fits inside the printer's printable boundaries without clipping.
-            double baseScale = 0.75;
-            double maxFitScaleX = printableW / sourceW;
-            double maxFitScaleY = printableH / sourceH;
-            double scale = Math.min(baseScale, Math.min(maxFitScaleX, maxFitScaleY));
+        javafx.scene.Group printGroup = new javafx.scene.Group(printTarget);
+        printGroup.getTransforms().setAll(new javafx.scene.transform.Scale(scale, scale, 0, 0));
 
-            javafx.scene.Group printGroup = new javafx.scene.Group(printTarget);
-            printGroup.getTransforms().setAll(new javafx.scene.transform.Scale(scale, scale, 0, 0));
-
-            boolean success = job.printPage(actualLayout, printGroup);
-            if (success) {
-                job.endJob();
-                return true;
-            }
+        boolean success = job.printPage(layout, printGroup);
+        if (success) {
+            job.endJob();
+            return true;
         }
         return false;
     }
 
-    private static Paper resolvePaper(Printer printer, com.invoicestudio.model.PageSizeName sizeName, double widthMm, double heightMm) {
+    /**
+     * Exact px->pt mapping (0.75), shrinking only when the content genuinely
+     * does not belong on the chosen paper.
+     * <p>
+     * A 96-DPI A4 preview node (794 px) maps to 595.5 pt = a true 210 mm A4.
+     * With hardware-minimum margins the printable width is ~571 pt, i.e. the
+     * outermost ~4% of the sheet falls into the printer's unprintable strip.
+     * Shrinking for that would make every bill print 3-4% small (and the
+     * calibration ruler inaccurate), so a ~6% slack is tolerated at exact
+     * size — the driver clips only what no printer could print anyway.
+     * Real mismatches (A4 design on A5 paper, long thermal rolls) overflow
+     * far beyond the slack and shrink to fit so nothing is lost.
+     */
+    public static double computePrintScale(double sourceW, double sourceH, double printableW, double printableH) {
+        if (sourceW <= 0 || sourceH <= 0) return BASE_SCALE;
+        double fitX = printableW / sourceW;
+        double fitY = printableH / sourceH;
+        double scale = BASE_SCALE;
+        double slackLimit = BASE_SCALE / 1.06; // tolerate ~6% hardware-margin overflow
+        if (fitX < slackLimit || fitY < slackLimit) {
+            scale = Math.min(BASE_SCALE, Math.min(fitX, fitY));
+        }
+        return scale;
+    }
+
+    /** Builds a PageLayout, falling back to the printer's default on any driver error. */
+    private static PageLayout safeLayout(Printer printer, Paper paper, PageOrientation orientation) {
+        if (printer != null) {
+            try {
+                return printer.createPageLayout(paper, orientation, Printer.MarginType.HARDWARE_MINIMUM);
+            } catch (Exception ignored) {
+                try {
+                    return printer.createPageLayout(paper, orientation, Printer.MarginType.DEFAULT);
+                } catch (Exception ignoredAgain) { /* fall through */ }
+            }
+        }
+        return null; // caller may keep the job default
+    }
+
+    public static Paper resolvePaper(Printer printer, com.invoicestudio.model.PageSizeName sizeName, double widthMm, double heightMm) {
         if (sizeName == null) sizeName = com.invoicestudio.model.PageSizeName.A4;
 
         return switch (sizeName) {
@@ -130,20 +236,23 @@ public class PrintingService {
     }
 
     public static Pane createCalibrationSheetNode(Settings settings) {
-        double w = 210 * 72.0 / 25.4; // A4 pt
-        double h = 297 * 72.0 / 25.4;
+        // Built at 96 DPI screen pixels like BillPreviewPane, so the print
+        // pipeline's 0.75 px->pt mapping produces a TRUE-SIZE ruler sheet
+        // (10 mm grid = exactly 10 mm on paper).
+        double w = 210 * 3.7795275591; // A4 px @96dpi
+        double h = 297 * 3.7795275591;
         Pane root = new Pane();
         root.setPrefSize(w, h);
         root.setStyle("-fx-background-color: white;");
 
         Pane shifted = new Pane();
-        double offX = (settings != null ? settings.getPrintOffsetX() : 0) * 72.0 / 25.4;
-        double offY = (settings != null ? settings.getPrintOffsetY() : 0) * 72.0 / 25.4;
+        double offX = (settings != null ? settings.getPrintOffsetX() : 0) * 3.7795275591;
+        double offY = (settings != null ? settings.getPrintOffsetY() : 0) * 3.7795275591;
         shifted.setLayoutX(offX);
         shifted.setLayoutY(offY);
         shifted.setPrefSize(w, h);
 
-        double mm = 72.0 / 25.4;
+        double mm = 3.7795275591;
 
         // 10mm Grid lines
         for (int x = 10; x < 210; x += 10) {

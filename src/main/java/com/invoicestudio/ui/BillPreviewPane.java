@@ -73,6 +73,14 @@ public class BillPreviewPane extends StackPane {
         return currentSettings;
     }
 
+    public int getCurrentCopyIndex() {
+        return currentCopyIndex;
+    }
+
+    public int getCurrentPageCount() {
+        return currentPageCount;
+    }
+
     public Pane createCleanPrintNode() {
         BillPreviewPane clone = new BillPreviewPane();
         clone.render(currentTemplate, currentBill, currentSettings, currentCopyIndex, currentPageCount);
