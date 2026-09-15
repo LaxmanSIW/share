@@ -12,8 +12,10 @@ import javafx.print.Paper;
 import javafx.print.Printer;
 import javafx.print.PrinterJob;
 import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.layout.Pane;
-import javafx.scene.transform.Rotate;
+import javafx.scene.transform.Affine;
+import javafx.scene.transform.Scale;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,10 +30,19 @@ import java.util.Map;
  * simply leaves the remaining columns blank. The feed-direction gap (gapY)
  * is advanced by the printer's gap sensor and never printed.
  * <p>
+ * <b>Orientation contract (WYSIWYG):</b> the page node is authored with X
+ * across the strip (print-head direction) and Y along the feed — exactly the
+ * picture the Strip Preview shows. The job is ALWAYS sent with a PORTRAIT
+ * PageLayout, so the JavaFX print engine can never rotate the artwork (a
+ * landscape layout was the historical source of "prints in a different
+ * orientation than the preview"). A driver form registered transposed
+ * (swapped width/height) is compensated by rotating OUR page node 90° CW in
+ * a single explicit Affine — deterministic, previewable, never doubled.
+ * <p>
  * Paper handling: JavaFX cannot invent custom Paper instances, so the
  * service matches the printer's supported forms against the strip size
  * (the label size the shop configured in the TSC driver). On no match it
- * falls back to the printer default and scales like {@code PrintingService}.
+ * falls back to A4 portrait and scales like {@code PrintingService}.
  */
 public final class LabelPrintService {
 
@@ -39,6 +50,145 @@ public final class LabelPrintService {
 
     /** Result of a print run — used for toasts and history logging. */
     public record PrintResult(boolean success, int pages, int labels, String message) {}
+
+    /**
+     * Pure result of matching the strip page against one printer form.
+     * {@code fitWidthMm/fitHeightMm} are the form's dimensions in the frame
+     * the strip page must fill; {@code transposed} says the form's NATIVE
+     * registration is swapped relative to that frame.
+     */
+    public record FormChoice(int paperIndex, boolean transposed,
+                             double fitWidthMm, double fitHeightMm) {
+        /** Total mm the page misses the form by (both dimensions). */
+        public double drift(double pageW, double pageH) {
+            return Math.abs(fitWidthMm - pageW) + Math.abs(fitHeightMm - pageH);
+        }
+        /** Blank mm a containing form leaves (both dimensions). */
+        public double waste(double pageW, double pageH) {
+            return (fitWidthMm - pageW) + (fitHeightMm - pageH);
+        }
+        public boolean contains(double pageW, double pageH) {
+            return fitWidthMm >= pageW - 0.5 && fitHeightMm >= pageH - 0.5;
+        }
+    }
+
+    /**
+     * Picks the best driver form for the strip page — PURE, unit tested.
+     * <p>
+     * Every form is scored in its NATIVE portrait registration first and
+     * transposed second (thermal drivers register the same physical stock
+     * both ways); the better-scoring frame wins per form, native on ties.
+     * Selection order:
+     * <ol>
+     *   <li>Near-exact match within ~12 mm total drift.</li>
+     *   <li>Otherwise the smallest form that still CONTAINS the strip page
+     *       (prints at true size with the least blank feed).</li>
+     *   <li>Otherwise simply the closest form that exists — never a blind A4
+     *       fallback: sending an A4 page to a gap-sensor label printer makes
+     *       it feed a full A4 worth of blank labels per printed page.</li>
+     * </ol>
+     *
+     * @param nativeForms array of {@code {paperWidthMm, paperHeightMm}} in
+     *                    the form's NATIVE registration
+     * @param pageW       strip page width in mm (across the head)
+     * @param pageH       strip page height in mm (feed direction)
+     * @return the chosen form, or null when no usable form exists
+     */
+    public static FormChoice chooseForm(double[][] nativeForms, double pageW, double pageH) {
+        List<FormChoice> cands = new ArrayList<>();
+        if (nativeForms != null) {
+            for (int i = 0; i < nativeForms.length; i++) {
+                if (nativeForms[i] == null || nativeForms[i].length < 2) continue;
+                double pw = nativeForms[i][0];
+                double ph = nativeForms[i][1];
+                if (pw <= 0 || ph <= 0) continue;
+                double scoreNative = Math.abs(pw - pageW) + Math.abs(ph - pageH);
+                double scoreTransposed = Math.abs(ph - pageW) + Math.abs(pw - pageH);
+                boolean transposed = scoreTransposed < scoreNative; // native wins ties
+                cands.add(new FormChoice(i, transposed,
+                        transposed ? ph : pw, transposed ? pw : ph));
+            }
+        }
+        if (cands.isEmpty()) return null;
+
+        // 1) near-exact match on both dimensions
+        FormChoice best = cands.stream()
+                .min(Comparator.comparingDouble(c -> c.drift(pageW, pageH)))
+                .orElse(null);
+        if (best != null && best.drift(pageW, pageH) <= 12.0) {
+            return best;
+        }
+        // 2) smallest form that still contains the strip page
+        FormChoice fit = cands.stream()
+                .filter(c -> c.contains(pageW, pageH))
+                .min(Comparator.comparingDouble(c -> c.waste(pageW, pageH)))
+                .orElse(null);
+        if (fit != null) {
+            return fit;
+        }
+        // 3) closest existing form — page is scaled to it, feed stays short
+        return best;
+    }
+
+    /** Selection outcome handed back from the printer form matcher. */
+    private record SelectedForm(PageLayout layout, boolean transposed,
+                                double widthMm, double heightMm, String name) {}
+
+    /**
+     * Matches the printer's supported forms against the strip page and
+     * returns the PORTRAIT PageLayout to print with. The artwork orientation
+     * is never left to the print engine: portrait-only guarantees JavaFX
+     * applies zero rotation; a transposed form is reported back so
+     * {@link #printLabels} can rotate the page node itself.
+     */
+    private static SelectedForm selectForm(Printer printer, double pageWmm, double pageHmm) {
+        List<Paper> papers = new ArrayList<>();
+        List<double[]> dims = new ArrayList<>();
+        try {
+            for (Paper p : printer.getPrinterAttributes().getSupportedPapers()) {
+                double pw = p.getWidth() * 25.4 / 72.0;
+                double ph = p.getHeight() * 25.4 / 72.0;
+                if (pw <= 0 || ph <= 0) continue;
+                papers.add(p);
+                dims.add(new double[]{pw, ph});
+            }
+        } catch (Exception ignored) {}
+
+        FormChoice choice = chooseForm(dims.toArray(new double[0][]), pageWmm, pageHmm);
+        if (choice == null) {
+            // No usable forms enumerated — A4 portrait fallback, never landscape.
+            PageLayout l = portraitLayout(printer, Paper.A4);
+            if (l == null) return null;
+            return new SelectedForm(l, false,
+                    l.getPaper().getWidth() * 25.4 / 72.0,
+                    l.getPaper().getHeight() * 25.4 / 72.0,
+                    "A4");
+        }
+        Paper paper = papers.get(choice.paperIndex());
+        PageLayout layout = portraitLayout(printer, paper);
+        if (layout == null) return null;
+        return new SelectedForm(layout, choice.transposed(),
+                choice.fitWidthMm(), choice.fitHeightMm(), paper.getName());
+    }
+
+    /**
+     * ALWAYS portrait (see class doc): the strip page node is authored with
+     * X across the head and Y along the feed — exactly what a label-driver
+     * form means by portrait. A landscape PageLayout would make JavaFX
+     * rotate the whole artwork 90°.
+     */
+    private static PageLayout portraitLayout(Printer printer, Paper paper) {
+        try {
+            return printer.createPageLayout(paper, PageOrientation.PORTRAIT,
+                    Printer.MarginType.HARDWARE_MINIMUM);
+        } catch (Exception ignored) {
+            try {
+                return printer.createPageLayout(paper, PageOrientation.PORTRAIT,
+                        Printer.MarginType.DEFAULT);
+            } catch (Exception ignoredAgain) { /* fall through */ }
+        }
+        return null;
+    }
 
     /**
      * Prints the queue. Must run on the JavaFX Application Thread.
@@ -74,40 +224,50 @@ public final class LabelPrintService {
         }
 
         double[] pageSize = LabelGeometryService.pageSizeMm(cfg);
-        PageLayout layout = matchLayout(target, pageSize[0], pageSize[1]);
+        SelectedForm form = selectForm(target, pageSize[0], pageSize[1]);
+        if (form == null) {
+            return new PrintResult(false, 0, 0,
+                    "Printer " + target.getName() + " did not report a usable page form.");
+        }
+        PageLayout layout = form.layout();
         job.getJobSettings().setJobName("Labels — " + template.getName());
         job.getJobSettings().setPageLayout(layout);
-        String formName = layout != null && layout.getPaper() != null
-                ? layout.getPaper().getName() : "default form";
 
         double pageWpx = pageSize[0] * LabelRenderUtil.MM_PX;
         double pageHpx = pageSize[1] * LabelRenderUtil.MM_PX;
+        // A transposed driver form gets the strip row rotated by US (explicit
+        // Affine below) — the source that must fit the printable area is the
+        // rotated sheet.
+        boolean transposeForm = form.transposed();
+        double srcWpx = transposeForm ? pageHpx : pageWpx;
+        double srcHpx = transposeForm ? pageWpx : pageHpx;
 
-        // Printable width inside hardware margins → scale (same 0.75 mapping as bills)
-        double printableW = layout.getPrintableWidth();
-        double scale = PrintingService.BASE_SCALE;
-        double fitX = printableW / pageWpx;
-        double slackLimit = PrintingService.BASE_SCALE / 1.06;
-        if (fitX < slackLimit) {
-            scale = Math.min(PrintingService.BASE_SCALE, fitX);
-        }
+        // Exact px→pt mapping (0.75) shrinking only when the content genuinely
+        // does not belong on the chosen form — fits BOTH dimensions.
+        double scale = PrintingService.computePrintScale(srcWpx, srcHpx,
+                layout.getPrintableWidth(), layout.getPrintableHeight());
 
         Map<Integer, List<LabelGeometryService.LabelSlot>> byPage =
                 LabelGeometryService.slotsByPage(LabelGeometryService.expandSlots(lines, cfg));
 
-        boolean rotate = !"0".equals(cfg.getOrientation());
-        double angle = Double.parseDouble(cfg.getOrientation());
         double cellWmm = LabelGeometryService.physicalCellWidth(cfg);
         double cellHmm = LabelGeometryService.physicalCellHeight(cfg);
+        double angle = 0;
+        try { angle = Double.parseDouble(cfg.getOrientation()); } catch (Exception ignored) {}
 
         int printed = 0;
         try {
             for (Map.Entry<Integer, List<LabelGeometryService.LabelSlot>> e : byPage.entrySet()) {
                 Pane pageNode = buildStripRowPage(template, settings, e.getValue(),
-                        cfg, pageWpx, pageHpx, cellWmm, cellHmm, rotate, angle);
+                        cfg, pageWpx, pageHpx, cellWmm, cellHmm, angle);
 
-                Group printGroup = new Group(pageNode);
-                printGroup.getTransforms().setAll(new javafx.scene.transform.Scale(scale, scale, 0, 0));
+                Node sheet = pageNode;
+                if (transposeForm) {
+                    sheet = rotatedSheet(pageNode, pageHpx);
+                }
+
+                Group printGroup = new Group(sheet);
+                printGroup.getTransforms().setAll(new Scale(scale, scale, 0, 0));
 
                 if (job.printPage(layout, printGroup)) {
                     printed++;
@@ -125,16 +285,34 @@ public final class LabelPrintService {
         if (!silentHistory) {
             logHistory(template, target, lines, variableOrder, byPage.size(), labels);
         }
+        String formDesc = String.format(java.util.Locale.US, " [%s %.1f×%.1f mm%s]",
+                form.name(), form.widthMm(), form.heightMm(),
+                transposeForm ? " · artwork auto-rotated to fit the form" : "");
         return new PrintResult(true, byPage.size(), labels, "Sent " + labels + " labels (" + byPage.size()
-                + " strip rows) to " + target.getName() + " [" + formName + "].");
+                + " strip rows) to " + target.getName() + formDesc + ".");
+    }
+
+    /**
+     * Rotates the strip-row page 90° CLOCKWISE into a transposed driver
+     * form's portrait frame with ONE explicit Affine — (x, y) → (H − y, x) —
+     * so the top edge of the strip becomes the right edge and the leftmost
+     * label prints at the start of the feed. A single transform (instead of
+     * a Rotate + Translate pair) removes any concatenation-order ambiguity.
+     */
+    private static Node rotatedSheet(Pane page, double pageHpx) {
+        Affine rot90cw = new Affine();
+        rot90cw.setMxx(0); rot90cw.setMxy(-1); rot90cw.setTx(pageHpx);
+        rot90cw.setMyx(1); rot90cw.setMyy(0); rot90cw.setTy(0);
+        Group g = new Group(page);
+        g.getTransforms().add(rot90cw);
+        return g;
     }
 
     /** Builds one strip-row page with every slot's label rendered in place. */
     private static Pane buildStripRowPage(Template template, Settings settings,
                                           List<LabelGeometryService.LabelSlot> slots,
                                           LabelConfig cfg, double pageWpx, double pageHpx,
-                                          double cellWmm, double cellHmm,
-                                          boolean rotate, double angle) {
+                                          double cellWmm, double cellHmm, double angle) {
         Pane page = new Pane();
         page.setPrefSize(pageWpx, pageHpx);
         page.setMinSize(pageWpx, pageHpx);
@@ -142,107 +320,19 @@ public final class LabelPrintService {
         page.setStyle("-fx-background-color: white;");
 
         for (LabelGeometryService.LabelSlot slot : slots) {
-            // The design canvas is authored at cfg label dims (design orientation);
-            // with rotation we spin that node into the transposed physical cell.
+            // Identical geometry to the strip preview: the shared
+            // physicalCellHolder centres the design node inside the physical
+            // die-cut cell and spins it for legacy 90/270 orientations.
             double designWmm = cfg.getLabelWidth();
             double designHmm = cfg.getLabelHeight();
-            Pane cell = LabelRenderUtil.renderLabelNode(template, slot.values, designWmm, designHmm, settings);
-
-            if (rotate) {
-                double w = designWmm * LabelRenderUtil.MM_PX;
-                double h = designHmm * LabelRenderUtil.MM_PX;
-                Rotate rot = new Rotate(angle, w / 2.0, h / 2.0);
-                cell.getTransforms().add(rot);
-            }
-
-            // Center the (possibly rotated) artwork inside its physical cell.
-            double cellWpx = cellWmm * LabelRenderUtil.MM_PX;
-            double cellHpx = cellHmm * LabelRenderUtil.MM_PX;
-            double offX = slot.xMm * LabelRenderUtil.MM_PX + (cellWpx - designWmm * LabelRenderUtil.MM_PX) / 2.0;
-            double offY = (cellHpx - designHmm * LabelRenderUtil.MM_PX) / 2.0;
-            cell.setLayoutX(offX);
-            cell.setLayoutY(offY);
+            Pane art = LabelRenderUtil.renderLabelNode(template, slot.values, designWmm, designHmm, settings);
+            Pane cell = LabelRenderUtil.physicalCellHolder(art, designWmm, designHmm,
+                    cellWmm, cellHmm, angle, false, 0);
+            cell.setLayoutX(slot.xMm * LabelRenderUtil.MM_PX);
+            cell.setLayoutY(0); // one row per page; the sensor advances the feed gap
             page.getChildren().add(cell);
         }
         return page;
-    }
-
-    /** One supported paper form considered for the strip page. */
-    private record FormCandidate(Paper paper, PageOrientation orientation,
-                                  double widthMm, double heightMm, double score) {
-        double waste(double pageW, double pageH) {
-            return (widthMm - pageW) + (heightMm - pageH);
-        }
-        boolean fits(double pageW, double pageH) {
-            return widthMm >= pageW - 0.5 && heightMm >= pageH - 0.5;
-        }
-    }
-
-    /**
-     * Matches the printer's supported paper forms to the strip size (one
-     * strip row). Thermal drivers register their label form under many
-     * conventions — some portrait (width = across the head), some landscape
-     * — so BOTH orientations of every form are scored.
-     * <p>Selection order:</p>
-     * <ol>
-     *   <li>Best two-dimensional match within ~6 mm drift per dimension.</li>
-     *   <li>Otherwise the smallest form that still CONTAINS the strip page
-     *       (prints at true size with the least blank feed).</li>
-     *   <li>Otherwise simply the closest form that exists — never a blind A4
-     *       fallback: sending an A4 page to a gap-sensor label printer makes
-     *       it feed a full A4 worth of blank labels per printed page.</li>
-     * </ol>
-     * Artwork orientation is handled by the rotation transform, not here.
-     */
-    private static PageLayout matchLayout(Printer printer, double widthMm, double heightMm) {
-        List<FormCandidate> cands = new ArrayList<>();
-        try {
-            for (Paper p : printer.getPrinterAttributes().getSupportedPapers()) {
-                double pw = p.getWidth() * 25.4 / 72.0;
-                double ph = p.getHeight() * 25.4 / 72.0;
-                if (pw <= 0 || ph <= 0) continue;
-                double scorePortrait = Math.abs(pw - widthMm) + Math.abs(ph - heightMm);
-                double scoreLandscape = Math.abs(ph - widthMm) + Math.abs(pw - heightMm);
-                if (scorePortrait <= scoreLandscape) {
-                    cands.add(new FormCandidate(p, PageOrientation.PORTRAIT, pw, ph, scorePortrait));
-                } else {
-                    cands.add(new FormCandidate(p, PageOrientation.LANDSCAPE, ph, pw, scoreLandscape));
-                }
-            }
-        } catch (Exception ignored) {}
-        if (cands.isEmpty()) {
-            try {
-                return printer.createPageLayout(Paper.A4, PageOrientation.PORTRAIT, Printer.MarginType.HARDWARE_MINIMUM);
-            } catch (Exception ignored) {}
-            return null;
-        }
-
-        // 1) near-exact match on both dimensions
-        FormCandidate best = cands.stream().min(Comparator.comparingDouble(FormCandidate::score)).orElse(null);
-        if (best != null && best.score() <= 12.0) {
-            return toLayout(printer, best);
-        }
-        // 2) smallest form that still contains the strip page
-        FormCandidate fit = cands.stream()
-                .filter(c -> c.fits(widthMm, heightMm))
-                .min(Comparator.comparingDouble(c -> c.waste(widthMm, heightMm)))
-                .orElse(null);
-        if (fit != null) {
-            return toLayout(printer, fit);
-        }
-        // 3) closest existing form — page is scaled to it, feed stays short
-        return toLayout(printer, best);
-    }
-
-    private static PageLayout toLayout(Printer printer, FormCandidate c) {
-        try {
-            return printer.createPageLayout(c.paper(), c.orientation(), Printer.MarginType.HARDWARE_MINIMUM);
-        } catch (Exception ignored) {
-            try {
-                return printer.createPageLayout(c.paper(), PageOrientation.PORTRAIT, Printer.MarginType.HARDWARE_MINIMUM);
-            } catch (Exception ignoredAgain) {}
-        }
-        return null;
     }
 
     /** Appends the run to label_print_history — failures never block printing. */

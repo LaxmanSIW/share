@@ -88,7 +88,6 @@ public class LabelStripPreviewDialog extends Stage {
 
         double[] offsets = LabelGeometryService.columnOffsets(cfg);
         double cellWmm = LabelGeometryService.physicalCellWidth(cfg);
-        boolean rotate = !"0".equals(cfg.getOrientation());
         double angle;
         try { angle = Double.parseDouble(cfg.getOrientation()); } catch (Exception e) { angle = 0; }
 
@@ -110,30 +109,21 @@ public class LabelStripPreviewDialog extends Stage {
                 cut.setArcHeight(r);
                 strip.getChildren().add(cut);
 
-                // Label artwork with a per-slot sample value set. The design
-                // node is always authored at cfg design dims; rotation spins
-                // it into the physical die-cut cell.
+                // Label artwork with a per-slot sample value set. The shared
+                // physicalCellHolder centres the design node inside the
+                // physical die-cut cell (and spins it for legacy 90/270
+                // orientations) — the EXACT geometry the print path uses, so
+                // this preview and the printed output can never diverge.
                 Map<String, String> values = sampleValues != null && !sampleValues.isEmpty()
                         ? sampleValues.get(tileIndex % sampleValues.size())
                         : new LinkedHashMap<>();
-                Pane cell = LabelRenderUtil.renderLabelNode(template, values,
+                Pane art = LabelRenderUtil.renderLabelNode(template, values,
                         cfg.getLabelWidth(), cfg.getLabelHeight(), settings);
-                if (rotate) {
-                    double w = cfg.getLabelWidth() * LabelRenderUtil.MM_PX;
-                    double h = cfg.getLabelHeight() * LabelRenderUtil.MM_PX;
-                    cell.getTransforms().add(new javafx.scene.transform.Rotate(angle, w / 2.0, h / 2.0));
-                }
-                // Clip the artwork to the rounded die-cut
-                Rectangle clip = new Rectangle(
-                        cellWmm * LabelRenderUtil.MM_PX, cellHmm * LabelRenderUtil.MM_PX);
-                clip.setArcWidth(r);
-                clip.setArcHeight(r);
-                cell.setClip(clip);
-
-                double designWpx = cfg.getLabelWidth() * LabelRenderUtil.MM_PX;
-                double designHpx = cfg.getLabelHeight() * LabelRenderUtil.MM_PX;
-                cell.setLayoutX(xMm * LabelRenderUtil.MM_PX + (cellWmm * LabelRenderUtil.MM_PX - designWpx) / 2.0);
-                cell.setLayoutY(yMm * LabelRenderUtil.MM_PX + (cellHmm * LabelRenderUtil.MM_PX - designHpx) / 2.0);
+                Pane cell = LabelRenderUtil.physicalCellHolder(art,
+                        cfg.getLabelWidth(), cfg.getLabelHeight(), cellWmm, cellHmm,
+                        angle, true, r);
+                cell.setLayoutX(xMm * LabelRenderUtil.MM_PX);
+                cell.setLayoutY(yMm * LabelRenderUtil.MM_PX);
                 strip.getChildren().add(cell);
                 tileIndex++;
             }

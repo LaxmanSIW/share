@@ -459,6 +459,76 @@ class LabelPrintLogicTest {
     }
 
     // ------------------------------------------------------------------
+    // Printer form matching (orientation-safe WYSIWYG printing)
+    // ------------------------------------------------------------------
+
+    @Test
+    void testChooseFormNativeExactMatch() {
+        // Strip page 102 × 28.6 and a driver form registered natively 101.6 × 28.6
+        double[][] forms = {{210.0, 297.0}, {101.6, 28.6}, {76.0, 50.0}};
+        LabelPrintService.FormChoice c = LabelPrintService.chooseForm(forms, 102.0, 28.6);
+        assertNotNull(c);
+        assertEquals(1, c.paperIndex());
+        assertFalse(c.transposed(), "native match must not transpose");
+        assertEquals(101.6, c.fitWidthMm(), 0.001);
+        assertEquals(28.6, c.fitHeightMm(), 0.001);
+    }
+
+    @Test
+    void testChooseFormTransposedRegistration() {
+        // Driver form registered SWAPPED (28.6 wide × 101.6 feed): the best
+        // frame for the 102 × 28.6 strip page is the transposed one, and the
+        // choice must say so — print then rotates the page node itself and
+        // keeps the PageLayout portrait (JavaFX never rotates).
+        double[][] forms = {{210.0, 297.0}, {28.6, 101.6}};
+        LabelPrintService.FormChoice c = LabelPrintService.chooseForm(forms, 102.0, 28.6);
+        assertNotNull(c);
+        assertEquals(1, c.paperIndex());
+        assertTrue(c.transposed(), "swapped registration must be detected");
+        assertEquals(101.6, c.fitWidthMm(), 0.001);
+        assertEquals(28.6, c.fitHeightMm(), 0.001);
+    }
+
+    @Test
+    void testChooseFormSmallestContainingForm() {
+        // No near-exact form (best drift 22 > 12): must pick the smallest
+        // form that CONTAINS the page, not the closest.
+        double[][] forms = {{200.0, 100.0}, {110.0, 32.0}, {120.0, 50.0}};
+        LabelPrintService.FormChoice c = LabelPrintService.chooseForm(forms, 100.0, 20.0);
+        assertNotNull(c);
+        assertEquals(1, c.paperIndex(), "110×32 contains 100×20 with least waste");
+        assertTrue(c.contains(100.0, 20.0));
+    }
+
+    @Test
+    void testChooseFormClosestFallbackWhenNothingFits() {
+        // Every form too small: fall back to the closest that exists.
+        double[][] forms = {{60.0, 40.0}, {50.0, 25.0}};
+        LabelPrintService.FormChoice c = LabelPrintService.chooseForm(forms, 100.0, 20.0);
+        assertNotNull(c);
+        // form 0 drift |60-100|+|40-20| = 60; form 1 drift |50-100|+|25-20| = 55 → closest is form 1
+        assertEquals(1, c.paperIndex());
+        assertFalse(c.transposed());
+    }
+
+    @Test
+    void testChooseFormNativeWinsTiesAndSkipsInvalid() {
+        // Square-ish tie: both frames score identically → native preferred;
+        // zero/negative and malformed entries are skipped.
+        double[][] forms = {{50.0, 50.0}, {0.0, 0.0}, {40.0}};
+        LabelPrintService.FormChoice c = LabelPrintService.chooseForm(forms, 50.0, 50.0);
+        assertNotNull(c);
+        assertEquals(0, c.paperIndex());
+        assertFalse(c.transposed());
+    }
+
+    @Test
+    void testChooseFormNoUsableFormsReturnsNull() {
+        assertNull(LabelPrintService.chooseForm(new double[][]{{0.0, 10.0}}, 100.0, 20.0));
+        assertNull(LabelPrintService.chooseForm(null, 100.0, 20.0));
+    }
+
+    // ------------------------------------------------------------------
     // Fixtures
     // ------------------------------------------------------------------
 

@@ -12,10 +12,10 @@ import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
+import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
-import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.print.Printer;
 import javafx.scene.Scene;
@@ -31,25 +31,38 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Bulk Label Print popup (Barcode Mode).
  * <p>
  * One row per print line: one editable cell per barcode variable
  * (quick-picks from the variable's possible values, free typing allowed)
- * plus a copies cell. Pressing Enter commits and jumps to the next row —
- * adding a fresh row automatically at the end — so a whole queue like
- * "A/19/S ×20, A/20/M ×10, B/19/S ×11" can be typed without touching the
- * mouse. Arrow keys / Tab / Shift+Tab / Left/Right all navigate cells.
+ * plus a copies cell.
+ * <p>
+ * Editing model (deliberately decoupled from TableView's edit machinery):
+ * every cell writes its value DIRECTLY into the row model when it commits
+ * (popup pick, focus loss, Enter) — committing NEVER navigates and NEVER
+ * creates rows. Only an explicit ENTER moves down, and only an Enter on the
+ * last row that already carries values spawns a fresh row, so the table can
+ * never silently fill itself with empty lines (the old version auto-added a
+ * row on every commit — a single mouse click or focus loss at the bottom
+ * appended a blank print line).
  * <p>
  * Keyboard map:
  * <ul>
- *   <li>Enter — commit cell, move DOWN (adds a new row on the last one)</li>
+ *   <li>Enter — commit cell, move DOWN (adds a new row only when the last
+ *       row already has values)</li>
  *   <li>Tab / Shift+Tab — next / previous cell</li>
  *   <li>↑ ↓ ← → — move between rows / cells</li>
  *   <li>Insert or Alt+N — add row · Ctrl+Delete — remove selected row</li>
  *   <li>Ctrl+Enter — Print All · F4 — close</li>
  * </ul>
+ * <p>
+ * The preview card renders the label with REAL values — business/buyer
+ * variables are fetched, barcode variables show the first possible value —
+ * and it re-renders live while the first row is typed, in the exact
+ * physical print orientation, so "what you see is what prints".
  */
 public class LabelBulkPrintDialog extends Stage {
 
@@ -65,22 +78,39 @@ public class LabelBulkPrintDialog extends Stage {
             StringProperty p = values.get(key);
             return p != null && p.get() != null ? p.get() : "";
         }
+        public boolean hasAnyValue() {
+            for (StringProperty p : values.values()) {
+                if (p.get() != null && !p.get().isBlank()) return true;
+            }
+            return false;
+        }
         public int getCopies() { return Math.max(1, copies.get()); }
     }
 
     private final Template template;
     private final Settings settings;
     private final List<VariableDef> barcodeVars;
+    private final LabelConfig cfg;
     private final TableView<PrintRow> table = new TableView<>();
     private final ObservableList<PrintRow> rows = FXCollections.observableArrayList();
     private final Label totalLbl = new Label("0 labels");
     private final ComboBox<Printer> printerBox = new ComboBox<>();
+
+    // ── live preview state ──
+    private final StackPane previewHolder = new StackPane();
+    private PrintRow previewRow;                 // row whose values drive the preview
+    private final List<PropListener> previewListeners = new ArrayList<>();
+    private boolean previewScheduled = false;
+
+    /** Pairs a property with its listener so a detached first row releases them. */
+    private record PropListener(StringProperty prop, ChangeListener<String> listener) {}
 
     public LabelBulkPrintDialog(javafx.stage.Window owner, Template template, Settings settings,
                                 List<VariableDef> barcodeVars, LabelConfig cfg) {
         this.template = template;
         this.settings = settings;
         this.barcodeVars = barcodeVars != null ? barcodeVars : List.of();
+        this.cfg = cfg;
 
         initOwner(owner);
         DialogHelper.applyAppIcon(this); // logo in title bar from the very first frame
@@ -93,41 +123,30 @@ public class LabelBulkPrintDialog extends Stage {
         root.setPadding(new Insets(14));
         root.getStyleClass().add("bg-app");
 
-        // ── Top: info + preview of the label design ──
+        // ── Top: info + live preview of the label design ──
         HBox top = new HBox(14);
         top.setAlignment(Pos.CENTER_LEFT);
 
-        double designW = cfg != null ? cfg.getLabelWidth() : template.labelOrNew().getLabelWidth();
-        double designH = cfg != null ? cfg.getLabelHeight() : template.labelOrNew().getLabelHeight();
-        // Scale-to-fit against PIXEL size (design mm → px first!). The old
-        // formula divided screen px by raw mm, so any label ≤150 mm got
-        // scale 1.0 and the white label node spilled out of its holder over
-        // the header text.
-        double designWpx = designW * LabelRenderUtil.MM_PX;
-        double designHpx = designH * LabelRenderUtil.MM_PX;
-        double previewScale = Math.min(1.0, Math.min(146.0 / designWpx, 146.0 / designHpx));
-        Pane labelPreview = LabelRenderUtil.renderLabelNode(template, null, designW, designH, settings);
-        labelPreview.setScaleX(previewScale);
-        labelPreview.setScaleY(previewScale);
-        StackPane previewHolder = new StackPane(labelPreview);
         previewHolder.setAlignment(Pos.CENTER);
         previewHolder.setPrefSize(160, 160);
         previewHolder.setMinSize(160, 160);
         previewHolder.setMaxSize(160, 160);
         previewHolder.setStyle("-fx-background-color: #0F172A; -fx-background-radius: 6;");
         previewHolder.setPadding(new Insets(6));
-        // Hard clip — the preview can never paint outside its card again.
+        // Hard clip — the preview can never paint outside its card.
         javafx.scene.shape.Rectangle previewClip = new javafx.scene.shape.Rectangle(160, 160);
         previewClip.setArcWidth(10);
         previewClip.setArcHeight(10);
         previewHolder.setClip(previewClip);
-        Tooltip.install(previewHolder, new Tooltip("Your label design — what every printed label looks like"));
+        Tooltip.install(previewHolder, new Tooltip(
+                "Live preview — exactly what the printer outputs. Barcode variables show the "
+                        + "first possible value until you type values in row 1."));
 
         VBox info = new VBox(6);
         Label title = new Label("Print many labels with different values");
         title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: -color-fg;");
         Label sub = new Label("One row = one print line. Type values into the variable columns, set copies, then Print All.\n"
-                + "Enter moves to the next row; the last Enter adds a new row. Use ↑↓←→ to navigate.");
+                + "Enter commits and moves down (the last filled row adds a new one). Use ↑↓←→ to navigate.");
         sub.setWrapText(true);
         sub.getStyleClass().add("text-muted");
         info.getChildren().addAll(title, sub);
@@ -137,6 +156,7 @@ public class LabelBulkPrintDialog extends Stage {
         top.getChildren().addAll(info, topSpacer, previewHolder);
         VBox.setVgrow(info, Priority.ALWAYS);
         root.setTop(top);
+        refreshPreview(); // placeholder render (first choices) before rows exist
 
         // ── Center: the print-line table ──
         buildTable();
@@ -144,10 +164,12 @@ public class LabelBulkPrintDialog extends Stage {
         addRow();
         root.setCenter(table);
 
-        // ── Bottom: buttons ──
-        HBox bottom = new HBox(10);
-        bottom.setAlignment(Pos.CENTER_LEFT);
+        // ── Bottom: two rows so nothing is ever clipped at minimum width ──
+        VBox bottom = new VBox(8);
         bottom.setPadding(new Insets(10, 0, 0, 0));
+
+        HBox rowActions = new HBox(10);
+        rowActions.setAlignment(Pos.CENTER_LEFT);
 
         Button addBtn = new Button("+ Add Row");
         addBtn.getStyleClass().addAll("button-sm", "button-secondary");
@@ -164,10 +186,17 @@ public class LabelBulkPrintDialog extends Stage {
 
         totalLbl.getStyleClass().add("text-muted");
 
+        rowActions.getChildren().addAll(addBtn, delBtn, spacer, totalLbl);
+
+        HBox rowPrint = new HBox(10);
+        rowPrint.setAlignment(Pos.CENTER_LEFT);
+
         printerBox.getItems().addAll(Printer.getAllPrinters());
         Printer def = Printer.getDefaultPrinter();
         printerBox.setValue(def);
-        printerBox.setPrefWidth(210);
+        printerBox.setPrefWidth(240);
+        printerBox.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(printerBox, Priority.ALWAYS);
         printerBox.setTooltip(new Tooltip("Target printer (e.g. TSC TA210)"));
 
         Button testBtn = new Button("Test Print (1)");
@@ -183,7 +212,8 @@ public class LabelBulkPrintDialog extends Stage {
         closeBtn.getStyleClass().addAll("button-sm", "button-secondary");
         closeBtn.setOnAction(e -> close());
 
-        bottom.getChildren().addAll(addBtn, delBtn, spacer, totalLbl, new Separator(Orientation.VERTICAL), printerBox, testBtn, printBtn, closeBtn);
+        rowPrint.getChildren().addAll(printerBox, testBtn, printBtn, closeBtn);
+        bottom.getChildren().addAll(rowActions, rowPrint);
         root.setBottom(bottom);
 
         Scene scene = new Scene(root, 760, 540);
@@ -208,7 +238,6 @@ public class LabelBulkPrintDialog extends Stage {
         table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         VBox.setVgrow(table, Priority.ALWAYS);
 
-        int colIdx = 0;
         for (VariableDef var : barcodeVars) {
             final String key = var.getKey();
             final String header = (var.getLabel() != null && !var.getLabel().isBlank())
@@ -216,34 +245,24 @@ public class LabelBulkPrintDialog extends Stage {
             final List<String> choices = var.choicesList();
 
             TableColumn<PrintRow, String> col = new TableColumn<>(header + "  {{" + key + "}}");
-            final int cIdx = colIdx;
             col.setMinWidth(120);
             col.setCellValueFactory(param -> param.getValue().prop(key));
-
+            col.setUserData(key); // VarCell reads the variable key back from here
             col.setCellFactory(tc -> new VarCell(choices));
-
-            col.setOnEditCommit(ev -> {
-                PrintRow row = ev.getRowValue();
-                row.prop(key).set(ev.getNewValue() != null ? ev.getNewValue() : "");
-                updateTotals();
-                Platform.runLater(() -> moveDown(row, col));
-            });
-            col.setUserData(cIdx);
             table.getColumns().add(col);
-            colIdx++;
         }
 
         TableColumn<PrintRow, Number> copiesCol = new TableColumn<>("Copies");
         copiesCol.setMinWidth(90);
         copiesCol.setCellValueFactory(param -> param.getValue().copies);
         copiesCol.setCellFactory(tc -> new CopiesCell());
-        copiesCol.setOnEditCommit(ev -> {
-            ev.getRowValue().copies.set(Math.max(1, ev.getNewValue().intValue()));
-            updateTotals();
-        });
         table.getColumns().add(copiesCol);
 
-        rows.addListener((javafx.collections.ListChangeListener<PrintRow>) c -> updateTotals());
+        // Structural changes: refresh totals AND the preview's source row.
+        rows.addListener((javafx.collections.ListChangeListener<PrintRow>) c -> {
+            updateTotals();
+            attachPreviewRow();
+        });
     }
 
     /** Editable combo cell: quick-pick from possible values + free typing. */
@@ -264,20 +283,19 @@ public class LabelBulkPrintDialog extends Stage {
                 combo.setPromptText("e.g. " + String.join(" / ",
                         choices.subList(0, Math.min(3, choices.size()))));
             }
-            // The popup ALWAYS offers the FULL possible-values list. (The old
-            // type-to-filter listener also fired on programmatic setText of the
-            // pre-filled first choice and collapsed the list to that one value —
-            // so the dropdown literally only showed the first choice.)
+            // The popup ALWAYS offers the FULL possible-values list.
             combo.showingProperty().addListener((obs, was, now) -> {
                 if (now && !setting) {
                     combo.setItems(FXCollections.observableArrayList(choices));
                 }
             });
+            // Commit = write straight into the row model. Popup picks and
+            // focus loss commit WITHOUT navigating and WITHOUT adding rows.
             combo.setOnAction(e -> {
-                if (!setting && isEditing()) commitEdit(combo.getEditor().getText());
+                if (!setting) writeValue();
             });
             combo.focusedProperty().addListener((obs, o, n) -> {
-                if (!n && !setting && isEditing()) commitEdit(combo.getEditor().getText());
+                if (!n && !setting) writeValue();
             });
             // Type-to-filter narrows the quick-picks ONLY on real keystrokes —
             // never on programmatic updates from updateItem().
@@ -295,13 +313,30 @@ public class LabelBulkPrintDialog extends Stage {
                 combo.setItems(FXCollections.observableArrayList(filtered));
                 if (!combo.isShowing() && !filtered.isEmpty()) combo.show();
             });
+            // Explicit Enter: commit + move down. Consumed here (capture) so
+            // the editor never also fires the combo action — exactly ONE
+            // commit and ONE navigation per Enter press.
             combo.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
                 if (e.getCode() == KeyCode.ENTER) {
-                    commitEdit(combo.getEditor().getText());
+                    writeValue();
+                    moveDownFrom(VarCell.this);
                     e.consume();
                 }
             });
             setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+        }
+
+        private void writeValue() {
+            if (!(getTableRow() != null && getTableRow().getItem() instanceof PrintRow row)) return;
+            Object ud = getTableColumn() != null ? getTableColumn().getUserData() : null;
+            if (!(ud instanceof String key)) return;
+            String text = combo.getEditor().getText();
+            String clean = text != null ? text.trim() : "";
+            String current = row.get(key);
+            if (!Objects.equals(current, clean)) {
+                row.prop(key).set(clean);
+                updateTotals();
+            }
         }
 
         @Override
@@ -329,30 +364,37 @@ public class LabelBulkPrintDialog extends Stage {
     }
 
     /** Copies cell: numeric TextField committed on Enter / focus loss. */
-    private static class CopiesCell extends TableCell<PrintRow, Number> {
+    private class CopiesCell extends TableCell<PrintRow, Number> {
         private final TextField field = new TextField();
 
         CopiesCell() {
             field.setPrefWidth(70);
             field.getStyleClass().add("fs-11");
+            field.focusedProperty().addListener((obs, o, n) -> {
+                if (!n) writeCopies();
+            });
             field.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
                 if (e.getCode() == KeyCode.ENTER) {
-                    commitFromField();
+                    writeCopies();
+                    moveDownFrom(CopiesCell.this);
                     e.consume();
                 }
-            });
-            field.focusedProperty().addListener((obs, o, n) -> {
-                if (!n) commitFromField();
             });
             setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
         }
 
-        private void commitFromField() {
+        private void writeCopies() {
+            if (!(getTableRow() != null && getTableRow().getItem() instanceof PrintRow row)) return;
+            int v;
             try {
-                int v = Integer.parseInt(field.getText().trim());
-                commitEdit(Math.max(1, v));
+                v = Integer.parseInt(field.getText().trim());
             } catch (NumberFormatException ignored) {
-                commitEdit(1);
+                v = 1;
+            }
+            v = Math.max(1, v);
+            if (row.copies.get() != v) {
+                row.copies.set(v);
+                updateTotals();
             }
         }
 
@@ -405,11 +447,24 @@ public class LabelBulkPrintDialog extends Stage {
         }
     }
 
-    private void moveDown(PrintRow current, TableColumn<PrintRow, ?> col) {
+    /**
+     * Enter navigation from a cell: commit happened already; move to the row
+     * below. A new row is appended ONLY when we are on the last row AND it
+     * already carries at least one value — an empty tail row can never breed
+     * more empty rows.
+     */
+    private void moveDownFrom(TableCell<PrintRow, ?> cell) {
+        int idx = cell.getIndex();
+        if (idx < 0 || idx >= rows.size()) return;
+        moveDownFrom(rows.get(idx), cell.getTableColumn());
+    }
+
+    private void moveDownFrom(PrintRow current, TableColumn<PrintRow, ?> col) {
         int idx = rows.indexOf(current);
-        if (idx < 0) return;
+        if (idx < 0 || col == null) return;
         int next = idx + 1;
         if (next >= rows.size()) {
+            if (!current.hasAnyValue()) return; // empty last row stays put
             addRow();
         }
         final int target = Math.min(next, rows.size() - 1);
@@ -454,6 +509,82 @@ public class LabelBulkPrintDialog extends Stage {
         List<String> order = new ArrayList<>();
         for (VariableDef var : barcodeVars) order.add(var.getKey());
         return order;
+    }
+
+    // ─── Live preview (WYSIWYG: physical orientation + real values) ───────
+
+    /** Points the preview at the CURRENT first row and re-renders once. */
+    private void attachPreviewRow() {
+        PrintRow first = rows.isEmpty() ? null : rows.get(0);
+        if (first == previewRow) return; // same source row — property listeners already wired
+        for (PropListener pl : previewListeners) {
+            pl.prop().removeListener(pl.listener());
+        }
+        previewListeners.clear();
+        previewRow = first;
+        if (first != null) {
+            for (String key : variableOrder()) {
+                StringProperty p = first.prop(key);
+                ChangeListener<String> l = (obs, o, n) -> schedulePreviewRefresh();
+                p.addListener(l);
+                previewListeners.add(new PropListener(p, l));
+            }
+        }
+        refreshPreview();
+    }
+
+    /** Coalesces bursts of property changes into one re-render per pulse. */
+    private void schedulePreviewRefresh() {
+        if (previewScheduled) return;
+        previewScheduled = true;
+        Platform.runLater(() -> {
+            previewScheduled = false;
+            refreshPreview();
+        });
+    }
+
+    /** Values for the preview: row-1's typed values, else first possible value. */
+    private Map<String, String> previewValues() {
+        Map<String, String> vals = new LinkedHashMap<>();
+        for (VariableDef var : barcodeVars) {
+            String key = var.getKey();
+            String v = previewRow != null ? previewRow.get(key) : "";
+            if (v == null || v.isBlank()) {
+                List<String> choices = var.choicesList();
+                v = !choices.isEmpty() ? choices.get(0) : key;
+            }
+            vals.put(key, v.trim());
+        }
+        return vals;
+    }
+
+    /**
+     * Rebuilds the preview card: label artwork at design size, placed in the
+     * PHYSICAL cell (rotated when cfg still carries a 90/270 orientation) —
+     * the same geometry the strip preview and the print path use, so this
+     * card is pixel-faithful to what comes out of the printer.
+     */
+    private void refreshPreview() {
+        double designW = cfg != null ? cfg.getLabelWidth() : template.labelOrNew().getLabelWidth();
+        double designH = cfg != null ? cfg.getLabelHeight() : template.labelOrNew().getLabelHeight();
+        double cellW = cfg != null ? LabelGeometryService.physicalCellWidth(cfg) : designW;
+        double cellH = cfg != null ? LabelGeometryService.physicalCellHeight(cfg) : designH;
+        double angle = 0;
+        if (cfg != null) {
+            try { angle = Double.parseDouble(cfg.getOrientation()); } catch (Exception ignored) {}
+        }
+
+        Pane art = LabelRenderUtil.renderLabelNode(template, previewValues(), designW, designH, settings);
+        Pane holder = LabelRenderUtil.physicalCellHolder(art, designW, designH, cellW, cellH, angle, false, 0);
+
+        // Scale the physical cell to fit the 146px card.
+        double cellWpx = Math.max(1, cellW * LabelRenderUtil.MM_PX);
+        double cellHpx = Math.max(1, cellH * LabelRenderUtil.MM_PX);
+        double scale = Math.min(1.0, Math.min(146.0 / cellWpx, 146.0 / cellHpx));
+        holder.setScaleX(scale);
+        holder.setScaleY(scale);
+
+        previewHolder.getChildren().setAll(holder);
     }
 
     // ─── Printing ─────────────────────────────────────────────────────────
@@ -506,17 +637,21 @@ public class LabelBulkPrintDialog extends Stage {
             if (e.getCode() == KeyCode.DELETE && e.isControlDown()) { deleteSelectedRow(); e.consume(); return; }
             if (e.getCode() == KeyCode.INSERT || (e.getCode() == KeyCode.N && e.isAltDown())) { addRowAndFocus(); e.consume(); return; }
 
-            // Enter inside the table = commit + down (last row → add row)
-            if (e.getCode() == KeyCode.ENTER && e.getTarget() instanceof javafx.scene.Node tNode && isDescendant(table, tNode)) {
+            // Enter with focus on the CELL itself (keyboard navigation, no
+            // editor open) = move down. When an editor has focus this event
+            // targets the editor's TextField, never the cell — the cell's
+            // own filter handles commit+navigation there, so there is
+            // exactly ONE navigation path per Enter press.
+            if (e.getCode() == KeyCode.ENTER && e.getTarget() instanceof javafx.scene.Node tNode
+                    && (tNode instanceof TableCell || tNode instanceof TableRow)
+                    && isDescendant(table, tNode)) {
                 javafx.scene.control.TablePosition<?, ?> pos = table.getFocusModel().getFocusedCell();
-                if (pos != null && pos.getTableColumn() != null) {
+                if (pos != null && pos.getTableColumn() != null
+                        && pos.getRow() >= 0 && pos.getRow() < rows.size()) {
                     @SuppressWarnings("unchecked")
                     TableColumn<PrintRow, ?> col = (TableColumn<PrintRow, ?>) pos.getTableColumn();
-                    int rowIdx = pos.getRow();
-                    if (rowIdx >= 0 && rowIdx < rows.size()) {
-                        moveDown(rows.get(rowIdx), col);
-                        e.consume();
-                    }
+                    moveDownFrom(rows.get(pos.getRow()), col);
+                    e.consume();
                 }
             }
         });

@@ -11,6 +11,7 @@ packaging/app-image/
 *.db
 smoke-test/
 nav-smoke/
+bulk-verify/
 barcode-verify/
 
 # Logs

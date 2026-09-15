@@ -5,6 +5,8 @@ import com.invoicestudio.model.Template;
 import com.invoicestudio.model.TemplateElement;
 import javafx.scene.Node;
 import javafx.scene.layout.Pane;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.transform.Rotate;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -73,5 +75,55 @@ public final class LabelRenderUtil {
             cell.getChildren().add(node);
         }
         return cell;
+    }
+
+    /**
+     * Places one label artwork node into its PHYSICAL die-cut cell — the
+     * single geometry every viewer (strip preview, bulk popup preview and
+     * the real print path) must share so all three are pixel-identical.
+     * <p>
+     * The returned holder is sized {@code cellWmm × cellHmm} (physical cell
+     * on the liner); the artwork (authored at {@code designWmm × designHmm})
+     * is centered inside it and spun by {@code angleDeg}° about its own
+     * centre when the label uses a legacy 90/270 print orientation. The clip
+     * lives on the UNROTATED holder, so even rotated artwork is clipped to
+     * the physical cell shape exactly as the printer's die-cut would.
+     *
+     * @param artwork   node built by {@link #renderLabelNode} (design-space size)
+     * @param designWmm design width of the artwork in mm
+     * @param designHmm design height of the artwork in mm
+     * @param cellWmm   physical cell width on the strip (mm)
+     * @param cellHmm   physical cell height on the strip (mm)
+     * @param angleDeg  artwork rotation in degrees (0 / 90 / 180 / 270)
+     * @param clip      true to clip the holder to a rounded rectangle
+     * @param radiusPx  corner radius of the clip in px (used when clip=true)
+     */
+    public static Pane physicalCellHolder(Pane artwork, double designWmm, double designHmm,
+                                          double cellWmm, double cellHmm,
+                                          double angleDeg, boolean clip, double radiusPx) {
+        double cellWpx = cellWmm * MM_PX;
+        double cellHpx = cellHmm * MM_PX;
+        double artWpx = designWmm * MM_PX;
+        double artHpx = designHmm * MM_PX;
+
+        Pane holder = new Pane();
+        holder.setPrefSize(cellWpx, cellHpx);
+        holder.setMinSize(cellWpx, cellHpx);
+        holder.setMaxSize(cellWpx, cellHpx);
+
+        if (angleDeg != 0) {
+            artwork.getTransforms().add(new Rotate(angleDeg, artWpx / 2.0, artHpx / 2.0));
+        }
+        artwork.setLayoutX((cellWpx - artWpx) / 2.0);
+        artwork.setLayoutY((cellHpx - artHpx) / 2.0);
+        holder.getChildren().add(artwork);
+
+        if (clip) {
+            Rectangle r = new Rectangle(cellWpx, cellHpx);
+            r.setArcWidth(radiusPx);
+            r.setArcHeight(radiusPx);
+            holder.setClip(r);
+        }
+        return holder;
     }
 }
