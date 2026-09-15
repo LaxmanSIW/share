@@ -43,6 +43,13 @@ import java.util.Map;
  * service matches the printer's supported forms against the strip size
  * (the label size the shop configured in the TSC driver). On no match it
  * falls back to A4 portrait and scales like {@code PrintingService}.
+ * <p>
+ * <b>Native TSPL routing:</b> printers whose driver reports a TSC name
+ * (TA210 …) are printed by {@link TsplPrintService} instead — a raw
+ * TSPL/TSPL2 script that owns SIZE/GAP/PRINT itself, so quantity,
+ * position and orientation can never be re-interpreted by the driver.
+ * This JavaFX path stays the engine for every non-TSC printer and can be
+ * forced back with {@code -Dinvoicestudio.print.engine=driver}.
  */
 public final class LabelPrintService {
 
@@ -218,6 +225,15 @@ public final class LabelPrintService {
         if (target == null) {
             return new PrintResult(false, 0, 0, "No printer installed.");
         }
+
+        // TSC printers (TA210 …) speak TSPL/TSPL2 natively: a RAW script
+        // declares its own SIZE/GAP/PRINT, so the spooler can never feed
+        // extra labels, scale the row or rotate it (see TsplPrintService).
+        if (TsplPrintService.enabledFor(target)) {
+            return TsplPrintService.printLabels(template, settings, lines, variableOrder,
+                    target, silentHistory);
+        }
+
         PrinterJob job = PrinterJob.createPrinterJob(target);
         if (job == null) {
             return new PrintResult(false, 0, 0, "Could not open a print job for " + target.getName() + ".");
@@ -283,7 +299,7 @@ public final class LabelPrintService {
         }
 
         if (!silentHistory) {
-            logHistory(template, target, lines, variableOrder, byPage.size(), labels);
+            logHistory(template, target.getName(), lines, variableOrder, byPage.size(), labels);
         }
         String formDesc = String.format(java.util.Locale.US, " [%s %.1f×%.1f mm%s]",
                 form.name(), form.widthMm(), form.heightMm(),
@@ -309,7 +325,7 @@ public final class LabelPrintService {
     }
 
     /** Builds one strip-row page with every slot's label rendered in place. */
-    private static Pane buildStripRowPage(Template template, Settings settings,
+    static Pane buildStripRowPage(Template template, Settings settings,
                                           List<LabelGeometryService.LabelSlot> slots,
                                           LabelConfig cfg, double pageWpx, double pageHpx,
                                           double cellWmm, double cellHmm, double angle) {
@@ -336,7 +352,7 @@ public final class LabelPrintService {
     }
 
     /** Appends the run to label_print_history — failures never block printing. */
-    private static void logHistory(Template template, Printer printer,
+    static void logHistory(Template template, String printerName,
                                    List<LabelGeometryService.PrintLine> lines,
                                    List<String> variableOrder, int pages, int labels) {
         try {
@@ -344,7 +360,7 @@ public final class LabelPrintService {
             LabelPrintHistory h = new LabelPrintHistory();
             h.setTemplateId(template.getId());
             h.setTemplateName(template.getName());
-            h.setPrinterName(printer != null ? printer.getName() : "");
+            h.setPrinterName(printerName != null ? printerName : "");
             h.setLabelWidth(LabelGeometryService.physicalCellWidth(cfg));
             h.setLabelHeight(LabelGeometryService.physicalCellHeight(cfg));
             h.setColumns(cfg.getColumns());

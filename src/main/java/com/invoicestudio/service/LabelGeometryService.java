@@ -273,7 +273,12 @@ public final class LabelGeometryService {
                     requiredStripWidth(c), c.getStripWidth()));
         }
         if (c.getStripWidth() > 118.0) {
-            warn.add("Strip width above 118 mm exceeds most thermal label printers (TSC TA210 max print width ≈ 108 mm).");
+            warn.add("Strip width above 118 mm exceeds even 4-inch thermal printers; "
+                    + "note the TSC TA210 (2-inch) prints at most 54 mm across.");
+        } else if (c.getStripWidth() > TsplCommandBuilder.TA210_MAX_PRINT_MM) {
+            warn.add(String.format(java.util.Locale.US,
+                    "Strip width %.1f mm exceeds the TSC TA210 print head (54 mm) — "
+                            + "use 1-up stock or a 4-inch printer.", c.getStripWidth()));
         }
         boolean hasBarcode = template.getElements() != null && template.getElements().stream()
                 .anyMatch(e -> e.getType() == com.invoicestudio.model.ElementType.BARCODE

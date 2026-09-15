@@ -541,15 +541,52 @@ Use **Test Print (1)** first: it outputs one label with the first row's
 values so you can verify alignment against the die-cut before committing
 a 500-label run.
 
-### 8.5 TSC TA210 driver notes
+### 8.5 TSC TA210 printing — native TSPL (default for TSC printers)
 
-- Create the label stock in the driver (Size = label width × feed pitch
-  = `labelHeight + gapY`), gap-sensed media, then just print — the app
-  matches the printer's supported paper forms to the strip automatically.
-- For sideways labels (vertical dispensers) design upright and set
-  `orientation: "90"` — the artwork rotates at print time.
-- Keep `stripWidth` within the print head (TA210 ≈ 108 mm); the strip
-  preview flags overflow and the label-settings dialog warns above 118 mm.
+TSC printers understand their own command language, **TSPL/TSPL2**. When the
+selected printer's name contains TSC / TA2xx / TA3xx, InvoiceStudio skips
+the Windows GDI driver entirely and streams a raw TSPL script to the
+spooler (datatype `RAW` — the TSC driver passes it untouched to the port):
+
+```text
+SIZE 432 dot,200 dot      ← one strip row: 54 × 25 mm @ 8 dots/mm (203 dpi)
+GAP 24 dot,0 dot          ← feed gap 3 mm (GAP 0,0 for continuous stock)
+DIRECTION 1               ← print reads upright after tearing = strip view
+CLS
+BITMAP 0,0,54,200,0,<1-bit rows>
+PRINT 1,1                 ← exactly ONE label — quantity is ours, not the driver's
+```
+
+Why this matters on the shop floor:
+
+- **Exact quantities.** The old JavaFX/GDI path let the driver guess the
+  stock, so one selected label could feed several blank ones. TSPL owns
+  `SIZE`/`GAP`/`PRINT`, so the driver never feeds anything extra.
+- **Strip view = printout (WYSIWYG).** Pages are rasterized with the same
+  renderer as the preview at the printer's native dot grid (TA210 = 203
+  dpi = 8 dots/mm, TA310 = 300 dpi = 12 dots/mm) — no scaling, no
+  rotation, no margin surprises from the driver stock.
+- **Copies are free.** Identical consecutive rows compress into one
+  bitmap download and a single `PRINT n,1`.
+
+Knobs (rarely needed): `-Dinvoicestudio.print.engine=tspl|driver` forces
+or disables the native path; `-Dinvoicestudio.tspl.direction=0` flips the
+print 180° on hardware that ejects face-down;
+`-Dinvoicestudio.tspl.threshold=0..255` darkens/lightens the burn cut.
+
+Driver setup notes:
+
+- **The driver's stock no longer matters** for TSC printers — the script
+  declares its own size. Keep the driver stock roughly correct anyway so
+  Windows print dialogs show sane previews.
+- Keep `stripWidth` within the print head: TA210 (2-inch) prints at most
+  **54 mm** across; TA300/TA310 (4-inch) up to ~105 mm. The Bulk Print
+  result warns when a strip exceeds the TA210 head.
+- For sideways labels (vertical dispensers) use the Label Stock dialog's
+  **Rotate Design 90°** button — one-click WYSIWYG spin of the whole
+  design into the print orientation (preferred over legacy `orientation`).
+- Non-TSC printers (Zebra, inkjets, PDF) keep the classic JavaFX/driver
+  pipeline with automatic form matching.
 - Label Print History is an info-only audit: it never blocks or limits
   printing and is partitioned per user.
 
