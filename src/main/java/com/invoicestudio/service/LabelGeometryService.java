@@ -167,6 +167,33 @@ public final class LabelGeometryService {
         return byPage;
     }
 
+    // ------------------------------------------------------------------
+    // Design rotation — one-shot 90° design-space conversion
+    // ------------------------------------------------------------------
+
+    /**
+     * Maps one element's geometry from a W×H design canvas into the same
+     * canvas rotated 90° CLOCKWISE (the rotated canvas is H wide × W high).
+     * Returns {@code {x, y, w, h}} in the rotated canvas.
+     * <p>Pure math so the designer's "Rotate Design 90°" action lands every
+     * element exactly where it visually was — just spun into the print
+     * orientation — and so the whole transform is unit-testable.</p>
+     */
+    public static double[] rotateElement90CW(double x, double y, double w, double h,
+                                             double canvasHeightMm) {
+        return new double[]{
+                round2(canvasHeightMm - y - h),
+                round2(x),
+                round2(h),
+                round2(w)
+        };
+    }
+
+    /** Element's own rotation after the canvas spun 90° CW (wraps at 360°). */
+    public static double rotateElementRotation90CW(double rotation) {
+        return ((rotation % 360.0) + 90.0) % 360.0;
+    }
+
     /** Human one-line summary of the queue for the history table. */
     public static String summarize(List<PrintLine> lines, List<String> variableOrder) {
         StringBuilder sb = new StringBuilder();

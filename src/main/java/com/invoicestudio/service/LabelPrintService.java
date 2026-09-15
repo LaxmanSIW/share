@@ -15,6 +15,8 @@ import javafx.scene.Group;
 import javafx.scene.layout.Pane;
 import javafx.scene.transform.Rotate;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -75,6 +77,8 @@ public final class LabelPrintService {
         PageLayout layout = matchLayout(target, pageSize[0], pageSize[1]);
         job.getJobSettings().setJobName("Labels — " + template.getName());
         job.getJobSettings().setPageLayout(layout);
+        String formName = layout != null && layout.getPaper() != null
+                ? layout.getPaper().getName() : "default form";
 
         double pageWpx = pageSize[0] * LabelRenderUtil.MM_PX;
         double pageHpx = pageSize[1] * LabelRenderUtil.MM_PX;
@@ -118,8 +122,11 @@ public final class LabelPrintService {
                     "Print failed: " + ex.getMessage());
         }
 
-        logHistory(template, target, lines, variableOrder, byPage.size(), labels);
-        return new PrintResult(true, byPage.size(), labels, "Sent " + labels + " labels (" + byPage.size() + " strip rows) to " + target.getName() + ".");
+        if (!silentHistory) {
+            logHistory(template, target, lines, variableOrder, byPage.size(), labels);
+        }
+        return new PrintResult(true, byPage.size(), labels, "Sent " + labels + " labels (" + byPage.size()
+                + " strip rows) to " + target.getName() + " [" + formName + "].");
     }
 
     /** Builds one strip-row page with every slot's label rendered in place. */
@@ -160,33 +167,81 @@ public final class LabelPrintService {
         return page;
     }
 
+    /** One supported paper form considered for the strip page. */
+    private record FormCandidate(Paper paper, PageOrientation orientation,
+                                  double widthMm, double heightMm, double score) {
+        double waste(double pageW, double pageH) {
+            return (widthMm - pageW) + (heightMm - pageH);
+        }
+        boolean fits(double pageW, double pageH) {
+            return widthMm >= pageW - 0.5 && heightMm >= pageH - 0.5;
+        }
+    }
+
     /**
-     * Matches the printer's supported paper forms to the strip size.
-     * Layout is always PORTRAIT (feed direction); orientation of the artwork
-     * is handled by the rotation transform instead.
+     * Matches the printer's supported paper forms to the strip size (one
+     * strip row). Thermal drivers register their label form under many
+     * conventions — some portrait (width = across the head), some landscape
+     * — so BOTH orientations of every form are scored.
+     * <p>Selection order:</p>
+     * <ol>
+     *   <li>Best two-dimensional match within ~6 mm drift per dimension.</li>
+     *   <li>Otherwise the smallest form that still CONTAINS the strip page
+     *       (prints at true size with the least blank feed).</li>
+     *   <li>Otherwise simply the closest form that exists — never a blind A4
+     *       fallback: sending an A4 page to a gap-sensor label printer makes
+     *       it feed a full A4 worth of blank labels per printed page.</li>
+     * </ol>
+     * Artwork orientation is handled by the rotation transform, not here.
      */
     private static PageLayout matchLayout(Printer printer, double widthMm, double heightMm) {
-        Paper best = null;
-        double bestScore = Double.MAX_VALUE;
+        List<FormCandidate> cands = new ArrayList<>();
         try {
             for (Paper p : printer.getPrinterAttributes().getSupportedPapers()) {
                 double pw = p.getWidth() * 25.4 / 72.0;
                 double ph = p.getHeight() * 25.4 / 72.0;
-                double score = Math.abs(pw - widthMm) + Math.abs(ph - heightMm) * 3.0;
-                if (score < bestScore) {
-                    bestScore = score;
-                    best = p;
+                if (pw <= 0 || ph <= 0) continue;
+                double scorePortrait = Math.abs(pw - widthMm) + Math.abs(ph - heightMm);
+                double scoreLandscape = Math.abs(ph - widthMm) + Math.abs(pw - heightMm);
+                if (scorePortrait <= scoreLandscape) {
+                    cands.add(new FormCandidate(p, PageOrientation.PORTRAIT, pw, ph, scorePortrait));
+                } else {
+                    cands.add(new FormCandidate(p, PageOrientation.LANDSCAPE, ph, pw, scoreLandscape));
                 }
             }
         } catch (Exception ignored) {}
-        if (best != null && bestScore < 12.0) { // within ~12mm total drift
+        if (cands.isEmpty()) {
             try {
-                return printer.createPageLayout(best, PageOrientation.PORTRAIT, Printer.MarginType.HARDWARE_MINIMUM);
+                return printer.createPageLayout(Paper.A4, PageOrientation.PORTRAIT, Printer.MarginType.HARDWARE_MINIMUM);
             } catch (Exception ignored) {}
+            return null;
         }
+
+        // 1) near-exact match on both dimensions
+        FormCandidate best = cands.stream().min(Comparator.comparingDouble(FormCandidate::score)).orElse(null);
+        if (best != null && best.score() <= 12.0) {
+            return toLayout(printer, best);
+        }
+        // 2) smallest form that still contains the strip page
+        FormCandidate fit = cands.stream()
+                .filter(c -> c.fits(widthMm, heightMm))
+                .min(Comparator.comparingDouble(c -> c.waste(widthMm, heightMm)))
+                .orElse(null);
+        if (fit != null) {
+            return toLayout(printer, fit);
+        }
+        // 3) closest existing form — page is scaled to it, feed stays short
+        return toLayout(printer, best);
+    }
+
+    private static PageLayout toLayout(Printer printer, FormCandidate c) {
         try {
-            return printer.createPageLayout(Paper.A4, PageOrientation.PORTRAIT, Printer.MarginType.HARDWARE_MINIMUM);
-        } catch (Exception ignored) {}
+            return printer.createPageLayout(c.paper(), c.orientation(), Printer.MarginType.HARDWARE_MINIMUM);
+        } catch (Exception ignored) {
+            try {
+                return printer.createPageLayout(c.paper(), PageOrientation.PORTRAIT, Printer.MarginType.HARDWARE_MINIMUM);
+            } catch (Exception ignoredAgain) {}
+        }
         return null;
     }
 

@@ -6138,9 +6138,25 @@ public class TemplateDesigner extends BorderPane {
         g.add(needLbl, 0, r, 4, 1); r++;
 
         Label hint = new Label("The designer canvas is ONE label cell (label width × height). "
-                + "Print orientation rotates the finished artwork when the printer feeds labels sideways.");
+                + "Printing long-format stock? Rotate the design (button below) — the canvas then shows "
+                + "exactly what the printer outputs.");
         hint.setWrapText(true); hint.getStyleClass().add("text-muted");
-        g.add(hint, 0, r, 4, 1);
+        g.add(hint, 0, r, 4, 1); r++;
+
+        Button rotBtn = new Button("↻  Rotate Design 90° into print orientation");
+        rotBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        rotBtn.setTooltip(new Tooltip(
+                "Spins the whole design 90° clockwise: label width/height swap, every element moves and "
+                + "rotates with it, and Print orientation resets to 0° — canvas, preview and print all match."));
+        rotBtn.setOnAction(e -> {
+            rotateLabelDesign90();
+            // keep the dialog's editors consistent with the rotated design
+            labelWSpin.getValueFactory().setValue(cfg.getLabelWidth());
+            labelHSpin.getValueFactory().setValue(cfg.getLabelHeight());
+            orientCb.setValue(cfg.getOrientation());
+            upd.run();
+        });
+        g.add(rotBtn, 0, r, 4, 1); r++;
 
         dlg.getDialogPane().setContent(g);
         dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
@@ -6168,9 +6184,51 @@ public class TemplateDesigner extends BorderPane {
                 Toast.show(app.getRootPane(), "Label Stock Updated",
                         "Strip " + (int) Math.round(cfg.getStripWidth()) + " mm · " + cfg.getColumns()
                         + " across · label " + (int) Math.round(cfg.getLabelWidth()) + "×"
-                        + (int) Math.round(cfg.getLabelHeight()) + " mm.", false);
+                        + (int) Math.round(cfg.getLabelHeight()) + " mm."
+                        + ("0".equals(cfg.getOrientation())
+                                ? ""
+                                : "  Tip: ↻ Rotate Design 90° gives a true WYSIWYG canvas."), false);
             }
         });
+    }
+
+    /**
+     * One-shot 90° CLOCKWISE rotation of the whole label design into the
+     * physical print orientation: label width/height swap, every element is
+     * moved and spun with the canvas, and the print-time rotation resets to
+     * 0°. Afterwards the designer canvas, the strip preview, the bulk print
+     * preview and the printed label all show the SAME picture (WYSIWYG).
+     */
+    private void rotateLabelDesign90() {
+        if (!template.isLabelMode()) return;
+        LabelConfig cfg = template.labelOrNew();
+        cfg.sanitize();
+        double designW = cfg.getLabelWidth();
+        double designH = cfg.getLabelHeight();
+        if (template.getElements() != null) {
+            for (TemplateElement el : template.getElements()) {
+                if (el == null) continue;
+                double[] geo = LabelGeometryService.rotateElement90CW(
+                        el.getX(), el.getY(), el.getW(), el.getH(), designH);
+                el.setX(geo[0]);
+                el.setY(geo[1]);
+                el.setW(geo[2]);
+                el.setH(geo[3]);
+                el.setRotation(LabelGeometryService.rotateElementRotation90CW(el.getRotation()));
+            }
+        }
+        cfg.setLabelWidth(designH);
+        cfg.setLabelHeight(designW);
+        cfg.setOrientation("0");
+        syncPageFromLabelConfig();
+        saveState();
+        refreshCanvas();
+        centerView(); // canvas dims changed — keep it centred in view
+        updatePropertiesPanel();
+        Toast.show(app.getRootPane(), "Design Rotated 90°",
+                String.format(java.util.Locale.US,
+                        "Canvas is now %.1f × %.1f mm — exactly what the printer outputs.",
+                        cfg.getLabelWidth(), cfg.getLabelHeight()), false);
     }
 
     /** Shows how the strip looks — columns × 5 rows with gaps & rounded corners. */
@@ -6190,16 +6248,23 @@ public class TemplateDesigner extends BorderPane {
         if (!template.isLabelMode()) return;
         template.labelOrNew().sanitize();
 
+        // Only variables this template ACTUALLY uses get a column — defining
+        // other barcode variables in the Variables page must not flood the
+        // print grid with empty columns.
+        Set<String> used = new LinkedHashSet<>(collectTemplatePlaceholders());
         List<VariableDef> vars = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
         try {
-            vars.addAll(variableDao.getBarcodeScopeVariables());
+            for (VariableDef v : variableDao.getBarcodeScopeVariables()) {
+                if (v != null && used.contains(v.getKey()) && seen.add(v.getKey())) {
+                    vars.add(v);
+                }
+            }
         } catch (Exception ignored) {}
 
         // Any placeholder typed on the label but not defined as a barcode
         // variable still gets a column, so a run is never blocked.
-        Set<String> seen = new LinkedHashSet<>();
-        for (VariableDef v : vars) seen.add(v.getKey());
-        for (String key : collectTemplatePlaceholders()) {
+        for (String key : used) {
             if (seen.add(key)) {
                 vars.add(new VariableDef(key, key, "text", false));
             }
@@ -6239,8 +6304,11 @@ public class TemplateDesigner extends BorderPane {
     private List<Map<String, String>> buildSampleLabelValues() {
         List<Map<String, String>> out = new ArrayList<>();
         List<VariableDef> vars = new ArrayList<>();
+        Set<String> used = new LinkedHashSet<>(collectTemplatePlaceholders());
         try {
-            vars.addAll(variableDao.getBarcodeScopeVariables());
+            for (VariableDef v : variableDao.getBarcodeScopeVariables()) {
+                if (v != null && used.contains(v.getKey())) vars.add(v);
+            }
         } catch (Exception ignored) {}
         if (vars.isEmpty()) {
             out.add(new LinkedHashMap<>());

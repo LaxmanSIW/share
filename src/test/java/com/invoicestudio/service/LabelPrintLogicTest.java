@@ -308,6 +308,93 @@ class LabelPrintLogicTest {
     }
 
     // ------------------------------------------------------------------
+    // Design rotation 90° CW (Rotate Design into print orientation)
+    // ------------------------------------------------------------------
+
+    @Test
+    void testRotateElement90CWFullCanvasElementStaysFull() {
+        // Element covering the whole 50×25 canvas must cover the whole 25×50 canvas
+        double[] g = LabelGeometryService.rotateElement90CW(0, 0, 50, 25, 25);
+        assertArrayEquals(new double[]{0.0, 0.0, 25.0, 50.0}, g, 0.001);
+    }
+
+    @Test
+    void testRotateElement90CWTopLeftLandsTopRight() {
+        // (0,0,10,5) on a 50×25 canvas → top-right corner of the 25×50 canvas
+        double[] g = LabelGeometryService.rotateElement90CW(0, 0, 10, 5, 25);
+        assertArrayEquals(new double[]{20.0, 0.0, 5.0, 10.0}, g, 0.001);
+    }
+
+    @Test
+    void testRotateElement90CWTwiceEquals180() {
+        // Two CW rotations compose to a 180° rotation of the original canvas:
+        // (x,y) → (W−x−w, H−y−h), size restored, rotation +180°.
+        double x = 7.5, y = 3.25, w = 12.0, h = 4.5, rot = 30.0;
+        double[] first = LabelGeometryService.rotateElement90CW(x, y, w, h, 25.0);  // 50×25 → 25×50
+        double[] second = LabelGeometryService.rotateElement90CW(first[0], first[1], first[2], first[3], 50.0); // → 50×25
+        assertArrayEquals(new double[]{50.0 - x - w, 25.0 - y - h, w, h}, second, 0.001);
+        double rotTwice = LabelGeometryService.rotateElementRotation90CW(
+                LabelGeometryService.rotateElementRotation90CW(rot));
+        assertEquals(210.0, rotTwice, 0.001);
+    }
+
+    @Test
+    void testRotateElementRotationWrapsAt360() {
+        assertEquals(90.0, LabelGeometryService.rotateElementRotation90CW(0.0), 0.001);
+        assertEquals(180.0, LabelGeometryService.rotateElementRotation90CW(90.0), 0.001);
+        assertEquals(270.0, LabelGeometryService.rotateElementRotation90CW(180.0), 0.001);
+        assertEquals(0.0, LabelGeometryService.rotateElementRotation90CW(270.0), 0.001);
+    }
+
+    @Test
+    void testRotateWholeTemplateDesignMatchesPhysicalPrint() {
+        // End-to-end: a 50×25 design with two elements becomes a 25×50 design,
+        // all elements inside bounds, orientation zeroed — WYSIWYG after one click.
+        Template t = new Template();
+        t.setName("rot"); t.setMode("label");
+        LabelConfig cfg = t.labelOrNew();
+        cfg.setLabelWidth(50); cfg.setLabelHeight(25);
+        cfg.setOrientation("90");
+        List<TemplateElement> els = new ArrayList<>();
+        TemplateElement text = new TemplateElement();
+        text.setType(ElementType.TEXT);
+        text.setX(2); text.setY(3); text.setW(20); text.setH(6); text.setRotation(0);
+        els.add(text);
+        TemplateElement code = new TemplateElement();
+        code.setType(ElementType.BARCODE);
+        code.setX(10); code.setY(15); code.setW(30); code.setH(8); code.setRotation(90);
+        els.add(code);
+        t.setElements(els);
+
+        double W = cfg.getLabelWidth(), H = cfg.getLabelHeight();
+        for (TemplateElement el : t.getElements()) {
+            double[] g = LabelGeometryService.rotateElement90CW(el.getX(), el.getY(), el.getW(), el.getH(), H);
+            el.setX(g[0]); el.setY(g[1]); el.setW(g[2]); el.setH(g[3]);
+            el.setRotation(LabelGeometryService.rotateElementRotation90CW(el.getRotation()));
+        }
+        cfg.setLabelWidth(H);
+        cfg.setLabelHeight(W);
+        cfg.setOrientation("0");
+
+        assertEquals(25.0, cfg.getLabelWidth(), 0.001);
+        assertEquals(50.0, cfg.getLabelHeight(), 0.001);
+        assertEquals("0", cfg.getOrientation());
+        for (TemplateElement el : t.getElements()) {
+            assertTrue(el.getX() >= -0.001 && el.getY() >= -0.001, "element origin inside rotated canvas");
+            assertTrue(el.getX() + el.getW() <= cfg.getLabelWidth() + 0.001, "element fits rotated width");
+            assertTrue(el.getY() + el.getH() <= cfg.getLabelHeight() + 0.001, "element fits rotated height");
+        }
+        // the text element (2,3,20,6) lands at (25-3-6=16, 2, 6, 20)
+        assertEquals(16.0, els.get(0).getX(), 0.001);
+        assertEquals(2.0, els.get(0).getY(), 0.001);
+        assertEquals(6.0, els.get(0).getW(), 0.001);
+        assertEquals(20.0, els.get(0).getH(), 0.001);
+        // rotations spun +90°
+        assertEquals(90.0, els.get(0).getRotation(), 0.001);
+        assertEquals(180.0, els.get(1).getRotation(), 0.001);
+    }
+
+    // ------------------------------------------------------------------
     // Label print history DAO
     // ------------------------------------------------------------------
 

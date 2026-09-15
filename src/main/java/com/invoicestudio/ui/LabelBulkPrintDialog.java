@@ -99,15 +99,29 @@ public class LabelBulkPrintDialog extends Stage {
 
         double designW = cfg != null ? cfg.getLabelWidth() : template.labelOrNew().getLabelWidth();
         double designH = cfg != null ? cfg.getLabelHeight() : template.labelOrNew().getLabelHeight();
-        double previewScale = Math.min(1.0, Math.min(150.0 / Math.max(1, designW), 150.0 / Math.max(1, designH)));
+        // Scale-to-fit against PIXEL size (design mm → px first!). The old
+        // formula divided screen px by raw mm, so any label ≤150 mm got
+        // scale 1.0 and the white label node spilled out of its holder over
+        // the header text.
+        double designWpx = designW * LabelRenderUtil.MM_PX;
+        double designHpx = designH * LabelRenderUtil.MM_PX;
+        double previewScale = Math.min(1.0, Math.min(146.0 / designWpx, 146.0 / designHpx));
         Pane labelPreview = LabelRenderUtil.renderLabelNode(template, null, designW, designH, settings);
         labelPreview.setScaleX(previewScale);
         labelPreview.setScaleY(previewScale);
         StackPane previewHolder = new StackPane(labelPreview);
+        previewHolder.setAlignment(Pos.CENTER);
         previewHolder.setPrefSize(160, 160);
         previewHolder.setMinSize(160, 160);
+        previewHolder.setMaxSize(160, 160);
         previewHolder.setStyle("-fx-background-color: #0F172A; -fx-background-radius: 6;");
         previewHolder.setPadding(new Insets(6));
+        // Hard clip — the preview can never paint outside its card again.
+        javafx.scene.shape.Rectangle previewClip = new javafx.scene.shape.Rectangle(160, 160);
+        previewClip.setArcWidth(10);
+        previewClip.setArcHeight(10);
+        previewHolder.setClip(previewClip);
+        Tooltip.install(previewHolder, new Tooltip("Your label design — what every printed label looks like"));
 
         VBox info = new VBox(6);
         Label title = new Label("Print many labels with different values");
@@ -118,7 +132,9 @@ public class LabelBulkPrintDialog extends Stage {
         sub.getStyleClass().add("text-muted");
         info.getChildren().addAll(title, sub);
 
-        top.getChildren().addAll(previewHolder, info);
+        Region topSpacer = new Region();
+        HBox.setHgrow(topSpacer, Priority.ALWAYS);
+        top.getChildren().addAll(info, topSpacer, previewHolder);
         VBox.setVgrow(info, Priority.ALWAYS);
         root.setTop(top);
 
@@ -234,6 +250,8 @@ public class LabelBulkPrintDialog extends Stage {
     private class VarCell extends TableCell<PrintRow, String> {
         private final ComboBox<String> combo = new ComboBox<>();
         private final List<String> choices;
+        /** Guards programmatic text/value updates from re-triggering commit or filter. */
+        private boolean setting = false;
 
         VarCell(List<String> choices) {
             this.choices = choices;
@@ -242,25 +260,44 @@ public class LabelBulkPrintDialog extends Stage {
             combo.setItems(FXCollections.observableArrayList(choices));
             combo.setPrefWidth(150);
             combo.setMaxWidth(Double.MAX_VALUE);
-            combo.setOnAction(e -> {
-                if (isEditing()) commitEdit(combo.getValue());
-            });
-            combo.focusedProperty().addListener((obs, o, n) -> {
-                if (!n && isEditing()) commitEdit(combo.getValue());
-            });
-            // Type-to-filter: narrow the quick-picks as the user types.
-            combo.getEditor().textProperty().addListener((obs, o, v) -> {
-                if (!combo.isShowing() && v != null && !v.isEmpty()) {
-                    List<String> filtered = choices.stream()
-                            .filter(c -> c.toLowerCase().startsWith(v.toLowerCase())).toList();
-                    combo.setItems(FXCollections.observableArrayList(filtered));
-                } else if (v != null && v.isEmpty()) {
+            if (!choices.isEmpty()) {
+                combo.setPromptText("e.g. " + String.join(" / ",
+                        choices.subList(0, Math.min(3, choices.size()))));
+            }
+            // The popup ALWAYS offers the FULL possible-values list. (The old
+            // type-to-filter listener also fired on programmatic setText of the
+            // pre-filled first choice and collapsed the list to that one value —
+            // so the dropdown literally only showed the first choice.)
+            combo.showingProperty().addListener((obs, was, now) -> {
+                if (now && !setting) {
                     combo.setItems(FXCollections.observableArrayList(choices));
                 }
             });
+            combo.setOnAction(e -> {
+                if (!setting && isEditing()) commitEdit(combo.getEditor().getText());
+            });
+            combo.focusedProperty().addListener((obs, o, n) -> {
+                if (!n && !setting && isEditing()) commitEdit(combo.getEditor().getText());
+            });
+            // Type-to-filter narrows the quick-picks ONLY on real keystrokes —
+            // never on programmatic updates from updateItem().
+            combo.getEditor().addEventFilter(KeyEvent.KEY_RELEASED, e -> {
+                if (e.getCode() == KeyCode.ENTER || e.getCode() == KeyCode.ESCAPE
+                        || e.getCode() == KeyCode.TAB || e.getCode() == KeyCode.UP
+                        || e.getCode() == KeyCode.DOWN) {
+                    return;
+                }
+                String v = combo.getEditor().getText();
+                List<String> filtered = (v == null || v.isEmpty()) ? choices
+                        : choices.stream()
+                                .filter(c -> c.toLowerCase().startsWith(v.toLowerCase()))
+                                .toList();
+                combo.setItems(FXCollections.observableArrayList(filtered));
+                if (!combo.isShowing() && !filtered.isEmpty()) combo.show();
+            });
             combo.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
                 if (e.getCode() == KeyCode.ENTER) {
-                    commitEdit(combo.getValue());
+                    commitEdit(combo.getEditor().getText());
                     e.consume();
                 }
             });
@@ -273,8 +310,10 @@ public class LabelBulkPrintDialog extends Stage {
             if (empty) {
                 setGraphic(null);
             } else {
+                setting = true;
                 combo.getEditor().setText(item != null ? item : "");
                 combo.setValue(item);
+                setting = false;
                 setGraphic(combo);
             }
         }
@@ -341,14 +380,10 @@ public class LabelBulkPrintDialog extends Stage {
     // ─── Row helpers ──────────────────────────────────────────────────────
 
     private void addRow() {
-        PrintRow row = new PrintRow();
-        for (VariableDef var : barcodeVars) {
-            List<String> choices = var.choicesList();
-            if (!choices.isEmpty()) {
-                row.prop(var.getKey()).set(choices.get(0));
-            }
-        }
-        rows.add(row);
+        // Cells start EMPTY — no silent pre-fill of the first possible value
+        // (a pre-filled value could quietly end up on printed barcodes).
+        // The combo's prompt text shows the possible values instead.
+        rows.add(new PrintRow());
     }
 
     private void focusLastRow() {
@@ -390,7 +425,9 @@ public class LabelBulkPrintDialog extends Stage {
         int total = LabelGeometryService.totalLabels(lines);
         int pages = LabelGeometryService.totalPages(lines, template.labelOrNew());
         int copies = rows.stream().mapToInt(PrintRow::getCopies).sum();
-        totalLbl.setText(total + " labels · " + pages + " strip rows · " + copies + " copies queued");
+        totalLbl.setText(total + (total == 1 ? " label · " : " labels · ")
+                + pages + (pages == 1 ? " strip row · " : " strip rows · ")
+                + copies + (copies == 1 ? " copy queued" : " copies queued"));
     }
 
     private List<LabelGeometryService.PrintLine> collectLines() {
