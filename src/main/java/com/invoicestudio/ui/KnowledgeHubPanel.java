@@ -179,6 +179,7 @@ public class KnowledgeHubPanel extends VBox {
             setupCommands(),
             bitmapCommand(),
             printCommand(),
+            blankLabelsGuide(),
             appPipeline(),
             thresholdGuide(),
             troubleshooting(),
@@ -306,8 +307,55 @@ public class KnowledgeHubPanel extends VBox {
                 heading("FEED & CUT HELPERS (NOT USED BY THE APP)"),
                 bullet("FORMFEED — feed one label length; CUT — cut continuous stock (cutter models); FEED n — feed n dots."),
                 note("If the printer still feeds an extra blank after every label, the stock declaration and the physical "
-                    + "roll disagree — re-check Label Stock size/gap and calibrate the sensor (hold FEED on the printer, "
-                    + "or send AUTODETECT).")
+                    + "roll disagree — re-check Label Stock size/gap, then run Calibrate Stock Sensor (Bulk Print dialog). "
+                    + "The dedicated \"Blank Labels After a Good Label\" topic walks the full diagnosis.")
+            });
+    }
+
+    private Topic blankLabelsGuide() {
+        return new Topic("Blank Labels After a Good Label",
+            "Printed one record but got extra empty labels? Work through the four causes in order — "
+                + "three are configuration, one is printer calibration.",
+            new Node[] {
+                para("First, what the app sends: the TSPL script contains exactly one CLS / BITMAP / PRINT group per "
+                    + "strip row and PRINT 1,1 for a single record — verified byte-for-byte. Extra blank labels are "
+                    + "always FEED, never extra PRINT commands. The success toast now shows the numbers to check: "
+                    + "SIZE/GAP in dots, the feed pitch in mm, and how many slots of the last strip row the job filled."),
+                heading("CAUSE 1 — MULTI-ACROSS STOCK WITH A SMALL QUEUE (MOST COMMON)"),
+                para("Label Stock defines how many die-cut labels sit ACROSS the strip (Columns). The printer feeds one "
+                    + "full row per strip; on 4-across stock a one-record job fills slot 1 and slots 2–4 pass under the "
+                    + "head blank. That is physics, not a bug: the three empty die-cuts were part of the same fed row. "
+                    + "The toast says so explicitly: \"the last strip row fills 1 of 4 slots…\""),
+                bullet("Single-column roll? Open Template Designer → Label Stock and set Columns = 1 (and Strip width = "
+                    + "label width). The Strip Preview then shows one label across — exactly what prints."),
+                bullet("Genuinely 4-across stock? Print records in multiples of 4 (or accept the blank waste on the "
+                    + "last row) — every full row prints all slots."),
+                heading("CAUSE 2 — STALE SENSOR CALIBRATION"),
+                para("The gap sensor learned the CURRENT roll's pitch at some point (different label size, different "
+                    + "vendor, a media reload). If its stored pitch no longer matches the loaded stock, the printer "
+                    + "feeds past the real gap hunting for one at the old distance — one printed label plus one or "
+                    + "more blank ones. Symptom: blanks appear even when the strip row is FULL."),
+                bullet("One-click fix: Bulk Print dialog → Calibrate Sensor. It spools AUTODETECT (TSPL manual p.6) "
+                        + "as its own RAW job — the printer feeds a few labels measuring the die-cut pitch, then "
+                        + "stores the result. Reprint your job afterwards."),
+                bullet("Hardware equivalent: power the printer off, hold FEED while powering on until it feeds several "
+                        + "labels, release — same measurement, stored in the printer."),
+                heading("CAUSE 3 — LABEL STOCK VALUES DON'T MATCH THE PHYSICAL ROLL"),
+                para("Measure one physical label + one gap with a ruler and compare with the toast's feed pitch: "
+                        + "\"Feed pitch 33.0 mm/label (label 30.0 mm + 3.0 mm gap)\". If the numbers disagree with "
+                        + "your ruler, fix Label Stock (label height, feed gap) — the script declares exactly those "
+                        + "values via SIZE/GAP, so wrong config = wrong feed."),
+                heading("CAUSE 4 — SOMETHING OUTSIDE THE APP"),
+                para("A spooler queue with a stuck older job, a printer-side form/offset setting, or a driver that "
+                        + "injects its own setup before the RAW stream. Check the Windows spooler for leftover jobs, "
+                        + "power-cycle the printer, and if a misfeed survives a fresh calibration with a verified "
+                        + "config, test the same script from a plain text spool to isolate the driver."),
+                note("Sanity check that separates cause 1 from the rest: the toast. It reports \"fills k of N slots\" "
+                    + "only when the queue doesn't fill the last row. No such note + still getting blanks = calibration "
+                    + "or stock values (causes 2–4)."),
+                sep(),
+                para("Reference: TSC Auto ID, \"TSPL/TSPL2 Programming Language\" — AUTODETECT (p.6), GAP (p.2), "
+                        + "PRINT (p.24).")
             });
     }
 
@@ -362,8 +410,10 @@ public class KnowledgeHubPanel extends VBox {
                     + "If you ever see this again, update the app before checking hardware."),
                 heading("BLANK LABELS OR EXTRA FEEDS BETWEEN GOOD LABELS"),
                 para("The sensor and the physical stock disagree. Check: Label Stock type = GAP for die-cut rolls "
-                    + "(continuous only for receipt stock); SIZE/GAP match your measured label pitch; calibrate the "
-                    + "sensor (printer's FEED button hold, or AUTODETECT)."),
+                    + "(continuous only for receipt stock); SIZE/GAP match your measured label pitch; Columns = 1 for "
+                    + "single-column rolls; calibrate the sensor with the Bulk Print dialog's Calibrate Sensor button "
+                    + "(or the printer's FEED button hold). The dedicated \"Blank Labels After a Good Label\" topic "
+                    + "has the full four-cause walkthrough."),
                 heading("PRINT IS TOO LIGHT / FAINT"),
                 para("Raise the Brightness Threshold (Settings → Print) so more pixels burn; on thermal transfer also "
                     + "check ribbon seating and the driver's darkness setting. Clean the head with isopropyl alcohol."),

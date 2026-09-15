@@ -295,6 +295,48 @@ public class TsplPipelineVerify {
         check(count(script, "PRINT ") == 2, "two feeds total");
         check(script.indexOf("PRINT ") < script.lastIndexOf("PRINT "), "both PRINTs present in order");
 
+        // ---- 1 record on 4-across stock: diagnosed, never over-printed --
+        // The reported symptom "printed one record, got 4 labels (1 content
+        // + 3 empty)": on 4-across stock one record fills slot 1 and slots
+        // 2-4 are die-cuts on the SAME fed row — they must stay blank (one
+        // PRINT 1,1), and the toast must spell the situation out.
+        Template fourAcross = labelTemplate();
+        LabelConfig fc = fourAcross.labelOrNew();
+        fc.setColumns(4);
+        fc.setLabelWidth(12.0);
+        fc.setGapX(1.0); // 4×12 + 3×1 = 51 mm ≤ 54 mm strip
+        tx = new FakeTransport();
+        TsplPrintService.setTransport(tx);
+        r = TsplPrintService.printLabelsNamed(fourAcross, new Settings(),
+                List.of(line("28", "KPT-000028", 1)),
+                List.of("size", "code"), "TSC TA210", true);
+        check(r.success(), "4-across single record print succeeded: " + r.message());
+        String script4 = new String(tx.data, StandardCharsets.ISO_8859_1);
+        check(script4.endsWith("PRINT 1,1\r\n"), "4-across: one record still feeds exactly ONE row (PRINT 1,1)");
+        check(count(script4, "PRINT ") == 1, "4-across: no hidden extra feeds");
+        check(r.message().contains("fills 1 of 4 slots") && r.message().contains("the other 3 die-cut labels"),
+                "toast diagnoses the 3 blank die-cuts: " + r.message());
+        check(r.message().contains("Set Columns = 1"), "toast points at the Columns = 1 fix");
+        check(r.message().contains("Feed pitch 28.0 mm/label"),
+                "toast echoes the feed pitch so it can be checked against the ruler");
+
+        // ---- stock-sensor calibration job ----------------------------
+        tx = new FakeTransport();
+        TsplPrintService.setTransport(tx);
+        LabelPrintService.PrintResult cr = TsplPrintService.calibrateSensorQueued(null, null);
+        // Harness runs ON the FX thread → the send is deferred to the daemon
+        // spool pool (same threading as printLabelsQueued). Poll for it —
+        // onDone fires via runLater after runAll unblocks, so ignore it here.
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (tx.data == null && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+        }
+        check(cr.success(), "calibration request acknowledged");
+        check(tx.data != null && new String(tx.data, StandardCharsets.ISO_8859_1).equals("AUTODETECT\r\n"),
+                "calibration job = standalone AUTODETECT (no GAP/BLINE/PRINT)");
+        check("Stock sensor calibration — AUTODETECT".equals(tx.jobName),
+                "calibration job carries its own spooler name");
+
         // ---- transport failure surfaces, no silent data loss --------
         tx = new FakeTransport();
         tx.fail = true;

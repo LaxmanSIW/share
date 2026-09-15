@@ -203,6 +203,50 @@ public final class TsplPrintService {
     }
 
     // ------------------------------------------------------------------
+    // Stock-sensor calibration (AUTODETECT)
+    // ------------------------------------------------------------------
+
+    /**
+     * Sends the TSC-documented stock calibration job (AUTODETECT) as its own
+     * RAW spool job — the printer feeds a few labels while measuring the
+     * die-cut pitch/gap, then stores the result. Use when the printer feeds
+     * extra blank labels per print (its learned pitch no longer matches the
+     * loaded roll). Never writes print history (nothing was printed).
+     * <p>
+     * Threading mirrors {@link #printLabelsQueued}: on the FX thread the
+     * blocking spool wait runs on the daemon pool and {@code onDone} fires
+     * later on FX; from other threads it degrades to synchronous.
+     */
+    public static LabelPrintService.PrintResult calibrateSensorQueued(Printer printer,
+                                                                      Consumer<LabelPrintService.PrintResult> onDone) {
+        String printerName = printer != null ? printer.getName() : null;
+        String name = printerName != null && !printerName.isBlank()
+                ? printerName : "(default printer)";
+        byte[] script = TsplCommandBuilder.calibrationScript();
+
+        Runnable finish = () -> {
+            RawPrintTransport.Result sent = transport.send(printerName,
+                    "Stock sensor calibration — AUTODETECT", script);
+            LabelPrintService.PrintResult result = sent.success()
+                    ? new LabelPrintService.PrintResult(true, 0, 0,
+                            "Calibration job sent to " + name + " — the printer will feed a few labels while it "
+                                    + "measures the die-cut pitch, then stores the result. Reprint your job afterwards.")
+                    : new LabelPrintService.PrintResult(false, 0, 0, sent.message());
+            if (onDone != null) {
+                if (Platform.isFxApplicationThread()) onDone.accept(result);
+                else Platform.runLater(() -> onDone.accept(result));
+            }
+        };
+        if (Platform.isFxApplicationThread()) {
+            SPOOL_POOL.execute(finish);
+        } else {
+            finish.run();
+        }
+        return new LabelPrintService.PrintResult(true, 0, 0,
+                "Sending the calibration job to " + name + "…");
+    }
+
+    // ------------------------------------------------------------------
     // Shared run preparation (FX-thread rendering → TSPL bytes)
     // ------------------------------------------------------------------
 
@@ -280,6 +324,12 @@ public final class TsplPrintService {
                 job.printerName, job.widthDots, job.heightDots, job.gapDots,
                 "continuous".equalsIgnoreCase(job.cfg().getStockType()) ? "continuous" : "gap",
                 job.settings().getBarcodeThreshold()));
+        double cellHmm = LabelGeometryService.physicalCellHeight(job.cfg());
+        double pitchMm = cellHmm + Math.max(0, job.cfg().getGapY());
+        msg.append(String.format(Locale.US,
+                " Feed pitch %.1f mm/label (label %.1f mm + %.1f mm gap) — one feed per PRINT.",
+                pitchMm, cellHmm, Math.max(0, job.cfg().getGapY())));
+        appendPartialRowNote(job, msg);
         if (job.stripWidthMm() > TsplCommandBuilder.TA210_MAX_PRINT_MM + 0.01
                 && job.printerName.toLowerCase(Locale.ROOT).contains("ta210")) {
             msg.append(String.format(Locale.US,
@@ -287,6 +337,28 @@ public final class TsplPrintService {
                     job.stripWidthMm(), TsplCommandBuilder.TA210_MAX_PRINT_MM));
         }
         return new LabelPrintService.PrintResult(true, job.pages.size(), job.labels, msg.toString());
+    }
+
+    /**
+     * When the last strip row is not fully filled (a queue shorter than the
+     * stock's column count), the remaining die-cut labels on that row pass
+     * under the head and feed out BLANK — physics of multi-across stock,
+     * not an extra feed. Says so in the toast and points at the two real
+     * fixes (Columns = 1 for single-column rolls, sensor calibration for
+     * genuine misfeeds) so "1 record → 4 labels, 3 empty" is diagnosable
+     * from the message alone.
+     */
+    static void appendPartialRowNote(PreparedJob job, StringBuilder msg) {
+        int columns = Math.max(1, job.cfg().getColumns());
+        int pages = Math.max(1, job.pages.size());
+        int lastRowFill = job.labels - (pages - 1) * columns;
+        if (lastRowFill >= columns || lastRowFill <= 0) return; // full or impossible
+        int blanks = columns - lastRowFill;
+        msg.append(String.format(Locale.US,
+                " NOTE: the last strip row fills %d of %d slots — the other %d die-cut label%s on that row feed out "
+                        + "blank (multi-across stock wastes them on small queues). Single-column roll? Set Columns = 1 "
+                        + "in Label Stock. Blank labels even on full rows? Run Calibrate Stock Sensor.",
+                lastRowFill, columns, blanks, blanks == 1 ? "" : "s"));
     }
 
     /** DIRECTION 1 by default (preview-upright); overridable for support. */

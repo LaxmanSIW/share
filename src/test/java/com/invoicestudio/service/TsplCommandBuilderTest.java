@@ -32,6 +32,19 @@ class TsplCommandBuilderTest {
     // ------------------------------------------------------------------
 
     @Test
+    void testCalibrationScriptIsStandaloneAutodetect() {
+        // TSPL manual p.6: AUTODETECT with no parameters auto-calibrates the
+        // proper sensor; it must NOT share a script with GAP/BLINE, so the
+        // job is exactly one command line.
+        byte[] script = TsplCommandBuilder.calibrationScript();
+        assertEquals("AUTODETECT\r\n", new String(script, StandardCharsets.ISO_8859_1));
+        assertFalse(new String(script, StandardCharsets.ISO_8859_1).contains("GAP"),
+                "calibration job must never carry GAP (manual: don't combine with GAP/BLINE)");
+        assertFalse(new String(script, StandardCharsets.ISO_8859_1).contains("PRINT"),
+                "calibration prints nothing — no PRINT command");
+    }
+
+    @Test
     void testHeaderUsesDotUnitsAndCrLf() {
         String h = TsplCommandBuilder.header(gapStock(), 432, 200, 24, 1);
         String[] lines = h.split("\r\n", -1);

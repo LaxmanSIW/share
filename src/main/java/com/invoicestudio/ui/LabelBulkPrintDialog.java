@@ -105,6 +105,7 @@ public class LabelBulkPrintDialog extends Stage {
     // ── spool state (the RAW spooler runs on a background thread) ──
     private Button testBtn;
     private Button printBtn;
+    private Button calibrateBtn;
     private boolean spooling = false;
 
     /** Pairs a property with its listener so a detached first row releases them. */
@@ -215,11 +216,20 @@ public class LabelBulkPrintDialog extends Stage {
         printBtn.setOnAction(e -> printAll());
         this.printBtn = printBtn;
 
+        Button calibrateBtn = new Button("Calibrate Sensor");
+        calibrateBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        calibrateBtn.setTooltip(new Tooltip(
+                "TSC / TSPL printers only — sends AUTODETECT: the printer feeds a few labels while it measures "
+                        + "the die-cut pitch, then stores the result. Use it when the printer feeds extra blank "
+                        + "labels around your printed ones."));
+        calibrateBtn.setOnAction(e -> calibrateSensor());
+        this.calibrateBtn = calibrateBtn;
+
         Button closeBtn = new Button("Close");
         closeBtn.getStyleClass().addAll("button-sm", "button-secondary");
         closeBtn.setOnAction(e -> close());
 
-        rowPrint.getChildren().addAll(printerBox, testBtn, printBtn, closeBtn);
+        rowPrint.getChildren().addAll(printerBox, calibrateBtn, testBtn, printBtn, closeBtn);
         bottom.getChildren().addAll(rowActions, rowPrint);
         root.setBottom(bottom);
 
@@ -655,6 +665,41 @@ public class LabelBulkPrintDialog extends Stage {
             printBtn.setDisable(on);
             printBtn.setText(on ? "Sending…" : "Print All  (Ctrl+Enter)");
         }
+        if (calibrateBtn != null) {
+            calibrateBtn.setDisable(on);
+        }
+    }
+
+    // ─── Stock-sensor calibration ──────────────────────────────────────
+
+    /**
+     * Sends the TSC AUTODETECT calibration job (its own RAW spool job): the
+     * printer feeds a few labels while it measures the die-cut pitch, then
+     * stores the result. This is the documented cure for printers that feed
+     * extra blank labels around the printed ones — their learned pitch no
+     * longer matches the loaded roll.
+     */
+    private void calibrateSensor() {
+        if (spooling) return;
+        Printer p = printerBox.getValue();
+        if (!com.invoicestudio.service.TsplPrintService.enabledFor(p)) {
+            Toast.show(this.getScene() != null ? this.getScene().getRoot() : null,
+                    "TSC / TSPL Printers Only",
+                    "Stock-sensor calibration speaks the TSC TSPL language (AUTODETECT). "
+                            + "Select your TSC printer and try again.", true);
+            return;
+        }
+        setSpooling(true);
+        Toast.show(this.getScene() != null ? this.getScene().getRoot() : null,
+                "Calibrating Stock Sensor",
+                "Sending AUTODETECT — the printer will feed a few labels while it measures the die-cut pitch…",
+                false);
+        com.invoicestudio.service.TsplPrintService.calibrateSensorQueued(p, res -> {
+            setSpooling(false);
+            Toast.show(this.getScene() != null ? this.getScene().getRoot() : null,
+                    res.success() ? "Calibration Sent" : "Calibration Failed",
+                    res.message(), !res.success());
+        });
     }
 
     // ─── Keyboard ─────────────────────────────────────────────────────────

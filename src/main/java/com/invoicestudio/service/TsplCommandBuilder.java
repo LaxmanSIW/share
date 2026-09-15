@@ -154,6 +154,25 @@ public final class TsplCommandBuilder {
     }
 
     /**
+     * One-shot stock-sensor calibration job (pure). The manual (AUTODETECT,
+     * p.6): the printer feeds media through the sensor to measure the label
+     * length and the die-cut gap, then stores the result. Sent with NO
+     * parameters the printer picks the proper sensor type and calibrates
+     * automatically, and it must NOT share a script with GAP/BLINE — which
+     * is why this is its own tiny job.
+     * <p>
+     * This is the documented cure for a printer that feeds extra blank
+     * labels per print: its learned pitch no longer matches the loaded roll
+     * (e.g. after switching label sizes).
+     *
+     * @return the exact bytes of a standalone calibration job (firmware
+     *         V6.86 EZ or later for AUTODETECT)
+     */
+    public static byte[] calibrationScript() {
+        return "AUTODETECT\r\n".getBytes(StandardCharsets.ISO_8859_1);
+    }
+
+    /**
      * Packs a boolean grid (true = burn black) into TSPL BITMAP rows:
      * MSB first, each row padded to the byte boundary.
      * <p>

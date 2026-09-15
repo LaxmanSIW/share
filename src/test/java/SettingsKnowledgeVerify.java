@@ -175,7 +175,17 @@ public class SettingsKnowledgeVerify extends StudioApp {
     void step03KnowledgeTopicSwitch() {
         ListView<?> lv = findFirst(stage.getScene().getRoot(), ListView.class);
         if (lv == null) { fail("03-knowledge-browse", "topic list vanished"); next(); return; }
-        Platform.runLater(() -> lv.getSelectionModel().select(7)); // Brightness Threshold topic
+        // Select the Brightness Threshold topic BY TITLE — the topic list can
+        // grow (a "Blank Labels" guide was added) and indexes must not matter.
+        int idx = -1;
+        for (int i = 0; i < lv.getItems().size(); i++) {
+            Object item = lv.getItems().get(i);
+            String text = item != null ? item.toString() : "";
+            if (text.contains("Brightness Threshold")) { idx = i; break; }
+        }
+        if (idx < 0) { fail("03-knowledge-browse", "threshold topic missing from list"); next(); return; }
+        final int target = idx;
+        Platform.runLater(() -> lv.getSelectionModel().select(target));
         then(r -> {
             String big = allLabelText(stage.getScene().getRoot());
             return big.contains("BRIGHTNESS THRESHOLD") || big.contains("sharp black");
