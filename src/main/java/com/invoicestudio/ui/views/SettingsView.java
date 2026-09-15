@@ -88,6 +88,12 @@ public class SettingsView extends VBox {
     private final TextField offsetYField = new TextField();
     private final CheckBox statusStampBox = new CheckBox("Status stamp on print (PAID / CANCELLED)");
 
+    // Thermal label (TSC/TSPL) brightness threshold — sharp black & white cut
+    private final javafx.scene.control.Slider barcodeThresholdSlider = new javafx.scene.control.Slider(0, 255, 150);
+    private final Label barcodeThresholdValue = new Label("150");
+    private final Label barcodeThresholdHint = new Label();
+    private final javafx.scene.canvas.Canvas thresholdRamp = new javafx.scene.canvas.Canvas(256, 22);
+
     // Buyer custom fields
     private final VBox buyerFieldsList = new VBox(6);
     private final TextField newBuyerFieldLabel = new TextField();
@@ -132,7 +138,8 @@ public class SettingsView extends VBox {
             createTab("Billing", IconHelper.ICON_BILLING, buildBillingPrefsSection()),
             createTab("Fields", IconHelper.ICON_FIELDS, buildBuyerFieldsSection()),
             createTab("Fonts", IconHelper.ICON_FONT, buildCustomFontsSection()),
-            createTab("Print", IconHelper.ICON_PRINT, buildPrintCalibrationSection()),
+            createTab("Print", IconHelper.ICON_PRINT, buildPrintSection()),
+            createTab("Knowledge", IconHelper.ICON_HELP, new com.invoicestudio.ui.KnowledgeHubPanel()),
             createTab("Backup", IconHelper.ICON_BACKUP, buildBackupStorageSection()),
             createTab("Shortcuts", IconHelper.ICON_CODE, new com.invoicestudio.ui.ShortcutsPanel()),
             createTab("MCP Server", IconHelper.ICON_CODE, new com.invoicestudio.mcp.McpSettingsPanel(
@@ -979,6 +986,83 @@ public class SettingsView extends VBox {
         }
     }
 
+    /** The Print tab: calibration card + thermal (TSC/TSPL) quality card. */
+    private Node buildPrintSection() {
+        VBox container = new VBox(16);
+        container.getChildren().addAll(buildPrintCalibrationSection(), buildBarcodeThresholdSection());
+        return container;
+    }
+
+    /**
+     * Brightness Threshold for the native TSC/TSPL label pipeline: the single
+     * cut that turns every printed dot sharp black or sharp white. Persisted
+     * in Settings; a live gray ramp shows exactly where the cut lands.
+     */
+    private VBox buildBarcodeThresholdSection() {
+        VBox card = UiTheme.card(14);
+
+        Label secTitle = new Label("THERMAL LABEL QUALITY — BRIGHTNESS THRESHOLD (TSC / TSPL)");
+        secTitle.getStyleClass().add("card-title");
+
+        Label sub = new Label("A thermal head has only two states: burn black or leave white. The threshold decides "
+                + "which printed pixels become sharp black and which stay sharp white — there is never any gray in "
+                + "between. Applies to every label sent to a TSC printer (TA210 etc.).");
+        sub.getStyleClass().add("muted-label");
+        sub.setWrapText(true);
+
+        barcodeThresholdSlider.setShowTickMarks(true);
+        barcodeThresholdSlider.setShowTickLabels(true);
+        barcodeThresholdSlider.setMajorTickUnit(51);
+        barcodeThresholdSlider.setMinorTickCount(4);
+        barcodeThresholdSlider.setBlockIncrement(5);
+        barcodeThresholdSlider.setSnapToTicks(false);
+        barcodeThresholdSlider.setMaxWidth(340);
+        barcodeThresholdSlider.valueProperty().addListener((obs, o, v) -> refreshThresholdPreview());
+
+        barcodeThresholdValue.setStyle("-fx-text-fill: #d9a13b; -fx-font-weight: bold; -fx-font-size: 15px;");
+        barcodeThresholdHint.getStyleClass().add("muted-label");
+        barcodeThresholdHint.setWrapText(true);
+
+        HBox sliderRow = new HBox(14);
+        sliderRow.setAlignment(Pos.CENTER_LEFT);
+        VBox sliderBox = new VBox(2, thresholdRamp, barcodeThresholdSlider);
+        sliderRow.getChildren().addAll(sliderBox, barcodeThresholdValue);
+
+        HBox legend = new HBox(20);
+        legend.setAlignment(Pos.CENTER_LEFT);
+        Label low = new Label("← lower: only true darks burn (crisper barcodes, lighter print)");
+        low.getStyleClass().add("muted-label");
+        Label high = new Label("higher: more pixels burn black (bolder, heavier) →");
+        high.getStyleClass().add("muted-label");
+        Region spring = new Region();
+        HBox.setHgrow(spring, Priority.ALWAYS);
+        legend.getChildren().addAll(low, spring, high);
+
+        card.getChildren().addAll(secTitle, sub, sliderRow, legend, barcodeThresholdHint);
+        refreshThresholdPreview();
+        return card;
+    }
+
+    /** Repaints the gray ramp + cut marker and the live hint text. */
+    private void refreshThresholdPreview() {
+        int t = (int) Math.round(barcodeThresholdSlider.getValue());
+        barcodeThresholdValue.setText(String.valueOf(t));
+        barcodeThresholdHint.setText("gray values ≤ " + t + " burn sharp black — everything above stays sharp white.");
+
+        var gc = thresholdRamp.getGraphicsContext2D();
+        double w = thresholdRamp.getWidth(), h = thresholdRamp.getHeight();
+        gc.clearRect(0, 0, w, h);
+        for (int x = 0; x < (int) w; x++) {
+            int gray = x * 255 / Math.max(1, (int) w - 1); // black → white ramp
+            gc.setFill(javafx.scene.paint.Color.rgb(gray, gray, gray));
+            gc.fillRect(x, 0, 1, h);
+        }
+        double mx = t * (w - 1) / 255.0; // cut marker at the threshold position
+        gc.setStroke(javafx.scene.paint.Color.web("#d9a13b"));
+        gc.setLineWidth(2);
+        gc.strokeLine(mx, 0, mx, h);
+    }
+
     private VBox buildPrintCalibrationSection() {
         VBox card = UiTheme.card(14);
 
@@ -1169,6 +1253,9 @@ public class SettingsView extends VBox {
             offsetYField.setText(String.valueOf(currentSettings.getPrintOffsetY()));
             statusStampBox.setSelected(currentSettings.isStatusStamp());
 
+            barcodeThresholdSlider.setValue(currentSettings.getBarcodeThreshold());
+            refreshThresholdPreview();
+
             editableBuyerFields.clear();
             if (currentSettings.getBuyerFields() != null) {
                 editableBuyerFields.addAll(currentSettings.getBuyerFields());
@@ -1291,6 +1378,7 @@ public class SettingsView extends VBox {
                 currentSettings.setPrintOffsetY(Double.parseDouble(offsetYField.getText().trim()));
             } catch (Exception ignore) {}
             currentSettings.setStatusStamp(statusStampBox.isSelected());
+            currentSettings.setBarcodeThreshold((int) Math.round(barcodeThresholdSlider.getValue()));
 
             currentSettings.setBuyerFields(new ArrayList<>(editableBuyerFields));
             currentSettings.setCustomFonts(new ArrayList<>(editableFonts));

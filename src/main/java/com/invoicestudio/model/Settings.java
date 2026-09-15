@@ -17,6 +17,17 @@ public class Settings {
     private double printOffsetY; // mm
     private boolean statusStamp = true;
     private boolean autoRecurring = false;
+
+    /**
+     * Thermal label (TSC/TSPL) brightness threshold, 0–255. Downsampled dot
+     * grays ≤ threshold burn sharp black, everything above stays sharp white
+     * — the only two colors a thermal head can produce. Default 150 (slightly
+     * above mid-gray so hairlines and small text survive). Keep in sync with
+     * {@code MonoImage.DEFAULT_THRESHOLD} (kept as a literal to avoid a
+     * model→service dependency).
+     */
+    private int barcodeThreshold = 150;
+
     private List<BuyerFieldDef> buyerFields = new ArrayList<>();
     private List<CustomFontDef> customFonts = new ArrayList<>();
 
@@ -54,6 +65,11 @@ public class Settings {
 
     public boolean isAutoRecurring() { return autoRecurring; }
     public void setAutoRecurring(boolean autoRecurring) { this.autoRecurring = autoRecurring; }
+
+    public int getBarcodeThreshold() { return barcodeThreshold; }
+    public void setBarcodeThreshold(int barcodeThreshold) {
+        this.barcodeThreshold = Math.max(0, Math.min(255, barcodeThreshold));
+    }
 
     public List<BuyerFieldDef> getBuyerFields() { return buyerFields; }
     public void setBuyerFields(List<BuyerFieldDef> buyerFields) { this.buyerFields = buyerFields != null ? buyerFields : new ArrayList<>(); }

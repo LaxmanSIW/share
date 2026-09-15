@@ -160,6 +160,8 @@ class TsplCommandBuilderTest {
     @Test
     void testPackBitsMsbFirst() {
         // 9-dot-wide rows: dot 0 and dot 8 black (each lands on a byte MSB).
+        // TSC polarity: bit 0 = black (burned), bit 1 = white — a white row
+        // starts at 0xFF and black dots CLEAR their bit.
         boolean[] black = new boolean[18]; // 2 rows × 9 dots
         black[0] = true;      // row 1, dot 0
         black[8] = true;      // row 1, dot 8 (first dot of the second byte)
@@ -167,23 +169,36 @@ class TsplCommandBuilderTest {
         byte[] packed = TsplCommandBuilder.packBits(black, 9, 2);
 
         assertEquals(4, packed.length, "9 dots → 2 bytes per row × 2 rows");
-        assertEquals((byte) 0x80, packed[0], "row 1: leftmost dot = MSB of byte 0");
-        assertEquals((byte) 0x80, packed[1], "row 1: 9th dot = MSB of byte 1");
-        assertEquals(0, packed[2] & 0x7F, "row 2 first byte: only MSB set");
-        assertEquals((byte) 0x80, packed[3], "row 2: 9th dot");
+        assertEquals((byte) 0x7F, packed[0], "row 1: leftmost dot black = MSB cleared");
+        assertEquals((byte) 0x7F, packed[1], "row 1: 9th dot black = MSB cleared");
+        assertEquals((byte) 0xFF, packed[2], "row 2 first byte: all white = all bits set");
+        assertEquals((byte) 0x7F, packed[3], "row 2: 9th dot black");
     }
 
     @Test
-    void testPackBitsEmptyGridIsAllZero() {
+    void testPackBitsPaddingDotsStayWhite() {
+        // 9 dots → 2 bytes; the 7 padding dots of the second byte must stay
+        // white (1) so the thermal head never burns the byte tail.
+        boolean[] black = new boolean[9];
+        black[8] = true; // last real dot black
+        byte[] packed = TsplCommandBuilder.packBits(black, 9, 1);
+        assertEquals(2, packed.length);
+        assertEquals((byte) 0xFF, packed[0], "dots 0–7 white");
+        assertEquals((byte) 0x7F, packed[1], "dot 8 black, 7 padding dots white");
+    }
+
+    @Test
+    void testPackBitsEmptyGridIsAllWhite() {
         byte[] packed = TsplCommandBuilder.packBits(new boolean[8 * 8], 8, 8);
-        for (byte b : packed) assertEquals(0, b);
+        for (byte b : packed) assertEquals((byte) 0xFF, b,
+                "no ink → fully white bitmap (bit 1 = white)");
     }
 
     @Test
     void testPackBitsNullSafe() {
         byte[] packed = TsplCommandBuilder.packBits(null, 16, 16);
         assertEquals(32, packed.length, "16 dots → 2 bytes × 16 rows");
-        for (byte b : packed) assertEquals(0, b);
+        for (byte b : packed) assertEquals(0, b, "null grid degenerates to zeros");
     }
 
     // ------------------------------------------------------------------
@@ -233,5 +248,43 @@ class TsplCommandBuilderTest {
     @Test
     void testTa210MaxWidthConstant() {
         assertEquals(54.0, TsplCommandBuilder.TA210_MAX_PRINT_MM, 1e-9);
+    }
+
+    // ------------------------------------------------------------------
+    // Brightness threshold (Settings-backed)
+    // ------------------------------------------------------------------
+
+    @Test
+    void testSettingsThresholdClampedToByteRange() {
+        com.invoicestudio.model.Settings s = new com.invoicestudio.model.Settings();
+        assertEquals(150, s.getBarcodeThreshold(), "default = MonoImage.DEFAULT_THRESHOLD");
+        s.setBarcodeThreshold(300);
+        assertEquals(255, s.getBarcodeThreshold());
+        s.setBarcodeThreshold(-10);
+        assertEquals(0, s.getBarcodeThreshold());
+        s.setBarcodeThreshold(180);
+        assertEquals(180, s.getBarcodeThreshold());
+    }
+
+    @Test
+    void testEffectiveThresholdPrefersSyspropThenSettings() {
+        com.invoicestudio.model.Settings s = new com.invoicestudio.model.Settings();
+        s.setBarcodeThreshold(190);
+
+        String old = System.getProperty("invoicestudio.tspl.threshold");
+        try {
+            System.clearProperty("invoicestudio.tspl.threshold");
+            assertEquals(190, TsplPrintService.effectiveThreshold(s), "settings value applies");
+            assertEquals(150, TsplPrintService.effectiveThreshold(null), "null settings → default");
+
+            System.setProperty("invoicestudio.tspl.threshold", "120");
+            assertEquals(120, TsplPrintService.effectiveThreshold(s), "sysprop overrides settings");
+
+            System.setProperty("invoicestudio.tspl.threshold", "999");
+            assertEquals(190, TsplPrintService.effectiveThreshold(s), "out-of-range sysprop ignored");
+        } finally {
+            if (old == null) System.clearProperty("invoicestudio.tspl.threshold");
+            else System.setProperty("invoicestudio.tspl.threshold", old);
+        }
     }
 }

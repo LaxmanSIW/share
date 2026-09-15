@@ -1392,7 +1392,7 @@ public class TemplateDesigner extends BorderPane {
         // 2. Elements Layer
         elementsPane.getChildren().clear();
         elementsPane.setPrefSize(pageW, pageH);
-        RenderContext ctx = new RenderContext(null, settingsDao.getSettings(), 0, 1, 1);
+        RenderContext ctx = newDesignerRenderContext();
 
         for (TemplateElement el : template.getElements()) {
             if (el.isHidden()) continue;
@@ -1629,6 +1629,33 @@ public class TemplateDesigner extends BorderPane {
         updateSelectionOverlay();
     }
 
+    /**
+     * Render context for the DESIGN CANVAS. Beyond the standard sample
+     * values, every user-defined variable is resolved to its FIRST possible
+     * value (fallback: its default value) so the canvas shows real content —
+     * a barcode/size variable renders "28" instead of the raw
+     * {@code {{size}}} placeholder. The element MODEL still stores the
+     * {@code {{key}}} placeholder (inline editing and Bulk Print keep
+     * working); only the painted preview resolves it.
+     */
+    private RenderContext newDesignerRenderContext() {
+        RenderContext ctx = new RenderContext(null, settingsDao.getSettings(), 0, 1, 1);
+        try {
+            for (VariableDef v : variableDao.getAllVariables()) {
+                if (v == null || v.getKey() == null || v.getKey().isBlank()) continue;
+                List<String> choices = v.choicesList();
+                if (!choices.isEmpty()) {
+                    ctx.getValues().putIfAbsent(v.getKey(), choices.get(0));
+                } else if (!v.getDefaultValue().isBlank()) {
+                    ctx.getValues().putIfAbsent(v.getKey(), v.getDefaultValue());
+                }
+            }
+        } catch (Exception ignored) {
+            // Variable source unavailable — canvas falls back to {{key}} text.
+        }
+        return ctx;
+    }
+
     private Node createInteractiveElementNode(TemplateElement el, RenderContext ctx) {
         double x = el.getX() * MM_PX;
         double y = el.getY() * MM_PX;
@@ -1805,7 +1832,7 @@ public class TemplateDesigner extends BorderPane {
                     }
                 }
 
-                RenderContext ctx = new RenderContext(null, settingsDao.getSettings(), 0, 1, 1);
+                RenderContext ctx = newDesignerRenderContext();
                 Node newVisual = renderVisualElement(el, ctx, wPx, hPx);
                 if (newVisual != null) {
                     setRecursivelyMouseTransparent(newVisual);

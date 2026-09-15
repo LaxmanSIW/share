@@ -13,6 +13,8 @@ smoke-test/
 nav-smoke/
 bulk-verify/
 barcode-verify/
+tspl-verify/
+knowledge-verify/
 
 # Logs
 *.log

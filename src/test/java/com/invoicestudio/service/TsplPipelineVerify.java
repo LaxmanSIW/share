@@ -32,7 +32,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *       printed many" driver bug cannot recur.</li>
  *   <li>5 copies of one row → identical pages compress to PRINT 5,1.</li>
  *   <li>Two different rows → two strip rows, two PRINTs, correct order.</li>
- *   <li>Bitmap payload really carries black ink (barcode/text burned).</li>
+ *   <li>Bitmap payload polarity: paper encodes as set bits (bit 0 = black
+ *       burned), with real black ink present but never overburned.</li>
  *   <li>Rendered strip row exported as PNG for eyeball WYSIWYG check.</li>
  * </ol>
  * Exit code 0 = every assertion passed.
@@ -155,6 +156,11 @@ public class TsplPipelineVerify {
         return n;
     }
 
+    /** Black dots = cleared bits (TSC BITMAP burns where the bit is 0). */
+    static long blackDots(byte[] data) {
+        return (long) data.length * 8 - setBits(data);
+    }
+
     static void runAll() throws Exception {
         // ---- routing ------------------------------------------------
         System.setProperty("invoicestudio.print.engine", "auto");
@@ -193,10 +199,12 @@ public class TsplPipelineVerify {
         int payloadStart = script.indexOf("BITMAP 0,0,54,200,0,") + "BITMAP 0,0,54,200,0,".length();
         byte[] payload = new byte[54 * 200];
         System.arraycopy(tx.data, payloadStart, payload, 0, payload.length);
-        long bits = setBits(payload);
-        check(bits > 500, "bitmap carries burned ink (" + bits + " black dots)");
-        check(bits < payload.length * 8 / 2, "bitmap is not overburned ("
-                + (bits * 100 / (payload.length * 8)) + "% black)");
+        long ink = blackDots(payload);
+        check(ink > 500, "bitmap carries burned ink (" + ink + " black dots)");
+        check(ink < payload.length * 8 / 2, "bitmap is not overburned ("
+                + (ink * 100 / (payload.length * 8)) + "% black)");
+        check(setBits(payload) > payload.length * 8 / 2,
+                "polarity: paper encodes as set bits (bit 0 = black on TSC heads)");
         check(r.pages() == 1 && r.labels() == 1, "result reports 1 page / 1 label");
 
         // save the actual strip row node as PNG for eyeball comparison
@@ -276,8 +284,8 @@ public class TsplPipelineVerify {
                 int diff = -1;
                 for (int i = 0; i < a.length; i++) if (a[i] != b[i]) { diff = i; break; }
                 System.out.println("[DEBUG] payload1 hash=" + java.util.Arrays.hashCode(a)
-                        + " (" + setBits(a) + " black) payload2 hash=" + java.util.Arrays.hashCode(b)
-                        + " (" + setBits(b) + " black)");
+                        + " (" + blackDots(a) + " black) payload2 hash=" + java.util.Arrays.hashCode(b)
+                        + " (" + blackDots(b) + " black)");
                 check(diff >= 0, "two rows rasterize differently (first diff byte " + diff + ")");
             } else {
                 check(false, "expected two BITMAP payloads in the script (p1=" + p1 + " p2=" + p2 + ")");

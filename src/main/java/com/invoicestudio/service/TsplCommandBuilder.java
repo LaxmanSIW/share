@@ -34,8 +34,11 @@ import java.util.List;
  *   <li>{@code CLS} — clears the image buffer (manual p.15).</li>
  *   <li>{@code BITMAP X,Y,width,height,mode,data} — width is BYTES per row,
  *       height is DOTS, data is MSB-first rows padded to the byte boundary,
- *       bit set = black dot; the raw bytes follow the final comma directly
- *       and are terminated by CRLF (manual p.45–46 hex example).</li>
+ *       bit 0 = black dot (burned), bit 1 = white dot (empty); the raw
+ *       bytes follow the final comma directly and are terminated by CRLF
+ *       (manual p.45–46 hex example — its illustration shades the 0 cells).
+ *       Polarity additionally verified on real hardware and independent
+ *       TSPL rasterizers.</li>
  *   <li>{@code PRINT m[,n]} — m sets × n copies each; {@code PRINT 1,1}
  *       prints exactly one label (manual p.24).</li>
  * </ul>
@@ -152,7 +155,14 @@ public final class TsplCommandBuilder {
 
     /**
      * Packs a boolean grid (true = burn black) into TSPL BITMAP rows:
-     * MSB first, each row padded to the next byte boundary.
+     * MSB first, each row padded to the byte boundary.
+     * <p>
+     * <b>Bit polarity:</b> the TSC thermal head burns where the BITMAP bit
+     * is 0 and leaves paper where the bit is 1 — a WHITE dot is a set bit,
+     * a BLACK dot a cleared bit. (Verified against the official manual's
+     * example illustration, field prints on a TA210 and independent TSPL
+     * rasterizers; sending ink as set bits inverts the whole label — a
+     * black page with white content.)
      * Pure and unit tested.
      *
      * @param black       row-major black flags, length widthDots × heightDots
@@ -163,11 +173,17 @@ public final class TsplCommandBuilder {
         int widthBytes = (widthDots + 7) / 8;
         byte[] out = new byte[widthBytes * Math.max(0, heightDots)];
         if (black == null) return out;
+        // White paper encodes as 1-bits: start every byte fully white, then
+        // CLEAR the bits where ink burns (bit 0 = black dot on TSC heads).
+        // Padding dots beyond widthDots stay white (1) — they only ever sit
+        // in the unused tail of a row's last byte.
+        java.util.Arrays.fill(out, (byte) 0xFF);
         for (int y = 0; y < heightDots; y++) {
             int rowBase = y * widthBytes;
             for (int x = 0; x < widthDots; x++) {
                 if (black[y * widthDots + x]) {
-                    out[rowBase + (x >> 3)] |= (byte) (0x80 >> (x & 7));
+                    int idx = rowBase + (x >> 3);
+                    out[idx] &= (byte) ~(0x80 >> (x & 7));
                 }
             }
         }

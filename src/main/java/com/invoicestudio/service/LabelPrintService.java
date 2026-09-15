@@ -309,6 +309,35 @@ public final class LabelPrintService {
     }
 
     /**
+     * Non-blocking variant of {@link #printLabels} for the UI: TSC printers
+     * render on the calling (FX) thread and spool on a background thread
+     * (the RAW transport can wait up to 30 s for the spooler — waiting on
+     * the FX thread froze the whole app after printing). Non-TSC printers
+     * keep the synchronous driver path and deliver the result through
+     * {@code onDone} on the FX thread.
+     * <p>
+     * Synchronous failures (empty queue, rasterization error, not a label
+     * template) return immediately and never invoke {@code onDone}.
+     */
+    public static PrintResult printLabelsQueued(Template template, Settings settings,
+                                                List<LabelGeometryService.PrintLine> lines,
+                                                List<String> variableOrder,
+                                                Printer printer, boolean silentHistory,
+                                                java.util.function.Consumer<PrintResult> onDone) {
+        Printer target = printer != null ? printer : Printer.getDefaultPrinter();
+        if (TsplPrintService.enabledFor(target)) {
+            return TsplPrintService.printLabelsQueued(template, settings, lines, variableOrder,
+                    target, silentHistory, onDone);
+        }
+        PrintResult r = printLabels(template, settings, lines, variableOrder, printer, silentHistory);
+        if (onDone != null) {
+            if (javafx.application.Platform.isFxApplicationThread()) onDone.accept(r);
+            else javafx.application.Platform.runLater(() -> onDone.accept(r));
+        }
+        return r;
+    }
+
+    /**
      * Rotates the strip-row page 90° CLOCKWISE into a transposed driver
      * form's portrait frame with ONE explicit Affine — (x, y) → (H − y, x) —
      * so the top edge of the strip becomes the right edge and the leftmost

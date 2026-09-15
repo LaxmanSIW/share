@@ -102,6 +102,11 @@ public class LabelBulkPrintDialog extends Stage {
     private final List<PropListener> previewListeners = new ArrayList<>();
     private boolean previewScheduled = false;
 
+    // ── spool state (the RAW spooler runs on a background thread) ──
+    private Button testBtn;
+    private Button printBtn;
+    private boolean spooling = false;
+
     /** Pairs a property with its listener so a detached first row releases them. */
     private record PropListener(StringProperty prop, ChangeListener<String> listener) {}
 
@@ -203,10 +208,12 @@ public class LabelBulkPrintDialog extends Stage {
         testBtn.getStyleClass().addAll("button-sm", "button-secondary");
         testBtn.setTooltip(new Tooltip("Print one label with the first row's values to verify alignment"));
         testBtn.setOnAction(e -> printTest());
+        this.testBtn = testBtn;
 
         Button printBtn = new Button("Print All  (Ctrl+Enter)");
         printBtn.getStyleClass().addAll("gold-btn");
         printBtn.setOnAction(e -> printAll());
+        this.printBtn = printBtn;
 
         Button closeBtn = new Button("Close");
         closeBtn.getStyleClass().addAll("button-sm", "button-secondary");
@@ -589,7 +596,15 @@ public class LabelBulkPrintDialog extends Stage {
 
     // ─── Printing ─────────────────────────────────────────────────────────
 
+    /**
+     * The RAW spooler can take several seconds (the transport waits for the
+     * spooler to accept/finish the job) — it therefore runs on a background
+     * thread via {@link LabelPrintService#printLabelsQueued}. While spooling,
+     * the print buttons are disabled so a queue can never be printed twice;
+     * the final toast fires from the background thread's FX callback.
+     */
     private void printTest() {
+        if (spooling) return;
         List<LabelGeometryService.PrintLine> lines = collectLines();
         LabelGeometryService.PrintLine one;
         if (!lines.isEmpty()) {
@@ -598,26 +613,48 @@ public class LabelBulkPrintDialog extends Stage {
             one = new LabelGeometryService.PrintLine(new LinkedHashMap<>(), 1);
         }
         Printer p = printerBox.getValue();
-        LabelPrintService.PrintResult res = LabelPrintService.printLabels(
-                template, settings, List.of(one), variableOrder(), p, true);
+        setSpooling(true);
         Toast.show(this.getScene() != null ? this.getScene().getRoot() : null,
-                res.success() ? "Test Label Sent" : "Test Print Failed",
-                res.message(), !res.success());
+                "Test Label", "Rendering and spooling the test label…", false);
+        LabelPrintService.printLabelsQueued(template, settings, List.of(one), variableOrder(), p, true,
+                res -> {
+                    setSpooling(false);
+                    Toast.show(this.getScene() != null ? this.getScene().getRoot() : null,
+                            res.success() ? "Test Label Sent" : "Test Print Failed",
+                            res.message(), !res.success());
+                });
     }
 
     private void printAll() {
+        if (spooling) return;
         List<LabelGeometryService.PrintLine> lines = collectLines();
         if (lines.isEmpty()) {
             Toast.show(this.getScene().getRoot(), "Nothing To Print", "Add at least one print line with values.", true);
             return;
         }
         Printer p = printerBox.getValue();
-        LabelPrintService.PrintResult res = LabelPrintService.printLabels(
-                template, settings, lines, variableOrder(), p, false);
-        Toast.show(this.getScene().getRoot(),
-                res.success() ? "Labels Sent" : "Print Failed",
-                res.message(), !res.success());
-        if (res.success()) close();
+        setSpooling(true);
+        LabelPrintService.printLabelsQueued(template, settings, lines, variableOrder(), p, false,
+                res -> {
+                    setSpooling(false);
+                    Toast.show(this.getScene().getRoot(),
+                            res.success() ? "Labels Sent" : "Print Failed",
+                            res.message(), !res.success());
+                    if (res.success()) close();
+                });
+    }
+
+    /** Disables the print actions while a job is spooling in the background. */
+    private void setSpooling(boolean on) {
+        spooling = on;
+        if (testBtn != null) {
+            testBtn.setDisable(on);
+            testBtn.setText(on ? "Spooling…" : "Test Print (1)");
+        }
+        if (printBtn != null) {
+            printBtn.setDisable(on);
+            printBtn.setText(on ? "Sending…" : "Print All  (Ctrl+Enter)");
+        }
     }
 
     // ─── Keyboard ─────────────────────────────────────────────────────────

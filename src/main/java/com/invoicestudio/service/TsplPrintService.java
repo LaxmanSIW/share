@@ -3,6 +3,7 @@ package com.invoicestudio.service;
 import com.invoicestudio.model.LabelConfig;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.Template;
+import javafx.application.Platform;
 import javafx.print.Printer;
 import javafx.scene.SnapshotParameters;
 import javafx.scene.image.PixelReader;
@@ -14,6 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * Native TSPL/TSPL2 print pipeline for TSC printers (TA210 et al.).
@@ -39,6 +43,20 @@ public final class TsplPrintService {
 
     /** Transport used to spool RAW jobs (replaceable for tests). */
     private static volatile RawPrintTransport transport = new JavaxRawPrintTransport();
+
+    /**
+     * Background spooler pool. The RAW transport waits up to
+     * {@link JavaxRawPrintTransport#SPOOL_WAIT_SECONDS} for the spooler to
+     * accept/finish the job — waiting on the FX Application Thread froze the
+     * whole app until the job completed ("app stops after printing"), so the
+     * UI now only renders + builds the script on FX and hands the blocking
+     * spool to this daemon pool.
+     */
+    private static final ExecutorService SPOOL_POOL = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "invoicestudio-tspl-spool");
+        t.setDaemon(true);
+        return t;
+    });
 
     /** Swaps the spool transport — unit/runtime-harness seam. */
     public static void setTransport(RawPrintTransport t) {
@@ -90,7 +108,9 @@ public final class TsplPrintService {
 
     /**
      * Prints the queue through TSPL. Same contract as
-     * {@link LabelPrintService#printLabels}; must run on the FX thread.
+     * {@link LabelPrintService#printLabels}; must run on the FX thread
+     * (rendering + snapshot). Blocks until the spooler responds — the
+     * UI-facing entry point is {@link #printLabelsQueued}.
      */
     public static LabelPrintService.PrintResult printLabels(Template template, Settings settings,
                                                             List<LabelGeometryService.PrintLine> lines,
@@ -109,15 +129,104 @@ public final class TsplPrintService {
                                                                  List<LabelGeometryService.PrintLine> lines,
                                                                  List<String> variableOrder,
                                                                  String printerName, boolean silentHistory) {
+        PreparedJob job = prepare(template, settings, lines, variableOrder, printerName);
+        if (job.error != null) return job.error;
+
+        RawPrintTransport.Result sent = transport.send(job.printerName,
+                "Labels — " + job.template.getName(), job.script);
+        if (!sent.success()) {
+            return new LabelPrintService.PrintResult(false, 0, job.labels,
+                    sent.message() + " — falling back is available by printing with a non-TSC printer selected.");
+        }
+
+        if (!silentHistory) {
+            LabelPrintService.logHistory(job.template, job.printerName, lines, variableOrder,
+                    job.pages.size(), job.labels);
+        }
+        return successResult(job);
+    }
+
+    /**
+     * UI-facing NON-BLOCKING run: renders + builds the TSPL script on the
+     * calling (FX) thread, then hands the potentially slow RAW spool
+     * (the transport waits for the spooler up to 30 s) to a background
+     * daemon thread. Returns immediately with an intermediate "sending"
+     * result; when the spool settles, the history entry is written and
+     * {@code onDone} receives the final result on the FX thread.
+     * <p>
+     * Validation/rasterization failures return a failure result synchronously
+     * and never invoke {@code onDone}. Called from a non-FX thread (tests,
+     * CLIs) this degrades to the synchronous behaviour of
+     * {@link #printLabelsNamed} followed by {@code onDone} on that thread.
+     */
+    public static LabelPrintService.PrintResult printLabelsQueued(Template template, Settings settings,
+                                                                  List<LabelGeometryService.PrintLine> lines,
+                                                                  List<String> variableOrder,
+                                                                  Printer printer, boolean silentHistory,
+                                                                  Consumer<LabelPrintService.PrintResult> onDone) {
+        String printerName = printer != null ? printer.getName() : null;
+        PreparedJob job = prepare(template, settings, lines, variableOrder, printerName);
+        if (job.error != null) return job.error;
+
+        LabelPrintService.PrintResult queued = new LabelPrintService.PrintResult(true,
+                job.pages.size(), job.labels,
+                String.format(Locale.US,
+                        "Rendering done — sending %d label%s to %s… (the script is spooling in the background)",
+                        job.labels, job.labels == 1 ? "" : "s", job.printerName));
+
+        Runnable finish = () -> {
+            RawPrintTransport.Result sent = transport.send(job.printerName,
+                    "Labels — " + job.template.getName(), job.script);
+            LabelPrintService.PrintResult finalResult;
+            if (sent.success()) {
+                finalResult = successResult(job);
+                if (!silentHistory) {
+                    LabelPrintService.logHistory(job.template, job.printerName, lines, variableOrder,
+                            job.pages.size(), job.labels);
+                }
+            } else {
+                finalResult = new LabelPrintService.PrintResult(false, 0, job.labels,
+                        sent.message() + " — falling back is available by printing with a non-TSC printer selected.");
+            }
+            if (onDone != null) {
+                if (Platform.isFxApplicationThread()) onDone.accept(finalResult);
+                else Platform.runLater(() -> onDone.accept(finalResult));
+            }
+        };
+
+        if (Platform.isFxApplicationThread()) {
+            SPOOL_POOL.execute(finish);
+        } else {
+            finish.run();
+        }
+        return queued;
+    }
+
+    // ------------------------------------------------------------------
+    // Shared run preparation (FX-thread rendering → TSPL bytes)
+    // ------------------------------------------------------------------
+
+    /** Everything needed to spool one job, built entirely on the FX thread. */
+    private record PreparedJob(Template template, Settings settings, String printerName, byte[] script,
+                               List<TsplCommandBuilder.TsplPage> pages,
+                               int labels, LabelConfig cfg, double stripWidthMm,
+                               int widthDots, int heightDots, int gapDots,
+                               LabelPrintService.PrintResult error) {}
+
+    private static PreparedJob prepare(Template template, Settings settings,
+                                       List<LabelGeometryService.PrintLine> lines,
+                                       List<String> variableOrder, String printerName) {
         if (template == null || !template.isLabelMode()) {
-            return new LabelPrintService.PrintResult(false, 0, 0, "Template is not in Barcode Mode.");
+            return new PreparedJob(null, settings, printerName, null, null, 0, null, 0, 0, 0, 0,
+                    new LabelPrintService.PrintResult(false, 0, 0, "Template is not in Barcode Mode."));
         }
         LabelConfig cfg = template.labelOrNew();
         cfg.sanitize();
 
         int labels = LabelGeometryService.totalLabels(lines);
         if (labels == 0) {
-            return new LabelPrintService.PrintResult(false, 0, 0, "Nothing to print — the queue is empty.");
+            return new PreparedJob(null, settings, printerName, null, null, 0, cfg, 0, 0, 0, 0,
+                    new LabelPrintService.PrintResult(false, 0, 0, "Nothing to print — the queue is empty."));
         }
         String name = printerName != null && !printerName.isBlank()
                 ? printerName : "(default printer)";
@@ -147,41 +256,37 @@ public final class TsplPrintService {
             for (Map.Entry<Integer, List<LabelGeometryService.LabelSlot>> e : byPage.entrySet()) {
                 Pane pageNode = LabelPrintService.buildStripRowPage(template, settings, e.getValue(),
                         cfg, pageWpx, pageHpx, cellWmm, cellHmm, angle);
-                pages.add(rasterize(pageNode, widthDots, heightDots, dpm));
+                pages.add(rasterize(pageNode, widthDots, heightDots, dpm, settings));
             }
         } catch (Exception ex) {
-            return new LabelPrintService.PrintResult(false, 0, labels,
-                    "Could not rasterize the label: " + ex.getMessage());
+            return new PreparedJob(null, settings, name, null, null, labels, cfg, pageSize[0], widthDots, heightDots, gapDots,
+                    new LabelPrintService.PrintResult(false, 0, labels,
+                            "Could not rasterize the label: " + ex.getMessage()));
         }
         if (pages.isEmpty()) {
-            return new LabelPrintService.PrintResult(false, 0, 0, "Nothing to print — the queue is empty.");
+            return new PreparedJob(null, settings, name, null, null, 0, cfg, pageSize[0], widthDots, heightDots, gapDots,
+                    new LabelPrintService.PrintResult(false, 0, 0, "Nothing to print — the queue is empty."));
         }
 
         byte[] script = TsplCommandBuilder.build(cfg, pages, widthDots, heightDots, gapDots, direction);
+        return new PreparedJob(template, settings, name, script, pages, labels, cfg,
+                pageSize[0], widthDots, heightDots, gapDots, null);
+    }
 
-        RawPrintTransport.Result sent = transport.send(name,
-                "Labels — " + template.getName(), script);
-        if (!sent.success()) {
-            return new LabelPrintService.PrintResult(false, 0, labels,
-                    sent.message() + " — falling back is available by printing with a non-TSC printer selected.");
-        }
-
-        if (!silentHistory) {
-            LabelPrintService.logHistory(template, name, lines, variableOrder, pages.size(), labels);
-        }
-
+    private static LabelPrintService.PrintResult successResult(PreparedJob job) {
         StringBuilder msg = new StringBuilder(String.format(Locale.US,
-                "Sent %d label%s (%d strip row%s) to %s via TSPL [SIZE %d×%d dots, GAP %d dots, %s sensor].",
-                labels, labels == 1 ? "" : "s", pages.size(), pages.size() == 1 ? "" : "s",
-                name, widthDots, heightDots, gapDots,
-                "continuous".equalsIgnoreCase(cfg.getStockType()) ? "continuous" : "gap"));
-        if (pageSize[0] > TsplCommandBuilder.TA210_MAX_PRINT_MM + 0.01
-                && name.toLowerCase(Locale.ROOT).contains("ta210")) {
+                "Sent %d label%s (%d strip row%s) to %s via TSPL [SIZE %d×%d dots, GAP %d dots, %s sensor, threshold %d].",
+                job.labels, job.labels == 1 ? "" : "s", job.pages.size(), job.pages.size() == 1 ? "" : "s",
+                job.printerName, job.widthDots, job.heightDots, job.gapDots,
+                "continuous".equalsIgnoreCase(job.cfg().getStockType()) ? "continuous" : "gap",
+                job.settings().getBarcodeThreshold()));
+        if (job.stripWidthMm() > TsplCommandBuilder.TA210_MAX_PRINT_MM + 0.01
+                && job.printerName.toLowerCase(Locale.ROOT).contains("ta210")) {
             msg.append(String.format(Locale.US,
                     " WARNING: strip is %.1f mm wide but the TA210 head prints at most %.0f mm — the right side will clip.",
-                    pageSize[0], TsplCommandBuilder.TA210_MAX_PRINT_MM));
+                    job.stripWidthMm(), TsplCommandBuilder.TA210_MAX_PRINT_MM));
         }
-        return new LabelPrintService.PrintResult(true, pages.size(), labels, msg.toString());
+        return new LabelPrintService.PrintResult(true, job.pages.size(), job.labels, msg.toString());
     }
 
     /** DIRECTION 1 by default (preview-upright); overridable for support. */
@@ -191,11 +296,31 @@ public final class TsplPrintService {
         return 1;
     }
 
+    /** Sysprop knob kept for tests/support — overrides the Settings value. */
+    static int effectiveThreshold(Settings settings) {
+        try {
+            String prop = System.getProperty("invoicestudio.tspl.threshold", "").trim();
+            if (!prop.isEmpty()) {
+                int v = Integer.parseInt(prop);
+                if (v >= 0 && v <= 255) return v;
+            }
+        } catch (Exception ignored) {}
+        int t = settings != null ? settings.getBarcodeThreshold() : MonoImage.DEFAULT_THRESHOLD;
+        return t < 0 || t > 255 ? MonoImage.DEFAULT_THRESHOLD : t;
+    }
+
     /**
      * Snapshots the 96-dpi page node at 2× the printer dot grid, then
      * downsamples + thresholds into the 1-bit TSPL bitmap payload.
+     * <p>
+     * Alpha-aware: a thermal head has exactly two states (burn black / leave
+     * white), so any pixel the snapshot leaves TRANSPARENT counts as white
+     * paper — otherwise unstyled holders/gaps would rasterize as ARGB 0,
+     * read as "darkest black" and burn giant black blocks with white
+     * content-shaped holes (the reported "prints black, objects white").
      */
-    private static TsplCommandBuilder.TsplPage rasterize(Pane pageNode, int widthDots, int heightDots, int dpm) {
+    private static TsplCommandBuilder.TsplPage rasterize(Pane pageNode, int widthDots, int heightDots,
+                                                         int dpm, Settings settings) {
         int ssDpm = dpm * 2;                       // supersample factor
         int pxW = widthDots * 2, pxH = heightDots * 2;
 
@@ -211,6 +336,7 @@ public final class TsplPrintService {
         pageNode.layout();
 
         SnapshotParameters sp = new SnapshotParameters();
+        sp.setFill(javafx.scene.paint.Color.WHITE); // transparent → paper, never ink
         double factor = (double) ssDpm / LabelRenderUtil.MM_PX;
         sp.setTransform(Transform.scale(factor, factor));
 
@@ -225,19 +351,15 @@ public final class TsplPrintService {
         int actH = (int) Math.min(pxH, img.getHeight());
 
         int[] gray = new int[pxW * pxH];
-        int threshold;
-        try {
-            threshold = Integer.parseInt(System.getProperty("invoicestudio.tspl.threshold", "").trim());
-        } catch (Exception e) {
-            threshold = MonoImage.DEFAULT_THRESHOLD;
-        }
-        if (threshold < 0 || threshold > 255) threshold = MonoImage.DEFAULT_THRESHOLD;
+        int threshold = effectiveThreshold(settings);
 
         for (int y = 0; y < pxH; y++) {
             int sy = Math.min(y, actH - 1);
             for (int x = 0; x < pxW; x++) {
                 int sx = Math.min(x, actW - 1);
-                gray[y * pxW + x] = MonoImage.luminance(pr.getArgb(sx, sy));
+                int argb = pr.getArgb(sx, sy);
+                // alpha < 16 (≈6% opaque) → white paper; else grayscale
+                gray[y * pxW + x] = (argb >>> 24) < 16 ? 255 : MonoImage.luminance(argb);
             }
         }
         int[] dots = MonoImage.downsample2x(gray, pxW, pxH);
