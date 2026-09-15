@@ -9,6 +9,7 @@ import com.invoicestudio.service.BarcodeService;
 import com.invoicestudio.service.CustomComponentManager;
 import com.invoicestudio.service.LabelGeometryService;
 import com.invoicestudio.service.RenderContext;
+import com.invoicestudio.service.VariableGrouper;
 import com.invoicestudio.ui.CustomColorChooserDialog;
 import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.IconHelper;
@@ -2761,44 +2762,67 @@ public class TemplateDesigner extends BorderPane {
         Label varSecLbl = new Label("INSERT TEMPLATE VARIABLES:");
         varSecLbl.getStyleClass().add("overline-accent");
 
-        // 1. Direct Dropdown & + Add Button directly in property view
-        ComboBox<VariableDef> varCombo = new ComboBox<>();
+        // 1. Direct Dropdown & + Add Button directly in property view.
+        //    Items are GROUPED by category (Invoice, Buyer, Totals, ...) with
+        //    disabled section-header rows — headers are styled via .var-group-header
+        //    and cannot be selected with the mouse; the + Add guard also skips
+        //    them for keyboard navigation.
+        ComboBox<VariableGrouper.Row> varCombo = new ComboBox<>();
         varCombo.setPromptText("Choose variable to add...");
         varCombo.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(varCombo, Priority.ALWAYS);
-        List<VariableDef> allVars = getComprehensiveVariablesList();
-        varCombo.setItems(FXCollections.observableArrayList(allVars));
+        List<VariableGrouper.Row> groupedRows = VariableGrouper.group(getComprehensiveVariablesList());
+        varCombo.setItems(FXCollections.observableArrayList(groupedRows));
         varCombo.getStyleClass().add("designer-combo");
         varCombo.setCellFactory(lv -> new ListCell<>() {
             @Override
-            protected void updateItem(VariableDef item, boolean empty) {
+            protected void updateItem(VariableGrouper.Row item, boolean empty) {
                 super.updateItem(item, empty);
+                getStyleClass().remove("var-group-header");
                 if (empty || item == null) {
                     setText(null);
+                    setGraphic(null);
+                    setDisable(false);
+                    return;
+                }
+                if (item.isHeader()) {
+                    getStyleClass().add("var-group-header");
+                    setDisable(true); // ListView ignores clicks on disabled cells
+                    setText(item.header());
+                    setGraphic(null);
                 } else {
-                    setText(item.getLabel() + "  {{" + item.getKey() + "}}");
+                    setDisable(false);
+                    setText(item.var().getLabel() + "  {{" + item.var().getKey() + "}}");
+                    setGraphic(null);
                 }
             }
         });
         varCombo.setButtonCell(new ListCell<>() {
             @Override
-            protected void updateItem(VariableDef item, boolean empty) {
+            protected void updateItem(VariableGrouper.Row item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) {
+                getStyleClass().remove("var-group-header");
+                if (empty || item == null || item.isHeader()) {
                     setText("Choose variable to add...");
+                    setGraphic(null);
+                    setDisable(false);
                 } else {
-                    setText(item.getLabel() + "  {{" + item.getKey() + "}}");
+                    setDisable(false);
+                    setText(item.var().getLabel() + "  {{" + item.var().getKey() + "}}");
+                    setGraphic(null);
                 }
             }
         });
 
         Button dropInsertBtn = new Button("+ Add");
         dropInsertBtn.getStyleClass().add("btn-gold-sm");
+        dropInsertBtn.setMinWidth(Region.USE_PREF_SIZE); // never compress to "..." in narrow panels
         dropInsertBtn.setTooltip(new Tooltip("Add chosen variable into text at cursor position"));
         dropInsertBtn.setOnAction(e -> {
-            VariableDef sel = varCombo.getValue();
-            if (sel != null && sel.getKey() != null) {
-                insertVariableIntoTarget(ta, "{{" + sel.getKey() + "}}", el);
+            VariableGrouper.Row sel = varCombo.getValue();
+            if (sel != null && !sel.isHeader() && sel.var() != null && sel.var().getKey() != null) {
+                insertVariableIntoTarget(ta, "{{" + sel.var().getKey() + "}}", el);
+                varCombo.getSelectionModel().clearSelection(); // ready for the next pick
             } else {
                 Toast.show(app.getRootPane(), "Select Variable", "Please choose a variable from dropdown first.", true);
             }
@@ -2811,22 +2835,10 @@ public class TemplateDesigner extends BorderPane {
         Button varPickerBtn = new Button("⚡ Browse & Search All Variables (35+)");
         varPickerBtn.setMaxWidth(Double.MAX_VALUE);
         varPickerBtn.getStyleClass().add("btn-outline-gold");
-        varPickerBtn.setTooltip(new Tooltip("Open searchable popup with all available placeholders & custom buyer fields"));
+        varPickerBtn.setTooltip(new Tooltip("Open searchable popup with all available placeholders & custom buyer fields, grouped by category"));
         varPickerBtn.setOnAction(e -> showVariablePicker(ta, el));
 
-        // 3. Quick Chips
-        FlowPane quickChips = new FlowPane(5, 5);
-        quickChips.setPrefWrapLength(380);
-        String[] quickVars = {"buyer_name", "invoice_no", "invoice_date", "grand_total", "due_amount", "buyer_gstin"};
-        for (String qv : quickVars) {
-            Button qb = new Button("{{" + qv + "}}");
-            qb.getStyleClass().add("var-chip-btn");
-            qb.setTooltip(new Tooltip("Click to insert {{" + qv + "}}"));
-            qb.setOnAction(e -> insertVariableIntoTarget(ta, "{{" + qv + "}}", el));
-            quickChips.getChildren().add(qb);
-        }
-
-        varSec.getChildren().addAll(varSecLbl, dropRow, varPickerBtn, quickChips);
+        varSec.getChildren().addAll(varSecLbl, dropRow, varPickerBtn);
 
         // Typography: Family & Size
         HBox fontRow = new HBox(8);
@@ -5579,6 +5591,7 @@ public class TemplateDesigner extends BorderPane {
             if (app != null && app.getPrimaryStage() != null) {
                 dlg.initOwner(app.getPrimaryStage());
             }
+            DialogHelper.applyAppIcon(dlg); // logo in title bar from the very first frame
             dlg.initModality(Modality.APPLICATION_MODAL);
             dlg.setTitle("Insert Template Variable");
 
@@ -5598,59 +5611,67 @@ public class TemplateDesigner extends BorderPane {
             filterField.getStyleClass().add("designer-field");
 
             List<VariableDef> vars = getComprehensiveVariablesList();
-            FilteredList<VariableDef> filtered = new FilteredList<>(FXCollections.observableArrayList(vars), v -> true);
-            filterField.textProperty().addListener((obs, o, v) -> {
-                String q = v != null ? v.trim().toLowerCase() : "";
-                filtered.setPredicate(item -> {
-                    if (item == null) return false;
-                    if (q.isEmpty()) return true;
-                    return (item.getLabel() != null && item.getLabel().toLowerCase().contains(q)) ||
-                           (item.getKey() != null && item.getKey().toLowerCase().contains(q)) ||
-                           (item.getType() != null && item.getType().toLowerCase().contains(q));
-                });
-            });
+            // Grouped rows: section headers per category; filtering re-groups so
+            // headers of empty groups disappear automatically while typing.
+            ObservableList<VariableGrouper.Row> rows = FXCollections.observableArrayList(
+                    VariableGrouper.group(vars));
+            filterField.textProperty().addListener((obs, o, v) ->
+                    rows.setAll(VariableGrouper.groupFiltered(vars, v)));
 
-            ListView<VariableDef> lv = new ListView<>(filtered);
-            lv.setPrefHeight(280);
+            ListView<VariableGrouper.Row> lv = new ListView<>(rows);
+            lv.setPrefHeight(320);
             lv.getStyleClass().add("designer-list");
             lv.setCellFactory(param -> new ListCell<>() {
                 @Override
-                protected void updateItem(VariableDef item, boolean empty) {
+                protected void updateItem(VariableGrouper.Row item, boolean empty) {
                     super.updateItem(item, empty);
-                    if (!getStyleClass().contains("cell-clear")) getStyleClass().add("cell-clear");
+                    getStyleClass().remove("var-group-header");
                     if (empty || item == null) {
+                        if (!getStyleClass().contains("cell-clear")) getStyleClass().add("cell-clear");
                         setText(null);
                         setGraphic(null);
-                    } else {
-                        HBox row = new HBox(8);
-                        row.setAlignment(Pos.CENTER_LEFT);
-                        row.setPadding(new Insets(4, 6, 4, 6));
-                        row.setMouseTransparent(true);
-
-                        Label nameLbl = new Label(item.getLabel() != null ? item.getLabel() : item.getKey());
-                        nameLbl.getStyleClass().add("card-title-sm");
-                        HBox.setHgrow(nameLbl, Priority.ALWAYS);
-
-                        Label keyPill = new Label("{{" + item.getKey() + "}}");
-                        keyPill.getStyleClass().add("key-pill");
-
-                        Label typeBadge = new Label(item.getType() != null ? item.getType().toUpperCase() : "GENERAL");
-                        typeBadge.getStyleClass().add("type-badge");
-
-                        row.getChildren().addAll(nameLbl, keyPill, typeBadge);
-                        setGraphic(row);
-                        setText(null);
+                        setDisable(false);
+                        return;
                     }
+                    if (item.isHeader()) {
+                        if (!getStyleClass().contains("cell-clear")) getStyleClass().add("cell-clear");
+                        getStyleClass().add("var-group-header");
+                        setDisable(true); // section title — not clickable / not selectable
+                        setText(item.header());
+                        setGraphic(null);
+                        return;
+                    }
+                    if (!getStyleClass().contains("cell-clear")) getStyleClass().add("cell-clear");
+                    setDisable(false);
+                    VariableDef vd = item.var();
+
+                    HBox row = new HBox(8);
+                    row.setAlignment(Pos.CENTER_LEFT);
+                    row.setPadding(new Insets(4, 6, 4, 6));
+                    row.setMouseTransparent(true);
+
+                    Label nameLbl = new Label(vd.getLabel() != null ? vd.getLabel() : vd.getKey());
+                    nameLbl.getStyleClass().add("card-title-sm");
+                    HBox.setHgrow(nameLbl, Priority.ALWAYS);
+
+                    Label keyPill = new Label("{{" + vd.getKey() + "}}");
+                    keyPill.getStyleClass().add("key-pill");
+
+                    Label typeBadge = new Label(vd.getType() != null ? vd.getType().toUpperCase() : "GENERAL");
+                    typeBadge.getStyleClass().add("type-badge");
+
+                    row.getChildren().addAll(nameLbl, keyPill, typeBadge);
+                    setGraphic(row);
+                    setText(null);
                 }
             });
 
             Runnable doInsert = () -> {
-                VariableDef sel = lv.getSelectionModel().getSelectedItem();
-                if (sel == null && !filtered.isEmpty()) {
-                    sel = filtered.get(0);
-                }
-                if (sel != null && sel.getKey() != null) {
-                    insertVariableIntoTarget(target, "{{" + sel.getKey() + "}}", el);
+                VariableGrouper.Row sel = lv.getSelectionModel().getSelectedItem();
+                VariableDef pick = (sel != null && !sel.isHeader()) ? sel.var() : null;
+                if (pick == null) pick = VariableGrouper.firstItem(rows); // header selected / nothing selected
+                if (pick != null && pick.getKey() != null) {
+                    insertVariableIntoTarget(target, "{{" + pick.getKey() + "}}", el);
                     dlg.close();
                 }
             };
@@ -6867,6 +6888,7 @@ public class TemplateDesigner extends BorderPane {
         Stage dlg = new Stage();
         Window owner = getScene() != null ? getScene().getWindow() : app.getPrimaryStage();
         if (owner instanceof Stage s) dlg.initOwner(s);
+        DialogHelper.applyAppIcon(dlg); // logo in title bar from the very first frame
         dlg.initModality(Modality.APPLICATION_MODAL);
         dlg.setTitle("InvoiceStudio Designer Shortcuts & Guide");
 

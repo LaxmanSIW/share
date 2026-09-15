@@ -2706,6 +2706,31 @@ Label {
     -fx-background-color: transparent;
 }
 
+/* Group section headers in the variable dropdown & Insert Template Variable
+   picker (e.g. "Invoice Details (7)"). Header cells are DISABLED so ListView
+   skips mouse selection — modena fades disabled cells, so re-assert opacity
+   and keep the gold section look. */
+.var-group-header {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #D9A13B;
+    -fx-background-color: #131A24;
+    -fx-background-radius: 3;
+    -fx-padding: 5 10 3 8;
+    -fx-border-color: transparent transparent rgba(217, 161, 59, 0.28) transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-cursor: default;
+}
+.var-group-header:disabled {
+    -fx-opacity: 1;
+    -fx-text-fill: #D9A13B;
+}
+.var-group-header:filled:selected,
+.var-group-header:filled:hover {
+    -fx-background-color: #131A24;
+    -fx-text-fill: #D9A13B;
+}
+
 /* Accent helpers — use INSTEAD of inline text colors.
    Kept at the END of the file ON PURPOSE: JavaFX gives equal-specificity wins
    to the LAST matching rule, so these must come after .kpi-value, .kpi-subtext,

@@ -73,6 +73,7 @@ public class NavSmokeRunner extends StudioApp {
     int dialogShotSeq = 0;
     List<String> colOrderBefore;
     List<Double> rowHBefore;
+    double rowHeightBeforeMm = -1;
     final List<Step> steps = new ArrayList<>();
 
     record Step(String name, Runnable action, Predicate<NavSmokeRunner> verify) {}
@@ -106,6 +107,26 @@ public class NavSmokeRunner extends StudioApp {
 
     public static void main(String[] args) {
         Thread.setDefaultUncaughtExceptionHandler(NavSmokeRunner::recordUncaught);
+        // Seed an active (non-expired) auth session into the FRESH data dir so
+        // the production startup path lands on the dashboard, not Sign-In.
+        // Must happen before launch(): StudioApp checks the session on start.
+        try {
+            com.invoicestudio.db.DatabaseManager db =
+                    com.invoicestudio.db.DatabaseManager.getInstance();
+            UserSession s = new UserSession();
+            s.setUserId("smoke-user");
+            s.setEmail("smoke@invoicestudio.local");
+            s.setDisplayName("Smoke Tester");
+            s.setIdToken("");
+            s.setRefreshToken("");
+            s.setExpiresAtMillis(System.currentTimeMillis() + 7L * 24 * 3600 * 1000);
+            s.setRememberMe(true);
+            new com.invoicestudio.db.AuthDao(db).saveSession(s);
+            System.out.println("[SEED] auth session written for smoke run");
+        } catch (Throwable t) {
+            System.err.println("[SEED] auth session seed failed: " + t);
+            t.printStackTrace();
+        }
         // Do NOT set invoicestudio.init=1 — we want the production path.
         launch(args);
     }
@@ -124,9 +145,9 @@ public class NavSmokeRunner extends StudioApp {
         // -- Real sidebar navigation round 1 --
         steps.add(new Step("02-sidebar-dashboard-click", () -> clickSidebar("Dashboard"),
                 r -> contentNodeCount() > 10));
-        steps.add(new Step("03-sidebar-createbill-click", () -> clickSidebar("Create Bill"),
+        steps.add(new Step("03-sidebar-newbill-click", () -> clickSidebarContaining("New Bill"),
                 r -> contentNodeCount() > 40));
-        steps.add(new Step("04-sidebar-history-click", () -> clickSidebar("History"),
+        steps.add(new Step("04-sidebar-invoices-click", () -> clickSidebar("Invoices"),
                 r -> firstButton("View") != null));
         steps.add(new Step("04b-status-combo-open", () -> Platform.runLater(() -> {
                     Node cb = contentArea().lookup(".combo-box");
@@ -152,21 +173,21 @@ public class NavSmokeRunner extends StudioApp {
                 r -> !isDialogOpen()));
         steps.add(new Step("06-history-edit-bill", () -> editBill(billNo("INV-SMOKE-001")),
                 r -> contentNodeCount() > 40));
-        steps.add(new Step("07-sidebar-buyers-click", () -> clickSidebar("Buyers"),
+        steps.add(new Step("07-catalog-buyers-click", () -> openCatalogDestination("Buyers"),
                 r -> firstButton("Ledger") != null));
-        steps.add(new Step("08-buyers-ledger-dialog-open", () -> fireAsync(firstButton("Ledger"), "Ledger"),
-                NavSmokeRunner::isDialogOpen));
-        steps.add(new Step("08b-buyers-ledger-dialog-close", () -> closeDialogAsync(),
-                r -> !isDialogOpen()));
-        steps.add(new Step("09-sidebar-items-click", () -> clickSidebar("Items"),
+        steps.add(new Step("08-buyers-ledger-opens-reports", () -> fireAsync(firstButton("Ledger"), "Ledger"),
+                r -> firstContentButton("Export Statement CSV") != null));
+        steps.add(new Step("08b-back-to-buyers", () -> openCatalogDestination("Buyers"),
+                r -> firstButton("Ledger") != null));
+        steps.add(new Step("09-catalog-items-click", () -> openCatalogDestination("Items"),
                 r -> contentNodeCount() > 20));
         steps.add(new Step("10-items-sales-reports-tab", () -> clickContentButton("Sales Reports"),
                 r -> true));
-        steps.add(new Step("11-sidebar-variables-click", () -> clickSidebar("Variables"),
+        steps.add(new Step("11-catalog-variables-click", () -> openCatalogDestination("Variables"),
                 r -> contentNodeCount() > 20));
         steps.add(new Step("12-sidebar-settings-click", () -> clickSidebar("Settings"),
                 r -> contentNodeCount() > 20));
-        steps.add(new Step("13-sidebar-templates-click", () -> clickSidebar("Templates"),
+        steps.add(new Step("13-catalog-templates-click", () -> openCatalogDestination("Templates"),
                 r -> firstContentButton("Designer") != null));
         steps.add(new Step("14-open-template-designer", () -> safeFire(firstContentButton("Designer"), "Designer"),
                 r -> contentNodeCount() > 50));
@@ -192,12 +213,37 @@ public class NavSmokeRunner extends StudioApp {
                 r -> selectedTableElement().map(t -> !t.isBorderTop()).orElse(false)));
         steps.add(new Step("14j-table-border-side-top-on", () -> fireCheckBox("T"),
                 r -> selectedTableElement().map(TemplateElement::isBorderTop).orElse(false)));
-        steps.add(new Step("14k-table-rowheight-applies", () -> { rowHBefore = canvasTableRowHeights(); setRowHeightByLabel("Row Height (mm):", 12.0); },
-                r -> rowHeightChanged(rowHBefore, 12.0)));
-        steps.add(new Step("14l-table-rowheight-restore", () -> setRowHeightByLabel("Row Height (mm):", 6.0),
+        steps.add(new Step("14k-table-rowheight-applies", () -> {
+                    List<Double> before = canvasTableRowHeights();
+                    rowHBefore = before;
+                    // The seeded table's height is whatever the preset uses (7mm
+                    // today, 6mm in older presets) — capture it instead of assuming.
+                    rowHeightBeforeMm = before.isEmpty() ? -1 : before.get(0) / MM_PX;
+                    setRowHeightByLabel("Row Height (mm):", 12.0);
+                },
+                r -> rowHeightApplied(12.0)));
+        steps.add(new Step("14l-table-rowheight-restore", () -> setRowHeightByLabel("Row Height (mm):", rowHeightBeforeMm > 0 ? rowHeightBeforeMm : 6.0),
                 r -> true));
 
-        steps.add(new Step("15-leave-designer-templates", () -> clickSidebar("Templates"),
+        // -- Variable insertion UX: grouped dropdown + Insert Template Variable dialog --
+        steps.add(new Step("14m-select-text-layer", () -> selectTextLayer(),
+                r -> findVarCombo() != null));
+        steps.add(new Step("14n-var-combo-grouped-popup", () -> Platform.runLater(() -> {
+                    ComboBox<?> cb = findVarCombo();
+                    if (cb != null) cb.show();
+                    else fail("var-combo-popup", "variable combo not found");
+                }), r -> !openPopups().isEmpty()));
+        steps.add(new Step("14o-var-combo-close", () -> Platform.runLater(() -> {
+                    shotPopups("popup-var-combo");
+                    openPopups().forEach(PopupWindow::hide);
+                }), r -> openPopups().isEmpty()));
+        steps.add(new Step("14p-var-picker-dialog-open", () -> fireAsync(firstContentButtonContaining("Browse & Search All Variables"), "var-picker"),
+                r -> findNamedStage("Insert Template Variable") != null));
+        steps.add(new Step("14q-var-picker-dialog-close", () -> Platform.runLater(() ->
+                        shotAndCloseNamedStage("Insert Template Variable", "dialog-var-picker")),
+                r -> findNamedStage("Insert Template Variable") == null));
+
+        steps.add(new Step("15-leave-designer-templates", () -> openCatalogDestination("Templates"),
                 r -> firstContentButton("Designer") != null));
 
         // -- CreateBill variants --
@@ -213,28 +259,33 @@ public class NavSmokeRunner extends StudioApp {
                 r -> contentNodeCount() > 40));
 
         // -- Round 2: exercise every cached-view refresher --
-        steps.add(new Step("21-r2-history", () -> clickSidebar("History"), r -> firstButton("View") != null));
-        steps.add(new Step("22-r2-buyers", () -> clickSidebar("Buyers"), r -> firstButton("Ledger") != null));
-        steps.add(new Step("23-r2-items", () -> clickSidebar("Items"), r -> contentNodeCount() > 20));
-        steps.add(new Step("24-r2-variables", () -> clickSidebar("Variables"), r -> contentNodeCount() > 20));
+        steps.add(new Step("21-r2-invoices", () -> clickSidebar("Invoices"), r -> firstButton("View") != null));
+        steps.add(new Step("22-r2-buyers", () -> openCatalogDestination("Buyers"), r -> firstButton("Ledger") != null));
+        steps.add(new Step("23-r2-items", () -> openCatalogDestination("Items"), r -> contentNodeCount() > 20));
+        steps.add(new Step("24-r2-variables", () -> openCatalogDestination("Variables"), r -> contentNodeCount() > 20));
         steps.add(new Step("25-r2-settings", () -> clickSidebar("Settings"), r -> contentNodeCount() > 20));
-        steps.add(new Step("26-r2-templates", () -> clickSidebar("Templates"), r -> firstContentButton("Designer") != null));
+        steps.add(new Step("26-r2-templates", () -> openCatalogDestination("Templates"), r -> firstContentButton("Designer") != null));
         steps.add(new Step("27-r2-dashboard-final", () -> clickSidebar("Dashboard"), r -> contentNodeCount() > 10));
 
         // -- Dashboard revenue delta: red when negative, green when positive --
-        // One '›' from the current month lands on a month with no bills whose
-        // predecessor HAS bills → delta = -100.0% → sub label must turn RED.
-        steps.add(new Step("28-delta-negative-red", () ->
-                        safeFire(firstContentButton("\u203a"), "next-month \u203a"),
+        // Seed dates are MONTH-ANCHORED: bill1 (16610) two months back, bill2
+        // (11970) at the end of last month, bill3 (10694) on the 3rd of this
+        // month. One '‹' from the current month lands on last month whose
+        // revenue (11970) is BELOW the month before it (16610) → negative % →
+        // sub label must turn RED. Top bar is rebuilt on every refresh(), so
+        // re-lookup before each fire.
+        steps.add(new Step("28-delta-negative-red", () -> {
+                    safeFire(firstContentButton("Current Month"), "reset to current month");
+                    safeFire(firstContentButton("\u2039"), "prev-month \u2039");
+                },
                 r -> {
                     Label sub = revenueDeltaSubLabel();
                     return sub != null && sub.getStyleClass().contains("accent-red")
-                            && sub.getText() != null && sub.getText().contains("-100.0%");
+                            && sub.getText() != null && sub.getText().trim().startsWith("-");
                 }));
-        // Step 28 left the dashboard on Oct 2026. Reset to the live month,
-        // then two '‹' back: Jul 2026 holds ₹16610 (INV-SMOKE-001) vs empty
-        // Jun 2026 → delta = +100.0% → sub label must turn GREEN. Top bar is
-        // rebuilt on every refresh(), so re-lookup before each fire.
+        // Step 28 left the dashboard on last month. Reset to the live month,
+        // then two '‹' back: two months ago holds ₹16610 (INV-SMOKE-001) vs an
+        // empty month before it → delta = +100.0% → sub label must turn GREEN.
         steps.add(new Step("29-delta-positive-green", () -> {
                     safeFire(firstContentButton("Current Month"), "reset to current month");
                     safeFire(firstContentButton("\u2039"), "prev-month \u2039 (1/2)");
@@ -333,11 +384,18 @@ public class NavSmokeRunner extends StudioApp {
             dm.items().saveItem(i3);
 
             String today = LocalDate.now().toString();
+            // MONTH-ANCHORED dates: the dashboard delta steps (28/29) navigate
+            // relative to the current month, so the anchors must not drift when
+            // the harness runs on a different day of the month.
+            java.time.YearMonth thisM = java.time.YearMonth.now();
+            String twoMonthsAgo = thisM.minusMonths(2).atDay(7).toString();   // e.g. 2026-07-07
+            String endOfLastMonth = thisM.minusMonths(1).atEndOfMonth().toString();
+            String thisMonth3rd = thisM.atDay(3).toString();
 
             Bill bill1 = new Bill();
             bill1.setId("smk_bill_1");
             bill1.setBillNo("INV-SMOKE-001");
-            bill1.setDate(LocalDate.now().minusDays(70).toString());
+            bill1.setDate(twoMonthsAgo);
             bill1.setDocType(DocType.INVOICE);
             bill1.setStatus(BillStatus.PAID);
             bill1.setTemplateId(tpl.getId());
@@ -353,7 +411,7 @@ public class NavSmokeRunner extends StudioApp {
             Bill bill2 = new Bill();
             bill2.setId("smk_bill_2");
             bill2.setBillNo("INV-SMOKE-002");
-            bill2.setDate(LocalDate.now().minusDays(20).toString());
+            bill2.setDate(endOfLastMonth);
             bill2.setDocType(DocType.INVOICE);
             bill2.setStatus(BillStatus.UNPAID);
             bill2.setTemplateId(tpl.getId());
@@ -368,7 +426,7 @@ public class NavSmokeRunner extends StudioApp {
             Bill bill3 = new Bill();
             bill3.setId("smk_bill_3");
             bill3.setBillNo("INV-SMOKE-003");
-            bill3.setDate(LocalDate.now().minusDays(3).toString());
+            bill3.setDate(thisMonth3rd);
             bill3.setDocType(DocType.QUOTATION);
             bill3.setStatus(BillStatus.UNPAID);
             bill3.setTemplateId(tpl.getId());
@@ -444,6 +502,52 @@ public class NavSmokeRunner extends StudioApp {
         btn.fire(); // same ActionEvent path as a real user click
     }
 
+    /** First button whose text CONTAINS the phrase (labels like "+  New Bill" shift). */
+    Button firstButtonContaining(String phrase) {
+        List<Button> all = new ArrayList<>();
+        collectButtonsContaining(stage.getScene().getRoot(), phrase, all);
+        return all.isEmpty() ? null : all.get(0);
+    }
+
+    static void collectButtonsContaining(Node n, String phrase, List<Button> out) {
+        if (n == null) return;
+        if (n instanceof Button b && b.getText() != null && b.getText().contains(phrase)) out.add(b);
+        if (n instanceof Parent p) {
+            for (Node ch : p.getChildrenUnmodifiable()) collectButtonsContaining(ch, phrase, out);
+        }
+    }
+
+    void clickSidebarContaining(String phrase) {
+        Button btn = firstButtonContaining(phrase);
+        if (btn == null) throw new IllegalStateException("button not found: " + phrase);
+        btn.fire();
+    }
+
+    /** First Button with the exact text across ANY open window (main scene + popups). */
+    Button buttonInAnyWindow(String text) {
+        for (Window w : Window.getWindows()) {
+            if (w.getScene() == null || w.getScene().getRoot() == null) continue;
+            List<Button> found = findButtons(w.getScene().getRoot(), text);
+            if (!found.isEmpty()) return found.get(0);
+        }
+        return null;
+    }
+
+    /**
+     * Catalog destinations (Buyers/Items/Templates/Variables/...) live inside
+     * the "Catalog" POPUP since the sidebar was collapsed. Fire the sidebar
+     * button (popup content is built synchronously), then the destination
+     * button inside the popup window — both are real user click paths.
+     */
+    void openCatalogDestination(String label) {
+        Button catalogBtn = firstButton("Catalog");
+        if (catalogBtn == null) throw new IllegalStateException("Catalog sidebar button not found");
+        catalogBtn.fire();
+        Button dest = buttonInAnyWindow(label);
+        if (dest == null) throw new IllegalStateException("catalog destination not found in popup: " + label);
+        dest.fire();
+    }
+
     void clickContentButton(String label) {
         Button btn = firstContentButton(label);
         if (btn == null) throw new IllegalStateException("content button not found: " + label);
@@ -480,6 +584,65 @@ public class NavSmokeRunner extends StudioApp {
     // ------------------------------------------------------------------
     // Designer column-reorder helpers (▲▼ buttons in properties panel)
     // ------------------------------------------------------------------
+
+    /** Selects the first TEXT element through the Layers list so the
+     *  properties panel shows the variable-insertion section.
+     *  Also force-selects the Properties tab. */
+    @SuppressWarnings("unchecked")
+    void selectTextLayer() {
+        for (Node n : stage.getScene().getRoot().lookupAll(".tab-pane")) {
+            if (n instanceof TabPane tp) {
+                for (Tab t : tp.getTabs()) {
+                    if ("Properties".equals(t.getText())) tp.getSelectionModel().select(t);
+                }
+            }
+        }
+        Node n = stage.getScene().getRoot().lookup(".layers-list");
+        if (!(n instanceof ListView)) throw new IllegalStateException("layers list not found");
+        ListView<TemplateElement> lv = (ListView<TemplateElement>) n;
+        for (int i = 0; i < lv.getItems().size(); i++) {
+            TemplateElement te = lv.getItems().get(i);
+            if (te.getType() == ElementType.TEXT) {
+                lv.getSelectionModel().select(i);
+                return;
+            }
+        }
+        throw new IllegalStateException("no TEXT element in template");
+    }
+
+    /** The designer's "Choose variable to add..." combo in the text properties. */
+    @SuppressWarnings("unchecked")
+    ComboBox<?> findVarCombo() {
+        return (ComboBox<?>) findNode(stage.getScene().getRoot(), n ->
+                n instanceof ComboBox<?> cb && "Choose variable to add...".equals(cb.getPromptText()));
+    }
+
+    Button firstContentButtonContaining(String phrase) {
+        List<Button> all = new ArrayList<>();
+        collectButtonsContaining(contentArea(), phrase, all);
+        return all.isEmpty() ? null : all.get(0);
+    }
+
+    /** Raw-Stage dialogs are found by TITLE (they are not DialogPanes). */
+    static Stage findNamedStage(String title) {
+        for (Window w : Window.getWindows()) {
+            if (w instanceof Stage s && title.equals(s.getTitle())) return s;
+        }
+        return null;
+    }
+
+    /** Screenshots a named Stage's scene, then closes it via its own Cancel button. */
+    void shotAndCloseNamedStage(String title, String base) {
+        Stage s = findNamedStage(title);
+        if (s == null || s.getScene() == null) {
+            fail("named-stage-close", "stage not open: " + title);
+            return;
+        }
+        shotNode(s.getScene(), base);
+        Button cancel = findButtons(s.getScene().getRoot(), "Cancel").stream().findFirst().orElse(null);
+        if (cancel != null) cancel.fire();
+        else s.hide();
+    }
 
     /** Selects the first TABLE element through the Layers list — the same
      *  selection-model path a user click uses, which rebuilds the properties
@@ -601,8 +764,18 @@ public class NavSmokeRunner extends StudioApp {
         for (String t : new String[]{"T", "B", "L", "R"}) {
             if (findCheckBox(t) == null) return false;
         }
-        // headerBg + headerText + border + rowBg + rowText + zebra pickers
-        return countNodesOfType(stage.getScene().getRoot(), ColorPicker.class) >= 6;
+        // headerBg + headerText + border + rowBg + rowText + zebra pickers —
+        // rendered as custom colour BUTTONS (custom-color-btn) since the
+        // colour-chooser redesign, no longer javafx ColorPicker instances.
+        return countNodesWithStyleClass(stage.getScene().getRoot(), "custom-color-btn") >= 6;
+    }
+
+    static int countNodesWithStyleClass(Node n, String styleClass) {
+        int c = n != null && n.getStyleClass().contains(styleClass) ? 1 : 0;
+        if (n instanceof Parent p) {
+            for (Node ch : p.getChildrenUnmodifiable()) c += countNodesWithStyleClass(ch, styleClass);
+        }
+        return c;
     }
 
     @SuppressWarnings("unchecked")
@@ -678,7 +851,9 @@ public class NavSmokeRunner extends StudioApp {
         sp.getValueFactory().setValue(mm);
     }
 
-    /** Pref-heights of header/data HBoxes inside white table VBoxes on canvas. */
+    /** Pref-heights of header/data HBoxes inside table VBoxes on canvas.
+     *  The table VBox paints its row background inline (any colour), so match
+     *  the inline -fx-background-color declaration, not a specific colour. */
     List<Double> canvasTableRowHeights() {
         List<Double> out = new ArrayList<>();
         collectTableRows(stage.getScene().getRoot(), out);
@@ -686,7 +861,8 @@ public class NavSmokeRunner extends StudioApp {
     }
 
     static void collectTableRows(Node n, List<Double> out) {
-        if (n instanceof VBox vb && vb.getStyle() != null && vb.getStyle().contains("#ffffff")) {
+        if (n instanceof VBox vb && vb.getStyle() != null
+                && vb.getStyle().toLowerCase().contains("-fx-background-color:")) {
             for (Node ch : vb.getChildrenUnmodifiable()) {
                 if (ch instanceof HBox hb && hb.getPrefHeight() > 5) out.add(hb.getPrefHeight());
             }
@@ -696,13 +872,13 @@ public class NavSmokeRunner extends StudioApp {
         }
     }
 
-    /** True if rows now render at {@code mm}, previously at the seed 6mm. */
-    boolean rowHeightChanged(List<Double> before, double mm) {
+    /** True if rows now render at {@code mm} and previously rendered at a
+     *  DIFFERENT height (whatever the preset's default was). The seeded table
+     *  carries one header + one sample data row = 2 HBoxes, so 2 is "all". */
+    boolean rowHeightApplied(double mm) {
         List<Double> now = canvasTableRowHeights();
-        long nowCount = now.stream().filter(v -> Math.abs(v - mm * MM_PX) < 1.0).count();
-        long beforeCount = before == null ? 0
-                : before.stream().filter(v -> Math.abs(v - 6.0 * MM_PX) < 1.0).count();
-        return nowCount >= 3 && beforeCount >= 3;
+        long atMm = now.stream().filter(v -> Math.abs(v - mm * MM_PX) < 1.0).count();
+        return atMm >= 2 && rowHeightBeforeMm > 0 && Math.abs(rowHeightBeforeMm - mm) > 0.5;
     }
 
     /**

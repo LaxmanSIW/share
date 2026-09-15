@@ -92,6 +92,7 @@ public class CustomColorChooserDialog extends Stage {
 
         initModality(Modality.APPLICATION_MODAL);
         if (owner != null) initOwner(owner);
+        DialogHelper.applyAppIcon(this); // logo in title bar from the very first frame
         initStyle(StageStyle.DECORATED);
         setTitle("Color Chooser");
         setResizable(false);

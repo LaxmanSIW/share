@@ -7,6 +7,7 @@ import com.invoicestudio.service.*;
 import com.invoicestudio.ui.auth.AuthView;
 import com.invoicestudio.ui.auth.LogoutDialog;
 import com.invoicestudio.ui.views.*;
+import javafx.collections.ListChangeListener;
 import javafx.animation.FadeTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -23,6 +24,7 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCombination;
 import javafx.util.Duration;
@@ -121,6 +123,20 @@ public class StudioApp extends Application {
 
         new WindowStateManager().applyAndTrack(stage, 1440, 900, 1024, 640);
         stage.show();
+
+        // Global icon safety net: EVERY window this app ever opens — Dialogs,
+        // raw Stages, file pickers with title bars — inherits the InvoiceStudio
+        // logo automatically if it has no icon of its own. One listener here
+        // means no dialog site can ever regress to the default Java icon.
+        Window.getWindows().addListener((ListChangeListener<Window>) change -> {
+            while (change.next()) {
+                for (Window w : change.getAddedSubList()) {
+                    if (w instanceof Stage s) {
+                        DialogHelper.applyAppIcon(s);
+                    }
+                }
+            }
+        });
 
         // Build an empty shell immediately, then verify session & hydrate data in background:
         showLoading();

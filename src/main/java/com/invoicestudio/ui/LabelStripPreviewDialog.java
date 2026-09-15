@@ -36,6 +36,7 @@ public class LabelStripPreviewDialog extends Stage {
     public LabelStripPreviewDialog(javafx.stage.Window owner, Template template,
                                    Settings settings, List<Map<String, String>> sampleValues) {
         initOwner(owner);
+        DialogHelper.applyAppIcon(this); // logo in title bar from the very first frame
         initModality(Modality.APPLICATION_MODAL);
         setTitle("Strip Preview — " + template.getName());
 

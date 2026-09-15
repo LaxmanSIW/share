@@ -83,6 +83,7 @@ public class LabelBulkPrintDialog extends Stage {
         this.barcodeVars = barcodeVars != null ? barcodeVars : List.of();
 
         initOwner(owner);
+        DialogHelper.applyAppIcon(this); // logo in title bar from the very first frame
         initModality(Modality.APPLICATION_MODAL);
         setTitle("Bulk Label Print — " + template.getName());
         setMinWidth(680);

@@ -9,8 +9,41 @@ import javafx.scene.layout.Region;
 import javafx.stage.Stage;
 
 import java.io.InputStream;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class DialogHelper {
+
+    private static final AtomicReference<Image> cachedIcon = new AtomicReference<>(null);
+
+    /** The application logo, lazily loaded and cached (never throws). */
+    public static Image getAppIcon() {
+        Image ic = cachedIcon.get();
+        if (ic == null) {
+            try (InputStream is = DialogHelper.class.getResourceAsStream("/icons/Invoicewhitebackground.png")) {
+                if (is != null) {
+                    ic = new Image(is);
+                    cachedIcon.set(ic);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return cachedIcon.get();
+    }
+
+    /**
+     * Gives a stage the application logo if it does not already have one.
+     * Safe to call before OR after {@code show()} — call before show when you
+     * own the Stage so the title bar never flashes the default Java icon.
+     */
+    public static void applyAppIcon(Stage stage) {
+        if (stage == null) return;
+        try {
+            if (!stage.getIcons().isEmpty()) return;
+            Image ic = getAppIcon();
+            if (ic != null) stage.getIcons().add(ic);
+        } catch (Exception ignored) {
+        }
+    }
 
     public static void styleDialog(Dialog<?> dialog) {
         styleDialog(dialog, 460, 320);
@@ -25,6 +58,15 @@ public class DialogHelper {
         DialogPane pane = dialog.getDialogPane();
         pane.setMaxWidth(Double.MAX_VALUE);
         pane.setMaxHeight(Double.MAX_VALUE);
+
+        // Anti-flicker: clamp the pane's MIN size BEFORE the dialog is shown.
+        // JavaFX sizes the dialog stage from the pane's constrained preferred
+        // size at show() time, so the very first frame already honours the
+        // floor — the old approach raised the stage minimum in a
+        // Platform.runLater AFTER show, which made small dialogs visibly
+        // "jump" from their content size up to the minimum.
+        if (minWidth > 0) pane.setMinWidth(minWidth);
+        if (minHeight > 0) pane.setMinHeight(minHeight);
 
         // Ensure inner content can expand fully on maximize/resize
         if (pane.getContent() instanceof Region r) {
@@ -48,18 +90,15 @@ public class DialogHelper {
             pane.getStyleClass().add("custom-dialog-pane");
         }
 
-        // Set application icon, min dimensions and scene stylesheet on dialog stage
+        // Set application icon + stage-level min dimensions once the dialog's
+        // own stage exists (the pane min above already guarantees the size,
+        // this only adds the resize floor for user-driven resizing).
         Platform.runLater(() -> {
             try {
                 if (pane.getScene() != null && pane.getScene().getWindow() instanceof Stage stage) {
                     if (minWidth > 0) stage.setMinWidth(minWidth);
                     if (minHeight > 0) stage.setMinHeight(minHeight);
-                    if (stage.getIcons().isEmpty()) {
-                        InputStream iconStream = DialogHelper.class.getResourceAsStream("/icons/Invoicewhitebackground.png");
-                        if (iconStream != null) {
-                            stage.getIcons().add(new Image(iconStream));
-                        }
-                    }
+                    applyAppIcon(stage);
                     if (css != null && !pane.getScene().getStylesheets().contains(css)) {
                         pane.getScene().getStylesheets().add(css);
                     }

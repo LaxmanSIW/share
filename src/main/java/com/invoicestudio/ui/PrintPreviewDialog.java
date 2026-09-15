@@ -66,6 +66,7 @@ public class PrintPreviewDialog {
 
         stage.initModality(Modality.APPLICATION_MODAL);
         if (owner != null) stage.initOwner(owner);
+        DialogHelper.applyAppIcon(stage); // logo in title bar from the very first frame
         stage.setTitle(title != null ? title : "Print");
 
         BorderPane root = new BorderPane();
