@@ -40,3 +40,4 @@ graphify-out/
 .gemini/
 *.graphify*
 labelstock-verify/
+ruler-verify/

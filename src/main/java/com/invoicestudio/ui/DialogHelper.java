@@ -15,16 +15,27 @@ public class DialogHelper {
 
     private static final AtomicReference<Image> cachedIcon = new AtomicReference<>(null);
 
-    /** The application logo, lazily loaded and cached (never throws). */
+    /** The application logo, lazily loaded and cached (never throws).
+     *  Uses the modern icon-only mark (crisp at window-icon sizes);
+     *  falls back to the classic wordmark if the mark is unavailable. */
     public static Image getAppIcon() {
         Image ic = cachedIcon.get();
         if (ic == null) {
-            try (InputStream is = DialogHelper.class.getResourceAsStream("/icons/Invoicewhitebackground.png")) {
+            try (InputStream is = DialogHelper.class.getResourceAsStream("/icons/invoice-mark.png")) {
                 if (is != null) {
                     ic = new Image(is);
                     cachedIcon.set(ic);
                 }
             } catch (Exception ignored) {
+            }
+            if (ic == null) {
+                try (InputStream is = DialogHelper.class.getResourceAsStream("/icons/Invoicewhitebackground.png")) {
+                    if (is != null) {
+                        ic = new Image(is);
+                        cachedIcon.set(ic);
+                    }
+                } catch (Exception ignored) {
+                }
             }
         }
         return cachedIcon.get();

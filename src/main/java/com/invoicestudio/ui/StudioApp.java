@@ -115,7 +115,13 @@ public class StudioApp extends Application {
         stage.setMinHeight(640);
 
         try {
-            InputStream iconStream = getClass().getResourceAsStream("/icons/Invoicewhitebackground.png");
+            // Modern icon-only mark (redesigned from the square wordmark —
+            // readable at taskbar/title-bar sizes). Wordmark PNGs stay for
+            // label-artwork "Use App Logo" features.
+            InputStream iconStream = getClass().getResourceAsStream("/icons/invoice-mark.png");
+            if (iconStream == null) {
+                iconStream = getClass().getResourceAsStream("/icons/Invoicewhitebackground.png");
+            }
             if (iconStream != null) {
                 stage.getIcons().add(new Image(iconStream));
             }

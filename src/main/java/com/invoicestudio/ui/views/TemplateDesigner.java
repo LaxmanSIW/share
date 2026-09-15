@@ -130,7 +130,6 @@ public class TemplateDesigner extends BorderPane {
      *  skip themselves when a newer request superseded them. */
     private int anchorGeneration = 0;
     private double renderedGridStepMm = -1;
-    private double renderedRulerStepMm = -1;
     /** Grey panning margin (px) around the scaled canvas inside the wrapper.
      *  At least half the viewport per side, so the scaled content ALWAYS
      *  overflows the viewport and horizontal/vertical scrolling never dead-ends
@@ -160,6 +159,7 @@ public class TemplateDesigner extends BorderPane {
 
     /* ---- Barcode (label) mode ---- */
     private Button barcodeModeBtn;
+    private Button pageSettingsBtn;
     private Button labelSettingsBtn;
     private Button stripPreviewBtn;
     private Button bulkPrintBtn;
@@ -441,8 +441,11 @@ public class TemplateDesigner extends BorderPane {
         HBox pageGroup = new HBox(6);
         pageGroup.setAlignment(Pos.CENTER_LEFT);
 
-        Button pageBtn = createIconToolBtn(IconHelper.ICON_SETTINGS, "Page", "Configure page dimensions, paper size & margins",
-                () -> { if (template.isLabelMode()) showLabelSettingsDialog(); else showPageSettingsDialog(); });
+        // In Barcode Mode the canvas page IS the label cell, so "Page" and
+        // "Label Stock" were two buttons for the same dialog — "Page" hides
+        // there and Label Stock is the single source of truth (user ask).
+        pageSettingsBtn = createIconToolBtn(IconHelper.ICON_SETTINGS, "Page", "Configure page dimensions, paper size & margins",
+                this::showPageSettingsDialog);
 
         // Barcode-mode-only controls (hidden on normal bill templates)
         labelSettingsBtn = createIconToolBtn(IconHelper.ICON_TAG, "Label Stock", "Label strip settings: columns, label size, gaps, margins, corners, orientation", this::showLabelSettingsDialog);
@@ -473,7 +476,7 @@ public class TemplateDesigner extends BorderPane {
         magnetCb.setTooltip(new Tooltip("Snap object borders to align and collapse with other objects and margins"));
         magnetCb.selectedProperty().addListener((obs, old, val) -> magnetSnapping = val);
 
-        pageGroup.getChildren().addAll(pageBtn, labelSettingsBtn, stripPreviewBtn, bulkPrintBtn, gridCb, snapCb, magnetCb);
+        pageGroup.getChildren().addAll(pageSettingsBtn, labelSettingsBtn, stripPreviewBtn, bulkPrintBtn, gridCb, snapCb, magnetCb);
 
         Separator s3 = new Separator(javafx.geometry.Orientation.VERTICAL);
 
@@ -823,9 +826,10 @@ public class TemplateDesigner extends BorderPane {
         }
         buildGridCanvas(pageW, pageH);
         buildMarginGuides(); // guides keep hairline stroke & legend size in sync with zoom
-        if (Math.abs(gridStepMm() - renderedRulerStepMm) > 0.01) {
-            buildRulers(pageW, pageH);
-        }
+        // Rulers are screen-constant (tick lengths & fonts are 1/zoom local px)
+        // AND their 1-2-5 scale adapts to zoom — redraw them on EVERY zoom
+        // change, not just when the major step changes.
+        buildRulers(pageW, pageH);
     }
 
     /**
@@ -1394,6 +1398,30 @@ public class TemplateDesigner extends BorderPane {
         return side;
     }
 
+    /**
+     * Canonical design-tool ruler scale (researched: Photoshop/Illustrator
+     * rulers, chart "nice ticks"): majors follow the 1-2-5 progression and are
+     * sized so adjacent majors stay at least ~32 screen px apart; minor ticks
+     * subdivide each major (÷10, ÷5 or ÷2 — the first that keeps minors at
+     * least ~3 screen px apart). The result: zooming in progressively REVEALS
+     * finer true-mm divisions instead of stretching the old ones, and numbers
+     * always sit on the long major ticks with their real millimetre value.
+     */
+    private double rulerMajorStepMm() {
+        double pxPerMm = MM_PX * zoom;
+        for (double s : new double[]{1, 2, 5, 10, 20, 50, 100, 200, 500}) {
+            if (s * pxPerMm >= 32) return s;
+        }
+        return 500;
+    }
+
+    private double rulerMinorStepMm(double major) {
+        double pxPerMm = MM_PX * zoom;
+        if (major / 10 * pxPerMm >= 3) return major / 10;
+        if (major / 5 * pxPerMm >= 3) return major / 5;
+        return major / 2;
+    }
+
     private void buildRulers(double pageW, double pageH) {
         rulerTop.getChildren().clear();
         rulerLeft.getChildren().clear();
@@ -1417,62 +1445,89 @@ public class TemplateDesigner extends BorderPane {
         double totalMmW = template.getPage().getWidth();
         double totalMmH = template.getPage().getHeight();
 
-        // Rulers mirror the adaptive canvas grid: major ticks follow the same
-        // step (10/5/2/1 mm) while printed numbers stay far enough apart.
-        double majorStep = gridStepMm();
-        double labelStep = majorStep >= 5 ? 10 : 5;
+        double majorStep = rulerMajorStepMm();
+        double minorStep = rulerMinorStepMm(majorStep);
+        buildRulerTicks(rulerTop, true, totalMmW, majorStep, minorStep);
+        buildRulerTicks(rulerLeft, false, totalMmH, majorStep, minorStep);
+    }
 
-        // Top horizontal ruler
-        for (int mm = 0; mm <= (int) totalMmW; mm++) {
-            double x = mm * MM_PX;
-            if (x > pageW) break;
+    /**
+     * Draws one ruler as a 3-tier tick system (researched standard): MINOR
+     * ticks are short, MID ticks (major/2) medium, MAJOR ticks longest and the
+     * only ones carrying numbers — so a long strip always means a labelled,
+     * true-millimetre position. Tick lengths are SCREEN-constant (local length
+     * = screen px / zoom) and positions snap to whole device pixels, keeping
+     * every tick 1 device px hairline-sharp at any zoom; duplicate snapped
+     * positions skip themselves so minors never pile up when zoomed far out.
+     */
+    private void buildRulerTicks(Pane ruler, boolean horizontal, double totalMm,
+                                 double majorStep, double minorStep) {
+        double z = Math.max(0.3, zoom);
+        double lenMajor = 10.0 / z, lenMid = 6.5 / z, lenMinor = 4.0 / z;
+        long sub = Math.round(majorStep / minorStep);
+        boolean hasMid = sub % 2 == 0 && sub > 2;      // mid tier only if exactly halfway exists
+        long midEvery = hasMid ? sub / 2 : -1;
+        Color cMajor = Color.web("#94a3b8"), cMid = Color.web("#5b6b82"), cMinor = Color.web("#3d4a5e");
+        double strokeWidth = 1.0 / z;
+        double lastSnapped = -1e9;
 
-            boolean isMajor = mm % (int) majorStep == 0;
-            int tickH = isMajor ? 10 : ((mm % 5 == 0) ? 6 : 3);
-            Line tick = new Line(x, RULER_SIZE - tickH, x, RULER_SIZE);
-            tick.setStroke(isMajor ? Color.web("#94a3b8") : Color.web("#475569"));
-            // Hairline: at 200% zoom a 1.0 local-px stroke would render 2 device
-            // px thick & soft — divide by zoom so ticks stay 1 device px sharp.
-            tick.setStrokeWidth(1.0 / Math.max(0.3, zoom));
-            rulerTop.getChildren().add(tick);
+        for (long i = 0; ; i++) {
+            double v = i * minorStep;
+            if (v > totalMm + 1e-9) break;
+            boolean isMajor = i % sub == 0;
+            boolean isMid = !isMajor && midEvery > 0 && i % midEvery == 0;
 
-            if (mm % (int) labelStep == 0 && mm > 0 && mm < totalMmW - 5) {
-                Label lbl = new Label(String.valueOf(mm));
-                // Scale the font down by zoom so numerals keep a constant
-                // on-screen size (and stay vector-crisp) at every zoom level.
+            // Snap to whole device pixels (local = device / zoom) for crisp hairlines
+            double snapped = Math.round(v * MM_PX * zoom) / zoom;
+            if (snapped <= lastSnapped + 1e-9 && i > 0) continue; // dedupe sub-pixel pile-up
+            lastSnapped = snapped;
+
+            double tickLen = isMajor ? lenMajor : (isMid ? lenMid : lenMinor);
+            Color tickColor = isMajor ? cMajor : (isMid ? cMid : cMinor);
+            Line tick = horizontal
+                    ? new Line(snapped, RULER_SIZE - tickLen, snapped, RULER_SIZE)
+                    : new Line(RULER_SIZE - tickLen, snapped, RULER_SIZE, snapped);
+            tick.setStroke(tickColor);
+            tick.setStrokeWidth(strokeWidth);
+            ruler.getChildren().add(tick);
+
+            // Numbers ONLY on major ticks — the exact measure the long strip marks
+            if (isMajor && v > 1e-9) {
+                String text = v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
+                double fontPx = 8.0 / z;
+                double extent = horizontal ? ruler.getPrefWidth() : ruler.getPrefHeight();
+                // Space the label occupies along the ruler axis: width for the
+                // top ruler, line-box height for the left ruler.
+                double labelExtent = horizontal
+                        ? text.length() * 4.7 / z + 3.0 / z
+                        : 11.5 / z;
+                double pos = snapped + 2.0 / z;
+                boolean isLastMajor = v + majorStep > totalMm + 1e-9;
+                if (pos + labelExtent > extent) {
+                    if (isLastMajor) {
+                        // Page-end label: align flush with the edge instead of
+                        // clipping, so the page's exact size stays readable.
+                        pos = Math.max(0, extent - labelExtent);
+                    } else {
+                        // Interior label would clip past the edge — drop it;
+                        // the major tick itself still marks the position.
+                        continue;
+                    }
+                }
+                Label lbl = new Label(text);
                 lbl.setStyle(String.format(java.util.Locale.US,
                         "-fx-font-size: %.2fpx; -fx-text-fill: #94a3b8; -fx-font-family: 'Segoe UI', sans-serif;",
-                        8.0 / Math.max(0.3, zoom)));
-                lbl.setLayoutX(x + 2);
-                lbl.setLayoutY(1);
-                rulerTop.getChildren().add(lbl);
+                        fontPx));
+                if (horizontal) {
+                    lbl.setLayoutX(pos);
+                    lbl.setLayoutY(1);
+                } else {
+                    lbl.setLayoutX(1);
+                    lbl.setLayoutY(pos);
+                }
+                ruler.getChildren().add(lbl);
             }
         }
-
-        // Left vertical ruler
-        for (int mm = 0; mm <= (int) totalMmH; mm++) {
-            double y = mm * MM_PX;
-            if (y > pageH) break;
-
-            boolean isMajor = mm % (int) majorStep == 0;
-            int tickW = isMajor ? 10 : ((mm % 5 == 0) ? 6 : 3);
-            Line tick = new Line(RULER_SIZE - tickW, y, RULER_SIZE, y);
-            tick.setStroke(isMajor ? Color.web("#94a3b8") : Color.web("#475569"));
-            tick.setStrokeWidth(1.0 / Math.max(0.3, zoom));
-            rulerLeft.getChildren().add(tick);
-
-            if (mm % (int) labelStep == 0 && mm > 0 && mm < totalMmH - 5) {
-                Label lbl = new Label(String.valueOf(mm));
-                lbl.setStyle(String.format(java.util.Locale.US,
-                        "-fx-font-size: %.2fpx; -fx-text-fill: #94a3b8; -fx-font-family: 'Segoe UI', sans-serif;",
-                        8.0 / Math.max(0.3, zoom)));
-                lbl.setLayoutX(1);
-                lbl.setLayoutY(y + 1);
-                rulerLeft.getChildren().add(lbl);
-            }
-        }
-
-        renderedRulerStepMm = majorStep;
     }
 
     private void refreshCanvas() {
@@ -6234,6 +6289,9 @@ public class TemplateDesigner extends BorderPane {
 
     private void updateLabelButtonsVisibility() {
         boolean label = template.isLabelMode();
+        // Barcode Mode: "Page" and "Label Stock" opened the SAME dialog — keep
+        // only Label Stock there (the page is just the label cell mirrored).
+        if (pageSettingsBtn != null) { pageSettingsBtn.setVisible(!label); pageSettingsBtn.setManaged(!label); }
         if (labelSettingsBtn != null) { labelSettingsBtn.setVisible(label); labelSettingsBtn.setManaged(label); }
         if (stripPreviewBtn != null) { stripPreviewBtn.setVisible(label); stripPreviewBtn.setManaged(label); }
         if (bulkPrintBtn != null) { bulkPrintBtn.setVisible(label); bulkPrintBtn.setManaged(label); }
@@ -6284,20 +6342,19 @@ public class TemplateDesigner extends BorderPane {
 
         // What the printer knows by itself vs what must be declared (researched:
         // TSPL manual AUTODETECT/GAPDETECT p.6 + TSC/Seagull driver docs).
-        Label explainer = new Label("The printer works out ONE thing by itself: where each label ends along the "
-                + "feed (gap sensor — after Calibrate Sensor). Everything ACROSS the strip — label size, columns, "
-                + "margins — must be declared to it, and this dialog is that declaration. Describe the roll exactly "
-                + "as it is; the picture mirrors every change.");
+        Label explainer = new Label("Describe the roll exactly as it is — the picture mirrors every change. "
+                + "The printer only senses where each label ENDS along the feed (gap sensor, after Calibrate "
+                + "Sensor); everything across the strip — label size, columns, margins — is declared here.");
         explainer.setWrapText(true);
         explainer.getStyleClass().add("text-muted");
 
         // ── Live strip diagram + BarTender-style numbers caption ──
         Pane diagram = new Pane();
-        diagram.setStyle("-fx-background-color: #1E293B; -fx-background-radius: 6;");
-        diagram.setPrefSize(588, 218);
-        diagram.setMinSize(588, 218);
-        diagram.setMaxSize(588, 218);
-        diagram.setClip(new Rectangle(588, 218));
+        diagram.setStyle("-fx-background-color: #1E293B; -fx-background-radius: 8;");
+        diagram.setPrefSize(332, 230);
+        diagram.setMinSize(332, 230);
+        diagram.setMaxSize(332, 230);
+        diagram.setClip(new Rectangle(332, 230));
         Label caption = new Label();
         caption.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #D9A13B;");
         caption.setAlignment(Pos.CENTER);
@@ -6306,10 +6363,6 @@ public class TemplateDesigner extends BorderPane {
 
         VBox content = new VBox(10);
         content.setPadding(new Insets(14));
-        content.getChildren().addAll(explainer, diagram, caption);
-
-        GridPane g = new GridPane();
-        g.setHgap(10); g.setVgap(10);
 
         Spinner<Integer> colsSpin = new Spinner<>(1, 8, cfg.getColumns());
         colsSpin.setPrefWidth(90);
@@ -6371,11 +6424,6 @@ public class TemplateDesigner extends BorderPane {
         Label artCaption = new Label();
         artCaption.setWrapText(true);
         artCaption.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
-
-        Label stockHead = new Label("STOCK — THE PHYSICAL ROLL");
-        stockHead.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #94A3B8;");
-        Label artHead = new Label("ARTWORK — HOW THE CANVAS LANDS ON THE LABEL");
-        artHead.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #94A3B8;");
 
         // Live recompute: derives the design canvas from the PHYSICAL spinners
         // + artwork rotation, auto-fits the paper width, refreshes every number
@@ -6440,51 +6488,21 @@ public class TemplateDesigner extends BorderPane {
             drawStripDiagram(diagram, tmp);
         };
 
-        int r = 0;
-        g.add(stockHead, 0, r, 4, 1); r++;
-        g.add(new Label("Label width on strip (mm):"), 0, r); g.add(physWSpin, 1, r);
-        g.add(new Label("Label height on strip (mm):"), 2, r); g.add(physHSpin, 3, r); r++;
-        g.add(new Label("Columns across:"), 0, r); g.add(colsSpin, 1, r);
-        g.add(new Label("Gap between columns (mm):"), 2, r); g.add(gapXSpin, 3, r); r++;
-        g.add(new Label("Feed gap between rows (mm):"), 0, r); g.add(gapYSpin, 1, r);
-        g.add(new Label("Corner radius (mm):"), 2, r); g.add(cornerSpin, 3, r); r++;
-        g.add(new Label("Left margin (mm):"), 0, r); g.add(mlSpin, 1, r);
-        g.add(new Label("Right margin (mm):"), 2, r); g.add(mrSpin, 3, r); r++;
-        g.add(new Label("Paper (liner) width (mm):"), 0, r); g.add(stripWSpin, 1, r);
-        g.add(new Label("Stock type:"), 2, r); g.add(stockCb, 3, r); r++;
-        g.add(autoPaper, 0, r, 4, 1); r++;
+        // ── Modern card layout: grouped sections instead of a 4-column wall ──
+        SettingsCard stockCard = new SettingsCard("STOCK — THE PHYSICAL ROLL");
+        stockCard.add("Label width on strip (mm)", physWSpin);
+        stockCard.add("Label height on strip (mm)", physHSpin);
+        stockCard.add("Columns across", colsSpin);
+        stockCard.add("Feed gap between rows (mm)", gapYSpin);
+        stockCard.add("Gap between columns (mm)", gapXSpin);
+        stockCard.add("Corner radius (mm)", cornerSpin);
 
-        g.add(needLbl, 0, r, 4, 1); r++;
-
-        g.add(artHead, 0, r, 4, 1); r++;
-        g.add(new Label("Artwork direction:"), 0, r);
-        GridPane.setColumnSpan(orientCb, 3);
-        g.add(orientCb, 1, r); r++;
-        g.add(artCaption, 0, r, 4, 1); r++;
-
-        g.add(pitchLbl, 0, r, 4, 1); r++;
-
-        Label hint = new Label("The canvas is ONE label cell — the design size shown under Artwork direction. "
-                + "The picture and Strip Preview always show the physical roll. Want a true WYSIWYG canvas? "
-                + "Rotate the design below: every element spins 90° and Artwork direction resets to none.");
-        hint.setWrapText(true); hint.getStyleClass().add("text-muted");
-        g.add(hint, 0, r, 4, 1); r++;
-
-        Button rotBtn = new Button("↻  Rotate Design 90° into print orientation");
-        rotBtn.getStyleClass().addAll("button-sm", "button-secondary");
-        rotBtn.setTooltip(new Tooltip(
-                "Spins the whole design 90° clockwise: label width/height swap, every element moves and "
-                + "rotates with it, and Artwork direction resets to none — canvas, preview and print all match."));
-        rotBtn.setOnAction(e -> {
-            rotateLabelDesign90();
-            // keep the stock-first editors consistent with the rotated design
-            theta[0] = cfg.getOrientation(); // "0" after the bake
-            physWSpin.getValueFactory().setValue(LabelGeometryService.physicalCellWidth(cfg));
-            physHSpin.getValueFactory().setValue(LabelGeometryService.physicalCellHeight(cfg));
-            orientCb.getSelectionModel().select(Math.max(0, Arrays.asList(orientCodes).indexOf(theta[0])));
-            upd.run();
-        });
-        g.add(rotBtn, 0, r, 4, 1); r++;
+        SettingsCard linerCard = new SettingsCard("LINER, MARGINS & STOCK TYPE");
+        linerCard.add("Paper (liner) width (mm)", stripWSpin);
+        linerCard.addFull(autoPaper);
+        linerCard.add("Stock type", stockCb);
+        linerCard.add("Left margin (mm)", mlSpin);
+        linerCard.add("Right margin (mm)", mrSpin);
 
         colsSpin.valueProperty().addListener((o, a, b) -> upd.run());
         for (Spinner<Double> s : List.of(physWSpin, physHSpin, gapXSpin, gapYSpin, mlSpin, mrSpin)) {
@@ -6501,7 +6519,47 @@ public class TemplateDesigner extends BorderPane {
         });
         upd.run();
 
-        content.getChildren().add(g);
+        // ── ARTWORK card: how the canvas design lands on the physical label ──
+        SettingsCard artCard = new SettingsCard("ARTWORK — CANVAS ON THE ROLL");
+        artCard.add("Artwork direction", orientCb);
+        Button rotBtn = new Button("↻  Rotate Design 90° into print orientation");
+        rotBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        rotBtn.setMaxWidth(Double.MAX_VALUE);
+        rotBtn.setTooltip(new Tooltip(
+                "Spins the whole design 90° clockwise: label width/height swap, every element moves and "
+                + "rotates with it, and Artwork direction resets to none — canvas, preview and print all match."));
+        rotBtn.setOnAction(e -> {
+            rotateLabelDesign90();
+            // keep the stock-first editors consistent with the rotated design
+            theta[0] = cfg.getOrientation(); // "0" after the bake
+            physWSpin.getValueFactory().setValue(LabelGeometryService.physicalCellWidth(cfg));
+            physHSpin.getValueFactory().setValue(LabelGeometryService.physicalCellHeight(cfg));
+            orientCb.getSelectionModel().select(Math.max(0, Arrays.asList(orientCodes).indexOf(theta[0])));
+            upd.run();
+        });
+        artCard.addFull(rotBtn);
+        Label hint = new Label("The canvas is ONE label cell — the design size shown under Artwork direction. "
+                + "The picture and Strip Preview always show the physical roll. Rotate the design for a true "
+                + "WYSIWYG canvas: every element spins 90° and Artwork direction resets to none.");
+        hint.setWrapText(true); hint.getStyleClass().add("text-muted");
+        artCard.addFull(hint);
+
+        // Amber diagnostic note: the feed-pitch rule that prevents blank labels.
+        VBox pitchNote = new VBox(pitchLbl);
+        pitchNote.setStyle("-fx-background-color: rgba(217,161,59,0.10); -fx-background-radius: 8;"
+                + "-fx-border-color: rgba(217,161,59,0.40); -fx-border-radius: 8; -fx-border-width: 1;"
+                + "-fx-padding: 8 10 8 10;");
+
+        // LEFT — live roll preview; RIGHT — grouped setting cards
+        VBox leftCol = new VBox(8, diagram, needLbl, caption, artCaption, pitchNote);
+        leftCol.setPrefWidth(332);
+        leftCol.setFillWidth(true);
+        VBox rightCol = new VBox(10, stockCard.box, linerCard.box, artCard.box);
+        rightCol.setFillWidth(true);
+        HBox body = new HBox(14, leftCol, rightCol);
+        HBox.setHgrow(rightCol, javafx.scene.layout.Priority.ALWAYS);
+
+        content.getChildren().addAll(explainer, body);
         dlg.getDialogPane().setContent(content);
         dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         dlg.setResultConverter(btn -> btn == ButtonType.OK);
@@ -6540,6 +6598,39 @@ public class TemplateDesigner extends BorderPane {
         });
     }
 
+    /** Dark rounded "card" with a gold small-caps header and a 2-column
+     *  label/control grid — the building block of the modern Label Stock
+     *  dialog layout. Pure presentation; no behaviour. */
+    private static final class SettingsCard {
+        final VBox box = new VBox(8);
+        final GridPane grid = new GridPane();
+
+        SettingsCard(String title) {
+            box.setStyle("-fx-background-color: #151C29; -fx-background-radius: 8;"
+                    + "-fx-border-color: #273245; -fx-border-radius: 8; -fx-border-width: 1;"
+                    + "-fx-padding: 12;");
+            Label head = new Label(title);
+            head.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #D9A13B;");
+            grid.setHgap(10);
+            grid.setVgap(8);
+            box.getChildren().addAll(head, grid);
+        }
+
+        void add(String labelText, Node control) {
+            Label l = new Label(labelText);
+            l.setWrapText(true);
+            l.setStyle("-fx-font-size: 12px; -fx-text-fill: #B9C4D6;");
+            int r = grid.getRowCount();
+            GridPane.setHgrow(control, javafx.scene.layout.Priority.ALWAYS);
+            grid.add(l, 0, r);
+            grid.add(control, 1, r);
+        }
+
+        void addFull(Node node) {
+            grid.add(node, 0, grid.getRowCount(), 2, 1);
+        }
+    }
+
     /**
      * Draws the BarTender-style page thumbnail for the Label Stock dialog:
      * the liner with its die-cut labels (row 1 full, row 2 peeking below the
@@ -6548,7 +6639,8 @@ public class TemplateDesigner extends BorderPane {
      */
     private void drawStripDiagram(Pane bed, LabelConfig tmp) {
         bed.getChildren().clear();
-        final double W = 588, H = 218;
+        final double W = bed.getPrefWidth() > 0 ? bed.getPrefWidth() : 588;
+        final double H = bed.getPrefHeight() > 0 ? bed.getPrefHeight() : 218;
         boolean continuous = "continuous".equalsIgnoreCase(tmp.getStockType());
         double linerW = Math.max(1, tmp.getStripWidth());
         double rowH = LabelGeometryService.physicalCellHeight(tmp);
@@ -6770,7 +6862,7 @@ public class TemplateDesigner extends BorderPane {
         // Barcode Mode: the canvas is the label cell — point users to the right dialog.
         if (template.isLabelMode()) {
             Label note = new Label("Barcode Mode active — this canvas is ONE label cell. "
-                    + "Use ⚙ Page (or 🏷 Label Stock) to edit strip columns, gaps, margins, corners & print orientation.");
+                    + "Use 🏷 Label Stock to edit strip columns, gaps, margins, corners & print orientation.");
             note.setWrapText(true);
             note.setStyle("-fx-text-fill: #b45309; -fx-background-color: rgba(245,158,11,0.12); -fx-padding: 6 10; -fx-background-radius: 4;");
             addPropertyNode(note);
