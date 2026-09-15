@@ -2273,6 +2273,45 @@ Label {
     -fx-border-width: 0 0 1 0;
 }
 
+/* Designer ribbon wrapped in a horizontal ScrollPane: excess tool buttons
+   scroll instead of stretching the whole top bar (which pushed the
+   right-aligned "Save Template" button off screen). */
+.ribbon-scroll {
+    -fx-background-color: #0F172A;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+.ribbon-scroll > .viewport {
+    -fx-background-color: #0F172A;
+    -fx-background-insets: 0;
+}
+.ribbon-scroll .scroll-bar:horizontal {
+    -fx-background-color: #0F172A;
+    -fx-background-insets: 0;
+    -fx-pref-height: 6px;
+    -fx-min-height: 6px;
+    -fx-max-height: 6px;
+}
+.ribbon-scroll .scroll-bar:horizontal .thumb {
+    -fx-background-color: #334155;
+    -fx-background-radius: 3;
+    -fx-background-insets: 1 0 1 0;
+}
+.ribbon-scroll .scroll-bar:horizontal .thumb:hover {
+    -fx-background-color: #475569;
+}
+.ribbon-scroll .scroll-bar:horizontal .increment-button,
+.ribbon-scroll .scroll-bar:horizontal .decrement-button {
+    -fx-shape: "";
+    -fx-pref-width: 0;
+    -fx-min-width: 0;
+    -fx-max-width: 0;
+    -fx-opacity: 0;
+}
+.ribbon-scroll .scroll-bar:horizontal .track {
+    -fx-background-color: transparent;
+}
+
 .designer-side {
     -fx-background-color: #12161D;
     -fx-border-color: -color-border;

@@ -106,10 +106,20 @@ public class TemplateDesigner extends BorderPane {
     private final Pane elementsPane = new Pane();
     private final Pane guideLayer = new Pane();
     private final Pane penLayer = new Pane();
+    /** Blue dashed printable-margin boundary + legend — kept ABOVE every
+     *  element so objects can never cover the guides. */
+    private final Pane marginLayer = new Pane();
     private final Pane selectionPane = new Pane();
     private final Pane rulerTop = new Pane();
     private final Pane rulerLeft = new Pane();
     private final Pane rulerCorner = new Pane();
+    /** Plain wrapper Group: a Group's layoutBounds = union of its children's
+     *  boundsInParent (transforms INCLUDED), so scaling canvasContainer makes
+     *  the scaled size visible to layout — the StackPane/ScrollPane then centre
+     *  and scroll by the real visual size. Scaling the Group ITSELF would hide
+     *  the zoom from layout (Group.layoutBounds excludes its own transform),
+     *  which is exactly what let the canvas drift off the reachable (positive)
+     *  scroll range at high zoom, cutting off its left side. */
     private final Group scaleGroup = new Group(canvasContainer);
 
     private double zoom = 0.9;
@@ -185,8 +195,9 @@ public class TemplateDesigner extends BorderPane {
         canvas.getStyleClass().add("bill-sheet-canvas");
         guideLayer.setMouseTransparent(true);
         penLayer.setMouseTransparent(true);
-        canvas.getChildren().addAll(gridPane, elementsPane, guideLayer, penLayer, selectionPane);
+        canvas.getChildren().addAll(gridPane, elementsPane, guideLayer, penLayer, marginLayer, selectionPane);
         gridPane.setMouseTransparent(true);
+        marginLayer.setMouseTransparent(true);
         selectionPane.setPickOnBounds(false);
 
         canvasContainer.getChildren().addAll(rulerTop, rulerLeft, rulerCorner, canvas);
@@ -474,7 +485,21 @@ public class TemplateDesigner extends BorderPane {
                 viewGroup
         );
 
-        rootToolbar.getChildren().addAll(topBar, ribbon);
+        // The ribbon (2nd row) is the widest row — in Barcode Mode it grows by
+        // Label Stock / Strip Preview / Bulk Print. If it dictated the width of
+        // this VBox, the BorderPane would widen the WHOLE top area past the
+        // viewport and the right-aligned "Save Template" button ended up off
+        // screen. Scrolling the ribbon horizontally keeps the top bar (with
+        // Save) pinned to the real window width; excess tools scroll instead.
+        ScrollPane ribbonScroll = new ScrollPane(ribbon);
+        ribbonScroll.getStyleClass().add("ribbon-scroll");
+        ribbonScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        ribbonScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        ribbonScroll.setFitToWidth(false);
+        ribbonScroll.setFitToHeight(true);
+        ribbonScroll.setPannable(false);
+
+        rootToolbar.getChildren().addAll(topBar, ribbonScroll);
         return rootToolbar;
     }
 
@@ -574,9 +599,35 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void setZoom(double z) {
+        double oldZoom = this.zoom;
         this.zoom = Math.max(0.3, Math.min(4.0, z));
-        scaleGroup.setScaleX(zoom);
-        scaleGroup.setScaleY(zoom);
+
+        // Viewport anchor: remember which content point currently sits at the
+        // centre of the viewport (in unscaled designer coordinates) so it can be
+        // re-centred after the zoom. This keeps zooming "around the view
+        // centre": the canvas can never silently drift off the left/top edge.
+        double anchorX = Double.NaN, anchorY = Double.NaN;
+        if (canvasScrollPane != null && centerWrapper != null && oldZoom > 0) {
+            Bounds vp = canvasScrollPane.getViewportBounds();
+            double stackW = Math.max(centerWrapper.getWidth(), vp.getWidth());
+            double stackH = Math.max(centerWrapper.getHeight(), vp.getHeight());
+            Bounds gb = scaleGroup.getLayoutBounds();
+            // offset of the scaled content inside the wrapper (StackPane centring)
+            double offX = Math.max(0, (stackW - gb.getWidth()) / 2.0);
+            double offY = Math.max(0, (stackH - gb.getHeight()) / 2.0);
+            double rangeW = Math.max(0, stackW - vp.getWidth());
+            double rangeH = Math.max(0, stackH - vp.getHeight());
+            double centreX = canvasScrollPane.getHvalue() * rangeW + vp.getWidth() / 2.0;
+            double centreY = canvasScrollPane.getVvalue() * rangeH + vp.getHeight() / 2.0;
+            anchorX = (centreX - offX) / oldZoom;
+            anchorY = (centreY - offY) / oldZoom;
+        }
+
+        // Scale the CONTENT (canvasContainer), not the wrapper Group — see the
+        // field comment on scaleGroup: this makes the scaled size participate
+        // in layout so centring and scroll ranges are always correct.
+        canvasContainer.setScaleX(zoom);
+        canvasContainer.setScaleY(zoom);
         zoomLabel.setText((int) Math.round(zoom * 100) + "%");
         if (zoomSlider != null && !updatingZoom) {
             updatingZoom = true;
@@ -590,7 +641,67 @@ public class TemplateDesigner extends BorderPane {
         // 10 -> 5 -> 2 -> 1 mm as you zoom in, keeping cells a usable size.
         if (showGrid) {
             rebuildGridForZoom();
+        } else {
+            buildMarginGuides(); // keep guide hairline scale in sync with zoom
         }
+
+        // Re-centre the anchored content point once layout has run.
+        if (!Double.isNaN(anchorX)) {
+            final double ax = anchorX, ay = anchorY;
+            javafx.application.Platform.runLater(() -> applyViewportAnchor(ax, ay));
+        }
+    }
+
+    /** Scrolls so the designer-space point (ax, ay) sits at the viewport centre. */
+    private void applyViewportAnchor(double ax, double ay) {
+        if (canvasScrollPane == null || centerWrapper == null) return;
+        Bounds vp = canvasScrollPane.getViewportBounds();
+        double stackW = Math.max(centerWrapper.getWidth(), vp.getWidth());
+        double stackH = Math.max(centerWrapper.getHeight(), vp.getHeight());
+        Bounds gb = scaleGroup.getLayoutBounds();
+        double offX = Math.max(0, (stackW - gb.getWidth()) / 2.0);
+        double offY = Math.max(0, (stackH - gb.getHeight()) / 2.0);
+        double rangeW = stackW - vp.getWidth();
+        double rangeH = stackH - vp.getHeight();
+        double targetX = offX + ax * zoom;
+        double targetY = offY + ay * zoom;
+        if (rangeW <= 0) {
+            canvasScrollPane.setHvalue(0.5);
+        } else {
+            canvasScrollPane.setHvalue(clamp01((targetX - vp.getWidth() / 2.0) / rangeW));
+        }
+        if (rangeH <= 0) {
+            canvasScrollPane.setVvalue(0.5);
+        } else {
+            canvasScrollPane.setVvalue(clamp01((targetY - vp.getHeight() / 2.0) / rangeH));
+        }
+    }
+
+    /** Centres the scaled canvas in the viewport (used after page-size changes, FIT, …). */
+    private void centerView() {
+        if (canvasScrollPane == null || centerWrapper == null) return;
+        // Defer until the pending refreshCanvas/page-size layout has run so the
+        // content bounds measured here are the fresh ones.
+        javafx.application.Platform.runLater(() -> {
+            Bounds gb = scaleGroup.getLayoutBounds();
+            applyViewportAnchor(gb.getWidth() / zoom / 2.0, gb.getHeight() / zoom / 2.0);
+        });
+    }
+
+    /** FIT: choose the largest zoom that still shows the whole page, then centre it. */
+    private void fitToView() {
+        if (canvasScrollPane == null) { setZoom(0.85); centerView(); return; }
+        Bounds vp = canvasScrollPane.getViewportBounds();
+        PageConfig page = template.getPage();
+        double w = page.getWidth() * MM_PX + RULER_SIZE;
+        double h = page.getHeight() * MM_PX + RULER_SIZE;
+        double z = Math.min((vp.getWidth() - 70) / w, (vp.getHeight() - 70) / h);
+        setZoom(z);
+        centerView();
+    }
+
+    private double clamp01(double v) {
+        return Math.max(0.0, Math.min(1.0, v));
     }
 
     /**
@@ -616,9 +727,66 @@ public class TemplateDesigner extends BorderPane {
             gridCanvasNode = null;
         }
         buildGridCanvas(pageW, pageH);
+        buildMarginGuides(); // guides keep hairline stroke & legend size in sync with zoom
         if (Math.abs(gridStepMm() - renderedRulerStepMm) > 0.01) {
             buildRulers(pageW, pageH);
         }
+    }
+
+    /**
+     * (Re)draws the blue dashed printable-margin boundary + "Printable …"
+     * legend on {@link #marginLayer}, which sits ABOVE every element so objects
+     * can never cover the guides. Re-invoked on zoom changes so the stroke,
+     * dash pattern and legend font stay hairline/screen-constant at any zoom.
+     */
+    private void buildMarginGuides() {
+        marginLayer.getChildren().clear();
+        PageConfig page = template.getPage();
+        double pageW = page.getWidth() * MM_PX;
+        double pageH = page.getHeight() * MM_PX;
+        marginLayer.setPrefSize(pageW, pageH);
+        PageConfig.Margins mg = page.getMargin();
+        if (mg == null) return;
+        double mx = mg.getLeft() * MM_PX;
+        double my = mg.getTop() * MM_PX;
+        double mw = (page.getWidth() - mg.getLeft() - mg.getRight()) * MM_PX;
+        double mh = (page.getHeight() - mg.getTop() - mg.getBottom()) * MM_PX;
+        if (mw <= 0 || mh <= 0) return;
+
+        // Guides stay hairline-thin on screen at ANY zoom: a fixed 1.0 local-px
+        // stroke would render zoom× thicker (blurry band at 300-400%). Dividing
+        // by zoom keeps it 1 device px.
+        double hair = 1.0 / Math.max(0.3, zoom);
+        Rectangle marginBox = new Rectangle(mx, my, mw, mh);
+        marginBox.setFill(Color.TRANSPARENT);
+        marginBox.setStroke(Color.web("#3B82F6", 0.65));
+        marginBox.setStrokeWidth(hair);
+        marginBox.getStrokeDashArray().addAll(4.0 * hair, 4.0 * hair);
+        marginBox.setMouseTransparent(true);
+        marginLayer.getChildren().add(marginBox);
+
+        // Legend font shrinks as zoom increases (9px / zoom in canvas space ≈
+        // constant 9px on screen, ever smaller relative to the artwork) so it
+        // never buries the elements underneath it.
+        String legend = String.format(
+                "Printable: %.0f×%.0f mm  (Margin: T:%.1f B:%.1f L:%.1f R:%.1f)",
+                Math.max(0, page.getWidth() - mg.getLeft() - mg.getRight()),
+                Math.max(0, page.getHeight() - mg.getTop() - mg.getBottom()),
+                mg.getTop(), mg.getBottom(), mg.getLeft(), mg.getRight());
+        if (template.isLabelMode()) {
+            LabelConfig lc = template.labelOrNew();
+            legend += String.format("  · Stock L:%.1f R:%.1f · %d across",
+                    lc.getMarginL(), lc.getMarginR(), lc.getColumns());
+        }
+        Label mLabel = new Label(legend);
+        mLabel.setStyle(String.format(java.util.Locale.US,
+                "-fx-font-size: %.2fpx; -fx-font-family: 'Segoe UI', sans-serif; -fx-text-fill: #3B82F6;"
+                        + " -fx-background-color: rgba(59,130,246,0.12); -fx-padding: %.2f %.2f; -fx-background-radius: %.2f;",
+                9.0 * hair, 1.0 * hair, 5.0 * hair, 3.0 * hair));
+        mLabel.setLayoutX(mx + 4 * hair);
+        mLabel.setLayoutY(my + 3 * hair);
+        mLabel.setMouseTransparent(true);
+        marginLayer.getChildren().add(mLabel);
     }
 
     /**
@@ -710,7 +878,7 @@ public class TemplateDesigner extends BorderPane {
         Button fitBtn = new Button("FIT");
         fitBtn.getStyleClass().add("designer-footer-btn");
         fitBtn.setTooltip(new Tooltip("Fit page in view (Ctrl 0)"));
-        fitBtn.setOnAction(e -> setZoom(0.85));
+        fitBtn.setOnAction(e -> fitToView());
 
         Button zoomMinusBtn = new Button("−");
         zoomMinusBtn.getStyleClass().add("designer-footer-btn");
@@ -1217,50 +1385,8 @@ public class TemplateDesigner extends BorderPane {
         gridPane.setPrefSize(pageW, pageH);
         buildGridCanvas(pageW, pageH);
 
-        // Margin Guides (Printable Boundary)
-        PageConfig.Margins mg = page.getMargin();
-        if (mg != null) {
-            double mx = mg.getLeft() * MM_PX;
-            double my = mg.getTop() * MM_PX;
-            double mw = (page.getWidth() - mg.getLeft() - mg.getRight()) * MM_PX;
-            double mh = (page.getHeight() - mg.getTop() - mg.getBottom()) * MM_PX;
-            if (mw > 0 && mh > 0) {
-                // Guides stay hairline-thin on screen at ANY zoom: a fixed
-                // 1.0 local-px stroke would render zoom× thicker (blurry band
-                // at 300-400%). Dividing by zoom keeps it 1 device px.
-                double hair = 1.0 / Math.max(0.3, zoom);
-                Rectangle marginBox = new Rectangle(mx, my, mw, mh);
-                marginBox.setFill(Color.TRANSPARENT);
-                marginBox.setStroke(Color.web("#3B82F6", 0.65));
-                marginBox.setStrokeWidth(hair);
-                marginBox.getStrokeDashArray().addAll(4.0 * hair, 4.0 * hair);
-                marginBox.setMouseTransparent(true);
-                gridPane.getChildren().add(marginBox);
-
-                // Legend font shrinks as zoom increases (9px / zoom in canvas
-                // space ≈ constant 9px on screen, ever smaller relative to the
-                // artwork) so it never buries the elements underneath it.
-                String legend = String.format(
-                        "Printable: %.0f×%.0f mm  (Margin: T:%.1f B:%.1f L:%.1f R:%.1f)",
-                        Math.max(0, page.getWidth() - mg.getLeft() - mg.getRight()),
-                        Math.max(0, page.getHeight() - mg.getTop() - mg.getBottom()),
-                        mg.getTop(), mg.getBottom(), mg.getLeft(), mg.getRight());
-                if (template.isLabelMode()) {
-                    LabelConfig lc = template.labelOrNew();
-                    legend += String.format("  · Stock L:%.1f R:%.1f · %d across",
-                            lc.getMarginL(), lc.getMarginR(), lc.getColumns());
-                }
-                Label mLabel = new Label(legend);
-                mLabel.setStyle(String.format(java.util.Locale.US,
-                        "-fx-font-size: %.2fpx; -fx-font-family: 'Segoe UI', sans-serif; -fx-text-fill: #3B82F6;"
-                                + " -fx-background-color: rgba(59,130,246,0.12); -fx-padding: %.2f %.2f; -fx-background-radius: %.2f;",
-                        9.0 * hair, 1.0 * hair, 5.0 * hair, 3.0 * hair));
-                mLabel.setLayoutX(mx + 4 * hair);
-                mLabel.setLayoutY(my + 3 * hair);
-                mLabel.setMouseTransparent(true);
-                gridPane.getChildren().add(mLabel);
-            }
-        }
+        // Margin Guides (Printable Boundary) — drawn on the TOP margin layer
+        buildMarginGuides();
 
         // 2. Elements Layer
         elementsPane.getChildren().clear();
@@ -5761,6 +5887,7 @@ public class TemplateDesigner extends BorderPane {
                     }
 
                     refreshCanvas();
+                    centerView(); // page dimensions changed — keep canvas centred
                     updatePropertiesPanel();
                     saveState();
                     Toast.show(app.getRootPane(), "Page Configured", "Page dimensions and margins updated.", false);
@@ -5852,6 +5979,7 @@ public class TemplateDesigner extends BorderPane {
         selectedElement = null;
         saveState();
         refreshCanvas();
+        centerView(); // page size changed (label cell ↔ bill page) — keep canvas in view
         updatePropertiesPanel();
         refreshLayersList();
     }
@@ -6013,6 +6141,7 @@ public class TemplateDesigner extends BorderPane {
 
                 syncPageFromLabelConfig();
                 refreshCanvas();
+                centerView(); // label cell resized — keep it centred in view
                 updatePropertiesPanel();
                 saveState();
                 Toast.show(app.getRootPane(), "Label Stock Updated",
@@ -6943,7 +7072,7 @@ public class TemplateDesigner extends BorderPane {
             deleteSelected();
             e.consume();
         } else if (e.isControlDown() && (e.getCode() == KeyCode.DIGIT0 || e.getCode() == KeyCode.NUMPAD0)) {
-            setZoom(1.0);
+            fitToView();
             e.consume();
         } else if (e.isControlDown() && (e.getCode() == KeyCode.EQUALS || e.getCode() == KeyCode.PLUS || e.getCode() == KeyCode.ADD)) {
             setZoom(zoom + 0.1);
