@@ -314,14 +314,34 @@ public class KnowledgeHubPanel extends VBox {
 
     private Topic blankLabelsGuide() {
         return new Topic("Blank Labels After a Good Label",
-            "Printed one record but got extra empty labels? Work through the four causes in order — "
-                + "three are configuration, one is printer calibration.",
+            "Printed one record but got extra empty labels? Work through the causes in order — "
+                + "almost all are configuration, one is printer calibration.",
             new Node[] {
                 para("First, what the app sends: the TSPL script contains exactly one CLS / BITMAP / PRINT group per "
-                    + "strip row and PRINT 1,1 for a single record — verified byte-for-byte. Extra blank labels are "
-                    + "always FEED, never extra PRINT commands. The success toast now shows the numbers to check: "
-                    + "SIZE/GAP in dots, the feed pitch in mm, and how many slots of the last strip row the job filled."),
-                heading("CAUSE 1 — MULTI-ACROSS STOCK WITH A SMALL QUEUE (MOST COMMON)"),
+                    + "strip row and PRINT 1,1 for a single record — verified byte-for-byte (and you can audit the "
+                    + "exact bytes yourself: start the app with -Dinvoicestudio.tspl.dump=/path/job.tspl and the RAW "
+                    + "script of every job is written to that file). Extra blank labels are always FEED, never extra "
+                    + "PRINT commands. The success toast shows the numbers to check: SIZE/GAP in dots, the feed pitch "
+                    + "in mm, and how many slots of the last strip row the job filled."),
+                heading("CAUSE 1 — THE DECLARED FEED PITCH IS BIGGER THAN THE ROLL'S REAL PITCH"),
+                para("The TSPL manual defines PRINT's feed precisely: the printer burns the bitmap (SIZE height) and "
+                        + "then feeds \"label gap to tear bar position\" — in total exactly the declared pitch "
+                        + "(Label Height + Feed Gap from Label Stock, sent as SIZE + GAP in dots). The printer CANNOT "
+                        + "know if your die-cut pitch is really that long: if the declared pitch spans two or three "
+                        + "physical labels on the roll, ONE PRINT feeds TWO OR THREE die-cuts — the first carries the "
+                        + "content, the rest pass out blank. That is the classic \"printed one, got three — last two "
+                        + "empty\" report on a 1-across template: e.g. a 78.0 mm declared pitch (75.0 mm label + "
+                        + "3.0 mm gap) on a roll whose real label-to-label pitch is 39.0 mm = two labels per print; "
+                        + "26.0 mm = three."),
+                bullet("The fix is arithmetic, not calibration: measure ONE physical label + ONE gap on the roll "
+                        + "with a ruler, then set Label Height + Feed Gap in Label Stock so they add up to exactly "
+                        + "that distance. The Label Stock dialog shows the resulting FEED PITCH live."),
+                bullet("A tall design on short-pitch roll? The design may need to print sideways: use \"Rotate Design "
+                        + "90° into print orientation\" so the physical cell (and therefore the pitch) matches the roll "
+                        + "— canvas, strip preview and print then all agree."),
+                bullet("Sanity check: toast pitch 78.0 mm but three labels feed out? Your roll pitch is ~26 mm "
+                        + "(78 ÷ 3) or ~39 mm if two feed — set Label Height + Feed Gap to what your ruler says."),
+                heading("CAUSE 2 — MULTI-ACROSS STOCK WITH A SMALL QUEUE"),
                 para("Label Stock defines how many die-cut labels sit ACROSS the strip (Columns). The printer feeds one "
                     + "full row per strip; on 4-across stock a one-record job fills slot 1 and slots 2–4 pass under the "
                     + "head blank. That is physics, not a bug: the three empty die-cuts were part of the same fed row. "
@@ -330,32 +350,34 @@ public class KnowledgeHubPanel extends VBox {
                     + "label width). The Strip Preview then shows one label across — exactly what prints."),
                 bullet("Genuinely 4-across stock? Print records in multiples of 4 (or accept the blank waste on the "
                     + "last row) — every full row prints all slots."),
-                heading("CAUSE 2 — STALE SENSOR CALIBRATION"),
+                heading("CAUSE 3 — STALE SENSOR CALIBRATION"),
                 para("The gap sensor learned the CURRENT roll's pitch at some point (different label size, different "
                     + "vendor, a media reload). If its stored pitch no longer matches the loaded stock, the printer "
                     + "feeds past the real gap hunting for one at the old distance — one printed label plus one or "
-                    + "more blank ones. Symptom: blanks appear even when the strip row is FULL."),
+                    + "more blank ones. Symptom: blanks appear even when the declared pitch matches your ruler."),
                 bullet("One-click fix: Bulk Print dialog → Calibrate Sensor. It spools AUTODETECT (TSPL manual p.6) "
                         + "as its own RAW job — the printer feeds a few labels measuring the die-cut pitch, then "
                         + "stores the result. Reprint your job afterwards."),
                 bullet("Hardware equivalent: power the printer off, hold FEED while powering on until it feeds several "
                         + "labels, release — same measurement, stored in the printer."),
-                heading("CAUSE 3 — LABEL STOCK VALUES DON'T MATCH THE PHYSICAL ROLL"),
+                heading("CAUSE 4 — LABEL STOCK VALUES DON'T MATCH THE PHYSICAL ROLL (WIDTH/OTHER)"),
                 para("Measure one physical label + one gap with a ruler and compare with the toast's feed pitch: "
                         + "\"Feed pitch 33.0 mm/label (label 30.0 mm + 3.0 mm gap)\". If the numbers disagree with "
                         + "your ruler, fix Label Stock (label height, feed gap) — the script declares exactly those "
                         + "values via SIZE/GAP, so wrong config = wrong feed."),
-                heading("CAUSE 4 — SOMETHING OUTSIDE THE APP"),
+                heading("CAUSE 5 — SOMETHING OUTSIDE THE APP"),
                 para("A spooler queue with a stuck older job, a printer-side form/offset setting, or a driver that "
                         + "injects its own setup before the RAW stream. Check the Windows spooler for leftover jobs, "
                         + "power-cycle the printer, and if a misfeed survives a fresh calibration with a verified "
                         + "config, test the same script from a plain text spool to isolate the driver."),
-                note("Sanity check that separates cause 1 from the rest: the toast. It reports \"fills k of N slots\" "
-                    + "only when the queue doesn't fill the last row. No such note + still getting blanks = calibration "
-                    + "or stock values (causes 2–4)."),
+                note("Sanity check that separates the causes: the toast. It reports \"fills k of N slots\" only when "
+                    + "the queue doesn't fill the last row (cause 2). A pitch that matches the ruler but still feeds "
+                    + "blanks = calibration (cause 3). A pitch that does NOT match the ruler = cause 1/4 — fix the "
+                    + "numbers first, calibrate second."),
                 sep(),
                 para("Reference: TSC Auto ID, \"TSPL/TSPL2 Programming Language\" — AUTODETECT (p.6), GAP (p.2), "
-                        + "PRINT (p.24).")
+                        + "PRINT (p.24): \"This command will print one label and feed label gap to tear bar position "
+                        + "for tearing away.\"")
             });
     }
 
@@ -409,11 +431,12 @@ public class KnowledgeHubPanel extends VBox {
                 para("Inverted bit polarity — fixed in the app: ink is now encoded as bit 0 (burn) and paper as bit 1. "
                     + "If you ever see this again, update the app before checking hardware."),
                 heading("BLANK LABELS OR EXTRA FEEDS BETWEEN GOOD LABELS"),
-                para("The sensor and the physical stock disagree. Check: Label Stock type = GAP for die-cut rolls "
-                    + "(continuous only for receipt stock); SIZE/GAP match your measured label pitch; Columns = 1 for "
-                    + "single-column rolls; calibrate the sensor with the Bulk Print dialog's Calibrate Sensor button "
-                    + "(or the printer's FEED button hold). The dedicated \"Blank Labels After a Good Label\" topic "
-                    + "has the full four-cause walkthrough."),
+                para("The declared pitch, the sensor and the physical stock disagree. Check in order: Label Height + "
+                    + "Feed Gap must equal the roll's measured label-to-label distance (cause 1 of the Blank Labels "
+                    + "topic); Label Stock type = GAP for die-cut rolls (continuous only for receipt stock); Columns = 1 "
+                    + "for single-column rolls; then calibrate the sensor with the Bulk Print dialog's Calibrate Sensor "
+                    + "button (or the printer's FEED button hold). The dedicated \"Blank Labels After a Good Label\" "
+                    + "topic has the full cause walkthrough."),
                 heading("PRINT IS TOO LIGHT / FAINT"),
                 para("Raise the Brightness Threshold (Settings → Print) so more pixels burn; on thermal transfer also "
                     + "check ribbon seating and the driver's darkness setting. Clean the head with isopropyl alcohol."),
@@ -444,6 +467,10 @@ public class KnowledgeHubPanel extends VBox {
                 bullet("-Dinvoicestudio.tspl.direction=0|1 — flip print orientation (default 1)."),
                 bullet("-Dinvoicestudio.tspl.dotsPerMm=N — override dot density (TA210 = 8, TA300/310 = 12)."),
                 bullet("-Dinvoicestudio.tspl.threshold=0..255 — override the Brightness Threshold from Settings."),
+                bullet("-Dinvoicestudio.tspl.dump=/path/job.tspl — write the exact RAW bytes of every spooled job to "
+                    + "this file (the full TSPL script: SIZE/GAP/DIRECTION + CLS/BITMAP/PRINT + the 1-bit payload). "
+                    + "Use it to audit \"what are we actually sending\" against the manual or to replay a job "
+                    + "straight to the port."),
                 heading("RAW SPOOLING"),
                 para("Jobs are sent through the JDK print service as BYTE_ARRAY AUTOSENSE — on Windows this spools with "
                     + "datatype RAW, which the TSC driver passes untouched to the USB port. The printer is matched by "

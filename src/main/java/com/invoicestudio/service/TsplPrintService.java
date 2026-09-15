@@ -313,6 +313,19 @@ public final class TsplPrintService {
         }
 
         byte[] script = TsplCommandBuilder.build(cfg, pages, widthDots, heightDots, gapDots, direction);
+
+        // Support knob: -Dinvoicestudio.tspl.dump=/path/job.tspl writes the
+        // exact RAW bytes this job spools, so "what are we actually sending"
+        // is always auditable (SIZE/GAP/PRINT header + the 1-bit payload).
+        String dumpPath = System.getProperty("invoicestudio.tspl.dump");
+        if (dumpPath != null && !dumpPath.isBlank()) {
+            try {
+                java.nio.file.Files.write(java.nio.file.Path.of(dumpPath), script);
+            } catch (Exception ignored) {
+                // diagnostics must never break the print
+            }
+        }
+
         return new PreparedJob(template, settings, name, script, pages, labels, cfg,
                 pageSize[0], widthDots, heightDots, gapDots, null);
     }
@@ -327,7 +340,10 @@ public final class TsplPrintService {
         double cellHmm = LabelGeometryService.physicalCellHeight(job.cfg());
         double pitchMm = cellHmm + Math.max(0, job.cfg().getGapY());
         msg.append(String.format(Locale.US,
-                " Feed pitch %.1f mm/label (label %.1f mm + %.1f mm gap) — one feed per PRINT.",
+                " Feed pitch %.1f mm/label (label %.1f mm + %.1f mm gap) — one feed per PRINT. "
+                        + "If the printer still outputs several physical labels per record, the roll's real "
+                        + "label-to-label pitch is SMALLER than this — measure label + gap with a ruler and set "
+                        + "Label Height + Feed Gap in Label Stock to match (SIZE/GAP declare exactly those values).",
                 pitchMm, cellHmm, Math.max(0, job.cfg().getGapY())));
         appendPartialRowNote(job, msg);
         if (job.stripWidthMm() > TsplCommandBuilder.TA210_MAX_PRINT_MM + 0.01

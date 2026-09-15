@@ -9,6 +9,7 @@ import com.invoicestudio.service.BarcodeService;
 import com.invoicestudio.service.CustomComponentManager;
 import com.invoicestudio.service.LabelGeometryService;
 import com.invoicestudio.service.RenderContext;
+import com.invoicestudio.service.TsplPrintService;
 import com.invoicestudio.service.VariableGrouper;
 import com.invoicestudio.ui.CustomColorChooserDialog;
 import com.invoicestudio.ui.DialogHelper;
@@ -661,6 +662,16 @@ public class TemplateDesigner extends BorderPane {
         } else {
             buildMarginGuides(); // keep guide hairline scale in sync with zoom
         }
+
+        // Rebuild the selection overlay so handles/border/rotate-stem rescale
+        // with the new zoom (they are 1/zoom design px — screen-constant).
+        // An open inline editor is committed first: its geometry is designed
+        // for the zoom it was opened at, and typing across a zoom change is
+        // not a real workflow.
+        if (activeInlineEditor != null) {
+            commitInlineTextEdit(true);
+        }
+        updateSelectionOverlay();
 
         // Re-centre the anchored content point once the layout pulse has run.
         // correctViewportAnchor computes the target scroll position ABSOLUTELY
@@ -1516,15 +1527,30 @@ public class TemplateDesigner extends BorderPane {
         updateSelectionOverlay();
     }
 
-    private Rectangle createHandleShape(Cursor cursor) {
-        Rectangle h = new Rectangle(10, 10);
+    /**
+     * Selection-handle visual size in DESIGN px. The overlay lives inside the
+     * zoom-scaled canvas container, so a fixed design px size would grow with
+     * zoom (10 px handles became 40 px blobs at 400 %, swallowing small
+     * elements). Dividing by the zoom keeps the handles a CONSTANT ~10 px ON
+     * SCREEN at any zoom — they shrink as you zoom in and grow as you zoom
+     * out, exactly like every professional design tool.
+     */
+    private double handleSizePx() {
+        return Math.max(3.0, 10.0 / Math.max(0.3, zoom));
+    }
+
+    private Rectangle createHandleShape(Cursor cursor, double sizePx) {
+        Rectangle h = new Rectangle(sizePx, sizePx);
         h.setFill(Color.web("#D9A13B"));
-        h.setStroke(Color.web("#0F172A"));
-        h.setStrokeWidth(1.5);
-        h.setArcWidth(2);
-        h.setArcHeight(2);
+        // No dark outline — handles stay a small, clean gold dot the user can
+        // still grab (the old 1.5 px black ring read as a heavy border and,
+        // scaled by zoom, dominated small labels).
+        h.setArcWidth(Math.max(1.0, sizePx * 0.2));
+        h.setArcHeight(Math.max(1.0, sizePx * 0.2));
         h.setCursor(cursor);
-        h.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 4, 0, 0, 1);");
+        h.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.45), "
+                + String.format(java.util.Locale.US, "%.2f, 0, 0, %.2f);",
+                        3.0 / Math.max(0.3, zoom), 1.0 / Math.max(0.3, zoom)));
         h.setOnMouseEntered(e -> h.setFill(Color.WHITE));
         h.setOnMouseExited(e -> h.setFill(Color.web("#D9A13B")));
         return h;
@@ -1664,8 +1690,10 @@ public class TemplateDesigner extends BorderPane {
 
         double x = el.getX() * MM_PX;
         double y = el.getY() * MM_PX;
-        double w = Math.max(60.0, el.getW() * MM_PX);
-        double h = Math.max(30.0, el.getH() * MM_PX);
+        // Min editor size scales with 1/zoom too — a fixed design-space floor
+        // made the editor dwarf the element it edits at high zoom.
+        double w = Math.max(60.0 / Math.max(0.3, zoom), el.getW() * MM_PX);
+        double h = Math.max(30.0 / Math.max(0.3, zoom), el.getH() * MM_PX);
 
         TextArea editor = new TextArea(el.getText() != null ? el.getText() : "");
         editor.setWrapText(true);
@@ -1679,14 +1707,21 @@ public class TemplateDesigner extends BorderPane {
         String family = el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI";
         int weight = el.getFontWeight() > 0 ? el.getFontWeight() : (el.isBold() ? 700 : 400);
         String fs = el.isItalic() ? "italic" : "normal";
+        // Same 1.3 pt→px factor the canvas renderer uses for TEXT elements, so
+        // the text fills the editor exactly like the rendered element behind it.
         double fontSize = el.getFontSize() > 0 ? el.getFontSize() * 1.3 : 14.0;
         String bg = (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) ? el.getBg() : "#ffffff";
 
+        // ZERO padding and a 1-screen-px border: the old 3×6 px padding + 2 px
+        // border are design-space values that zoom blew up into a fat frame
+        // around the text (reported: "padding which should not be there").
+        double inv = 1.0 / Math.max(0.3, zoom);
         editor.setStyle(String.format(java.util.Locale.US,
                 "-fx-font-family: '%s'; -fx-font-size: %.1fpx; -fx-font-weight: %d; -fx-font-style: %s; "
-                + "-fx-text-fill: %s; -fx-background-color: %s; -fx-border-color: #D9A13B; -fx-border-width: 2px; "
-                + "-fx-border-radius: 3px; -fx-background-radius: 3px; -fx-padding: 3px 6px;",
-                family, fontSize, weight, fs, colorHex, bg));
+                + "-fx-text-fill: %s; -fx-background-color: %s; -fx-background-insets: 0; "
+                + "-fx-border-color: #D9A13B; -fx-border-width: %.2fpx; -fx-border-radius: %.2fpx; "
+                + "-fx-background-radius: %.2fpx; -fx-padding: 0;",
+                family, fontSize, weight, fs, colorHex, bg, 1.0 * inv, 2.0 * inv, 2.0 * inv));
 
         editor.setOnKeyPressed(ke -> {
             if (ke.getCode() == KeyCode.ESCAPE) {
@@ -1709,10 +1744,26 @@ public class TemplateDesigner extends BorderPane {
 
         selectionPane.getChildren().add(editor);
 
+        // The TextArea skin's inner .content region carries its own opaque
+        // background + padding from the user-agent stylesheet — it painted the
+        // white frame around the text (and pushed the text down/up so the top
+        // line could clip). Zero it so the editor shows exactly the element's
+        // background and the text sits flush at the top-left, 1:1 with canvas.
+        editor.applyCss();
+        javafx.scene.Node content = editor.lookup(".content");
+        if (content != null) {
+            content.setStyle("-fx-padding: 0; -fx-background-color: transparent; "
+                    + "-fx-background-radius: 0; -fx-background-insets: 0;");
+        }
+
         javafx.application.Platform.runLater(() -> {
             if (activeInlineEditor == editor) {
                 editor.requestFocus();
                 editor.selectAll();
+                // selectAll can leave the caret/viewport scrolled so the first
+                // line hides above the clip (reported: text cut at the top).
+                editor.setScrollTop(0);
+                editor.setScrollLeft(0);
             }
         });
     }
@@ -2017,7 +2068,9 @@ public class TemplateDesigner extends BorderPane {
         moveHitArea.setWidth(nwPx);
         moveHitArea.setHeight(nhPx);
 
-        double hSize = 10.0;
+        // Handle size scales inversely with zoom so handles stay ~10 px ON
+        // SCREEN at every zoom (design-space 10 px became 40 px blobs at 400 %).
+        double hSize = handleSizePx();
         double hHalf = hSize / 2.0;
 
         // Handles ALWAYS sit on the true corners of the selection box so they
@@ -2055,7 +2108,7 @@ public class TemplateDesigner extends BorderPane {
         hW.setLayoutX(leftX);
         hW.setLayoutY(midY);
 
-        double stemTopY = topY - 22.0;
+        double stemTopY = topY - (22.0 / Math.max(0.3, zoom));
         double stemCenterX = midX + hHalf;
 
         if (rotateStem != null) {
@@ -2188,41 +2241,49 @@ public class TemplateDesigner extends BorderPane {
             e.consume();
         });
 
-        // Selection Border: High-contrast gold dashed border with drop shadow
+        // Selection Border: high-contrast gold dashed border. Stroke width and
+        // dash lengths are divided by the zoom so the border reads as the same
+        // hairline weight ON SCREEN at any zoom (2/5/4 px design space became
+        // 8/20/16 px chunks at 400 %).
+        double inv = 1.0 / Math.max(0.3, zoom);
         Rectangle border = new Rectangle(w, h);
         border.setFill(Color.TRANSPARENT);
         border.setStroke(Color.web("#D9A13B"));
-        border.setStrokeWidth(2.0);
-        border.getStrokeDashArray().addAll(5.0, 4.0);
+        border.setStrokeWidth(2.0 * inv);
+        border.getStrokeDashArray().addAll(5.0 * inv, 4.0 * inv);
         border.setMouseTransparent(true);
-        border.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 4, 0, 0, 1);");
+        border.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), "
+                + String.format(java.util.Locale.US, "%.2f, 0, 0, %.2f);", 4.0 * inv, 1.0 * inv) + "");
 
-        // Rotation Handle and Stem
+        // Rotation Handle and Stem — stem length/stroke shrink with zoom so the
+        // whole assembly stays proportionate on screen; the rotate dot has NO
+        // dark outline (the old black ring read as a heavy border at zoom).
         Line rotateStem = new Line();
         rotateStem.setStroke(Color.web("#D9A13B"));
-        rotateStem.setStrokeWidth(1.5);
-        rotateStem.getStrokeDashArray().addAll(3.0, 3.0);
+        rotateStem.setStrokeWidth(1.5 * inv);
+        rotateStem.getStrokeDashArray().addAll(3.0 * inv, 3.0 * inv);
         rotateStem.setMouseTransparent(true);
 
-        Circle handleRotate = new Circle(5.5);
+        Circle handleRotate = new Circle(5.5 * inv);
         handleRotate.setFill(Color.web("#D9A13B"));
-        handleRotate.setStroke(Color.web("#0F172A"));
-        handleRotate.setStrokeWidth(1.5);
         handleRotate.setCursor(Cursor.CROSSHAIR);
-        handleRotate.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 4, 0, 0, 1);");
+        handleRotate.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), "
+                + String.format(java.util.Locale.US, "%.2f, 0, 0, %.2f);", 3.0 * inv, 1.0 * inv) + "");
         handleRotate.setOnMouseEntered(ev -> handleRotate.setFill(Color.WHITE));
         handleRotate.setOnMouseExited(ev -> handleRotate.setFill(Color.web("#D9A13B")));
         Tooltip.install(handleRotate, new Tooltip("Rotate shape (Drag to rotate, Shift to snap 15°)"));
 
-        // 8 Resize Handles
-        Rectangle handleNW = createHandleShape(Cursor.NW_RESIZE);
-        Rectangle handleN = createHandleShape(Cursor.N_RESIZE);
-        Rectangle handleNE = createHandleShape(Cursor.NE_RESIZE);
-        Rectangle handleE = createHandleShape(Cursor.E_RESIZE);
-        Rectangle handleSE = createHandleShape(Cursor.SE_RESIZE);
-        Rectangle handleS = createHandleShape(Cursor.S_RESIZE);
-        Rectangle handleSW = createHandleShape(Cursor.SW_RESIZE);
-        Rectangle handleW = createHandleShape(Cursor.W_RESIZE);
+        // 8 Resize Handles — created at the zoom-corrected size (see
+        // handleSizePx): constant on-screen footprint, no black outline.
+        double hs = handleSizePx();
+        Rectangle handleNW = createHandleShape(Cursor.NW_RESIZE, hs);
+        Rectangle handleN = createHandleShape(Cursor.N_RESIZE, hs);
+        Rectangle handleNE = createHandleShape(Cursor.NE_RESIZE, hs);
+        Rectangle handleE = createHandleShape(Cursor.E_RESIZE, hs);
+        Rectangle handleSE = createHandleShape(Cursor.SE_RESIZE, hs);
+        Rectangle handleS = createHandleShape(Cursor.S_RESIZE, hs);
+        Rectangle handleSW = createHandleShape(Cursor.SW_RESIZE, hs);
+        Rectangle handleW = createHandleShape(Cursor.W_RESIZE, hs);
 
         updateSelBoxGeometry(selBox, border, moveHitArea,
                 handleNW, handleN, handleNE, handleE,
@@ -4606,16 +4667,20 @@ public class TemplateDesigner extends BorderPane {
         List<Point2D> pts = parseElementVertices(el);
         if (pts.isEmpty()) return;
 
+        // Vertex anchors shrink with zoom like every other selection handle —
+        // fixed design-space dots became huge blobs over small shapes at 400 %.
+        double inv = 1.0 / Math.max(0.3, zoom);
         for (int idx = 0; idx < pts.size(); idx++) {
             final int vertexIdx = idx;
             Point2D pt = pts.get(idx);
 
-            Circle handle = new Circle(pt.getX() * MM_PX, pt.getY() * MM_PX, 5.5);
+            Circle handle = new Circle(pt.getX() * MM_PX, pt.getY() * MM_PX, 5.5 * inv);
             handle.setFill(Color.web("#0EA5E9"));
             handle.setStroke(Color.WHITE);
-            handle.setStrokeWidth(1.8);
+            handle.setStrokeWidth(1.8 * inv);
             handle.setCursor(Cursor.CROSSHAIR);
-            handle.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.55), 3, 0, 0, 1);");
+            handle.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.55), "
+                    + String.format(java.util.Locale.US, "%.2f, 0, 0, %.2f);", 3.0 * inv, 1.0 * inv) + "");
 
             handle.setOnMouseEntered(e -> {
                 handle.setScaleX(1.35);
@@ -6235,6 +6300,17 @@ public class TemplateDesigner extends BorderPane {
         Label needLbl = new Label();
         needLbl.getStyleClass().add("text-muted");
 
+        // The number that decides whether one PRINT feeds ONE physical label
+        // or several: the declared feed pitch (label height + gap) must equal
+        // the roll's real label-to-label distance. The TSPL manual defines
+        // PRINT's feed as exactly this declared length — a config that is a
+        // multiple of the real pitch makes the printer output 2-3 die-cut
+        // labels per record, only the first carrying content (the reported
+        // "printed one, got three — last two empty").
+        Label pitchLbl = new Label();
+        pitchLbl.setWrapText(true);
+        pitchLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #D9A13B;");
+
         int r = 0;
         g.add(new Label("Columns across strip:"), 0, r); g.add(colsSpin, 1, r);
         g.add(new Label("Strip (liner) width (mm):"), 2, r); g.add(stripWSpin, 3, r); r++;
@@ -6265,6 +6341,17 @@ public class TemplateDesigner extends BorderPane {
                     fits ? "✓" : "⚠", LabelGeometryService.requiredStripWidth(tmp),
                     tmp.getStripWidth(), LabelGeometryService.feedPitchMm(tmp)));
             needLbl.setStyle(fits ? "-fx-text-fill: #16a34a;" : "-fx-text-fill: #dc2626;");
+            double cellH = LabelGeometryService.physicalCellHeight(tmp);
+            double pitch = LabelGeometryService.feedPitchMm(tmp);
+            int dpm = TsplPrintService.dotsPerMm((String) null);
+            pitchLbl.setText(String.format(java.util.Locale.US,
+                    "FEED PITCH — what the printer feeds per printed label: %.1f mm "
+                    + "(%.1f mm label + %.1f mm gap = SIZE %d + GAP %d dots at %d dots/mm). "
+                    + "This MUST equal the roll's label-to-label distance — measure one label + one gap with a ruler. "
+                    + "If one record feeds several labels (first has content, the rest blank), this pitch is bigger "
+                    + "than the roll's real pitch: fix Label Height / Feed Gap, or Rotate the design.",
+                    pitch, cellH, Math.max(0, tmp.getGapY()),
+                    (int) Math.round(cellH * dpm), (int) Math.round(tmp.getGapY() * dpm), dpm));
         };
         upd.run();
         colsSpin.valueProperty().addListener((o, a, b) -> upd.run());
@@ -6272,6 +6359,7 @@ public class TemplateDesigner extends BorderPane {
             s.valueProperty().addListener((o, a, b) -> upd.run());
         }
         g.add(needLbl, 0, r, 4, 1); r++;
+        g.add(pitchLbl, 0, r, 4, 1); r++;
 
         Label hint = new Label("The designer canvas is ONE label cell (label width × height). "
                 + "Printing long-format stock? Rotate the design (button below) — the canvas then shows "
