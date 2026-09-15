@@ -18,6 +18,7 @@ import com.invoicestudio.ui.Toast;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
+import javafx.animation.PauseTransition;
 import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
@@ -124,8 +125,17 @@ public class TemplateDesigner extends BorderPane {
     private final Group scaleGroup = new Group(canvasContainer);
 
     private double zoom = 0.9;
+    /** Incremented on every zoom/centre request; queued anchor corrections
+     *  skip themselves when a newer request superseded them. */
+    private int anchorGeneration = 0;
     private double renderedGridStepMm = -1;
     private double renderedRulerStepMm = -1;
+    /** Grey panning margin (px) around the scaled canvas inside the wrapper.
+     *  At least half the viewport per side, so the scaled content ALWAYS
+     *  overflows the viewport and horizontal/vertical scrolling never dead-ends
+     *  — even for a small label cell on a wide monitor (the wrapper is laid out
+     *  at exactly pref size; ScrollPane does NOT stretch it). */
+    private static final double WRAPPER_MARGIN_MIN_PX = 260.0;
     private Canvas gridCanvasNode;
     private boolean snapToGrid = true;
     private boolean magnetSnapping = true;
@@ -218,6 +228,11 @@ public class TemplateDesigner extends BorderPane {
         setupKeyboardShortcuts();
         saveState();
         refreshCanvas();
+        // Sync the visual scale with the zoom field — the wrapper/layout above
+        // already assume this zoom, so the painted content must match from
+        // frame one (previously the scale stayed 1.0 until the first zoom).
+        canvasContainer.setScaleX(zoom);
+        canvasContainer.setScaleY(zoom);
         updatePropertiesPanel();
         refreshLayersList();
     }
@@ -604,24 +619,25 @@ public class TemplateDesigner extends BorderPane {
         this.zoom = Math.max(0.3, Math.min(4.0, z));
 
         // Viewport anchor: remember which content point currently sits at the
-        // centre of the viewport (in unscaled designer coordinates) so it can be
-        // re-centred after the zoom. This keeps zooming "around the view
-        // centre": the canvas can never silently drift off the left/top edge.
+        // centre of the viewport (in designer px, canvas-origin convention) so
+        // it can be re-centred after the zoom. This keeps zooming "around the
+        // view centre": the canvas can never silently drift off the left/top
+        // edge. The capture MEASURES the real on-screen canvas position
+        // (localToScene) — exact, no dependence on layout-bounds quirks or
+        // possibly-stale laid-out wrapper sizes (mixing those was what dragged
+        // every zoom step towards the centre: "zoom always comes to centre").
         double anchorX = Double.NaN, anchorY = Double.NaN;
         if (canvasScrollPane != null && centerWrapper != null && oldZoom > 0) {
-            Bounds vp = canvasScrollPane.getViewportBounds();
-            double stackW = Math.max(centerWrapper.getWidth(), vp.getWidth());
-            double stackH = Math.max(centerWrapper.getHeight(), vp.getHeight());
-            Bounds gb = scaleGroup.getLayoutBounds();
-            // offset of the scaled content inside the wrapper (StackPane centring)
-            double offX = Math.max(0, (stackW - gb.getWidth()) / 2.0);
-            double offY = Math.max(0, (stackH - gb.getHeight()) / 2.0);
-            double rangeW = Math.max(0, stackW - vp.getWidth());
-            double rangeH = Math.max(0, stackH - vp.getHeight());
-            double centreX = canvasScrollPane.getHvalue() * rangeW + vp.getWidth() / 2.0;
-            double centreY = canvasScrollPane.getVvalue() * rangeH + vp.getHeight() / 2.0;
-            anchorX = (centreX - offX) / oldZoom;
-            anchorY = (centreY - offY) / oldZoom;
+            // The measured positions still reflect the scale CURRENTLY applied
+            // to the canvas (the old zoom) — divide by exactly that, not by the
+            // new zoom, otherwise the capture and the correction cancel each
+            // other out and zooming stops re-anchoring altogether.
+            double scaleApplied = canvasContainer.getScaleX() > 0 ? canvasContainer.getScaleX() : oldZoom;
+            double[] centre = designerPointAtViewportCentre(scaleApplied);
+            if (centre != null) {
+                anchorX = centre[0];
+                anchorY = centre[1];
+            }
         }
 
         // Scale the CONTENT (canvasContainer), not the wrapper Group — see the
@@ -646,46 +662,113 @@ public class TemplateDesigner extends BorderPane {
             buildMarginGuides(); // keep guide hairline scale in sync with zoom
         }
 
-        // Re-centre the anchored content point once layout has run.
+        // Re-centre the anchored content point once the layout pulse has run.
+        // correctViewportAnchor computes the target scroll position ABSOLUTELY
+        // from live measurements, so scheduling it after the pulse converges on
+        // the exact position no matter when the pulse lands, and survives
+        // scrollbar appearance at the new zoom.
         if (!Double.isNaN(anchorX)) {
-            final double ax = anchorX, ay = anchorY;
-            javafx.application.Platform.runLater(() -> applyViewportAnchor(ax, ay));
+            scheduleAnchorCorrection(anchorX, anchorY);
         }
     }
 
-    /** Scrolls so the designer-space point (ax, ay) sits at the viewport centre. */
-    private void applyViewportAnchor(double ax, double ay) {
-        if (canvasScrollPane == null || centerWrapper == null) return;
+    /**
+     * The designer-space point (canvas-origin px) currently under the viewport
+     * centre, measured from live node positions — or null if not measurable.
+     * Positions are interpreted at the scale currently APPLIED to the canvas
+     * (which during a zoom transition is still the previous zoom).
+     */
+    private double[] designerPointAtViewportCentre(double scaleApplied) {
+        Node viewportNode = canvasScrollPane.lookup(".viewport");
+        if (viewportNode == null) return null;
         Bounds vp = canvasScrollPane.getViewportBounds();
-        double stackW = Math.max(centerWrapper.getWidth(), vp.getWidth());
-        double stackH = Math.max(centerWrapper.getHeight(), vp.getHeight());
-        Bounds gb = scaleGroup.getLayoutBounds();
-        double offX = Math.max(0, (stackW - gb.getWidth()) / 2.0);
-        double offY = Math.max(0, (stackH - gb.getHeight()) / 2.0);
-        double rangeW = stackW - vp.getWidth();
-        double rangeH = stackH - vp.getHeight();
-        double targetX = offX + ax * zoom;
-        double targetY = offY + ay * zoom;
-        if (rangeW <= 0) {
-            canvasScrollPane.setHvalue(0.5);
-        } else {
-            canvasScrollPane.setHvalue(clamp01((targetX - vp.getWidth() / 2.0) / rangeW));
+        Point2D co = canvas.localToScene(0, 0);
+        Point2D vo = viewportNode.localToScene(0, 0);
+        if (co == null || vo == null || scaleApplied <= 0) return null;
+        return new double[]{(vp.getWidth() / 2.0 - (co.getX() - vo.getX())) / scaleApplied,
+                            (vp.getHeight() / 2.0 - (co.getY() - vo.getY())) / scaleApplied};
+    }
+
+    /**
+     * Scrolls so the designer-space point (ax, ay) sits at the viewport
+     * centre. Purely measurement-based and ABSOLUTE (never accumulates
+     * deltas): it derives where the canvas actually sits inside the wrapper
+     * from live node positions, then sets h/v to the exact value that puts
+     * (ax, ay) under the viewport centre. Exact whenever the layout is
+     * settled; if it fires mid-layout the next scheduled run recomputes from
+     * scratch and converges.
+     */
+    private void correctViewportAnchor(int generation, double ax, double ay) {
+        if (generation != anchorGeneration) return; // superseded by a newer zoom/centre
+        if (canvasScrollPane == null || centerWrapper == null) return;
+        Node viewportNode = canvasScrollPane.lookup(".viewport");
+        if (viewportNode == null) return;
+        Bounds vp = canvasScrollPane.getViewportBounds();
+        Point2D co = canvas.localToScene(0, 0);
+        Point2D vo = viewportNode.localToScene(0, 0);
+        if (co == null || vo == null) return;
+        double rangeW = centerWrapper.getWidth() - vp.getWidth();
+        double rangeH = centerWrapper.getHeight() - vp.getHeight();
+        if (rangeW > 0.5) {
+            // canvas origin measured in viewport coords + current scroll offset
+            // = its stable position inside the wrapper
+            double canvasXInWrapper = (co.getX() - vo.getX()) + canvasScrollPane.getHvalue() * rangeW;
+            double desiredRelX = vp.getWidth() / 2.0 - ax * zoom;
+            double hv = clamp01((canvasXInWrapper - desiredRelX) / rangeW);
+            if (Boolean.getBoolean("zoom.debug")) {
+                System.out.printf(java.util.Locale.US,
+                        "[CORR] g=%d relX=%.1f h=%.3f rangeW=%.1f cxInWrap=%.1f want=%.1f zoom=%.2f -> h'=%.3f%n",
+                        generation, co.getX() - vo.getX(), canvasScrollPane.getHvalue(), rangeW,
+                        canvasXInWrapper, desiredRelX, zoom, hv);
+            }
+            canvasScrollPane.setHvalue(hv);
         }
-        if (rangeH <= 0) {
-            canvasScrollPane.setVvalue(0.5);
-        } else {
-            canvasScrollPane.setVvalue(clamp01((targetY - vp.getHeight() / 2.0) / rangeH));
+        if (rangeH > 0.5) {
+            double canvasYInWrapper = (co.getY() - vo.getY()) + canvasScrollPane.getVvalue() * rangeH;
+            double desiredRelY = vp.getHeight() / 2.0 - ay * zoom;
+            double vv = clamp01((canvasYInWrapper - desiredRelY) / rangeH);
+            if (Boolean.getBoolean("zoom.debug")) {
+                System.out.printf(java.util.Locale.US,
+                        "[CORR] g=%d relY=%.1f v=%.3f rangeH=%.1f cyInWrap=%.1f wantY=%.1f zoom=%.2f -> v'=%.3f%n",
+                        generation, co.getY() - vo.getY(), canvasScrollPane.getVvalue(), rangeH,
+                        canvasYInWrapper, desiredRelY, zoom, vv);
+            }
+            canvasScrollPane.setVvalue(vv);
+        }
+    }
+
+    /** Schedules the anchor correction shortly after the zoom/centre change.
+     *  Corrections run ONLY once the layout pulse has settled: ScrollPane
+     *  preserves the PIXEL scroll offset (not the normalized h/v value) when
+     *  the content is resized, so any value set before the layout would be
+     *  silently re-scaled and lost. Two post-layout passes (50 ms, 150 ms)
+     *  make the result deterministic and scrollbar-change-proof. */
+    private void scheduleAnchorCorrection(double ax, double ay) {
+        final int generation = ++anchorGeneration;
+        for (double delayMs : new double[]{50, 150}) {
+            PauseTransition t = new PauseTransition(javafx.util.Duration.millis(delayMs));
+            t.setOnFinished(e -> correctViewportAnchor(generation, ax, ay));
+            t.play();
         }
     }
 
     /** Centres the scaled canvas in the viewport (used after page-size changes, FIT, …). */
     private void centerView() {
         if (canvasScrollPane == null || centerWrapper == null) return;
-        // Defer until the pending refreshCanvas/page-size layout has run so the
-        // content bounds measured here are the fresh ones.
+        // Defer until the pending refreshCanvas/page-size layout has run, then
+        // centre on the canvas (page) itself — canvas size is fresh right after
+        // refreshCanvas set its pref sizes, no laid-out bounds involved.
         javafx.application.Platform.runLater(() -> {
-            Bounds gb = scaleGroup.getLayoutBounds();
-            applyViewportAnchor(gb.getWidth() / zoom / 2.0, gb.getHeight() / zoom / 2.0);
+            if (canvas.getWidth() <= 0 || canvas.getHeight() <= 0) {
+                canvas.widthProperty().addListener(new javafx.beans.InvalidationListener() {
+                    @Override public void invalidated(javafx.beans.Observable o) {
+                        canvas.widthProperty().removeListener(this);
+                        scheduleAnchorCorrection(canvas.getWidth() / 2.0, canvas.getHeight() / 2.0);
+                    }
+                });
+                return;
+            }
+            scheduleAnchorCorrection(canvas.getWidth() / 2.0, canvas.getHeight() / 2.0);
         });
     }
 
@@ -851,13 +934,39 @@ public class TemplateDesigner extends BorderPane {
         double scaledW = totalContainerW * zoom;
         double scaledH = totalContainerH * zoom;
 
-        // Generous margin so canvas can pan horizontally and vertically freely past viewport bounds
-        double margin = 260;
-        double totalW = scaledW + (margin * 2);
-        double totalH = scaledH + (margin * 2);
+        // Generous margin so canvas can pan horizontally and vertically freely
+        // past viewport bounds — half the viewport per side guarantees the
+        // wrapper always exceeds the viewport (scroll range = scaled size).
+        double marginX = wrapperMarginX();
+        double marginY = wrapperMarginY();
+        double totalW = scaledW + (marginX * 2);
+        double totalH = scaledH + (marginY * 2);
 
         centerWrapper.setPrefSize(totalW, totalH);
         centerWrapper.setMinSize(totalW, totalH);
+    }
+
+    /** Per-axis panning margin around the scaled canvas (never below the
+     *  classic 260 px; grows to half the viewport so small canvases stay
+     *  freely scrollable on wide windows). */
+    private double wrapperMarginX() {
+        if (canvasScrollPane != null) {
+            Bounds vp = canvasScrollPane.getViewportBounds();
+            if (vp != null && vp.getWidth() > 0) {
+                return Math.max(WRAPPER_MARGIN_MIN_PX, vp.getWidth() / 2.0);
+            }
+        }
+        return WRAPPER_MARGIN_MIN_PX;
+    }
+
+    private double wrapperMarginY() {
+        if (canvasScrollPane != null) {
+            Bounds vp = canvasScrollPane.getViewportBounds();
+            if (vp != null && vp.getHeight() > 0) {
+                return Math.max(WRAPPER_MARGIN_MIN_PX, vp.getHeight() / 2.0);
+            }
+        }
+        return WRAPPER_MARGIN_MIN_PX;
     }
 
     private Node createFooterBar() {
