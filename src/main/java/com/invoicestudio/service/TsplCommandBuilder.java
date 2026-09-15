@@ -49,8 +49,12 @@ public final class TsplCommandBuilder {
 
     private TsplCommandBuilder() {}
 
-    /** TSC TA210/TA200 (2-inch) max print area across the head, in mm. */
-    public static final double TA210_MAX_PRINT_MM = 54.0;
+    /**
+     * TSC TA210 max print area across the head, in mm — official datasheet:
+     * 108 mm (4.25″) on the 203-dpi TA210 (the 300-dpi TA310 sibling: 104 mm).
+     * It is a 4-inch desktop printer, so a 77 mm two-up liner prints full-width.
+     */
+    public static final double TA210_MAX_PRINT_MM = 108.0;
 
     /** One rendered strip-row page: 1-bit bitmap + its dot dimensions. */
     public record TsplPage(byte[] mono, int widthBytes, int heightDots) {}

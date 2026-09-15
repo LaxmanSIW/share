@@ -112,6 +112,60 @@ class LabelPrintLogicTest {
     }
 
     @Test
+    void testDesignFromPhysicalMapping() {
+        // BarTender-style dialog: the user types the PHYSICAL label size
+        // (as it sits on the strip); the design canvas derives from it.
+        // User's real roll: 75 x 36 physical, artwork rotated 90° at print
+        // → canvas designs a 36 x 75 portrait cell (the config they run today).
+        assertEquals(36.0, LabelGeometryService.designWidthFor(75, 36, "90"), 0.001);
+        assertEquals(75.0, LabelGeometryService.designHeightFor(75, 36, "90"), 0.001);
+        // No rotation → canvas equals the physical label
+        assertEquals(75.0, LabelGeometryService.designWidthFor(75, 36, "0"), 0.001);
+        assertEquals(36.0, LabelGeometryService.designHeightFor(75, 36, "0"), 0.001);
+        // 180 keeps dimensions; 270 swaps like 90
+        assertEquals(75.0, LabelGeometryService.designWidthFor(75, 36, "180"), 0.001);
+        assertEquals(36.0, LabelGeometryService.designHeightFor(75, 36, "180"), 0.001);
+        assertEquals(36.0, LabelGeometryService.designWidthFor(75, 36, "270"), 0.001);
+        assertEquals(75.0, LabelGeometryService.designHeightFor(75, 36, "270"), 0.001);
+        // Round-trip: physical → design → physical is the identity
+        LabelConfig c = new LabelConfig();
+        c.setOrientation("90");
+        c.setLabelWidth(LabelGeometryService.designWidthFor(75, 36, "90"));
+        c.setLabelHeight(LabelGeometryService.designHeightFor(75, 36, "90"));
+        assertEquals(75.0, LabelGeometryService.physicalCellWidth(c), 0.001);
+        assertEquals(36.0, LabelGeometryService.physicalCellHeight(c), 0.001);
+    }
+
+    @Test
+    void testValidateAcceptsReal77mmLinerOnTa210() {
+        // Regression: the app used to falsely claim the TA210 (2-inch / 54 mm)
+        // cannot print the user's 77 mm liner. Official datasheet: 4-inch,
+        // 108 mm — 77 mm must NOT warn about the head.
+        Template t = new Template();
+        t.setMode("label");
+        LabelConfig c = t.labelOrNew();
+        c.setStripWidth(77.0);
+        c.setColumns(1);
+        c.setLabelWidth(75.0);
+        c.setLabelHeight(36.0);
+        c.setGapY(2.0);
+        c.setMarginL(0.5);
+        c.setMarginR(0.5);
+        TemplateElement code = new TemplateElement();
+        code.setId("el_test");
+        code.setType(ElementType.BARCODE);
+        code.setName("Barcode");
+        t.getElements().add(code);
+        List<String> warns = LabelGeometryService.validate(t);
+        assertTrue(warns.stream().noneMatch(w -> w.contains("print head")),
+                "77 mm liner fits the 108 mm TA210 head, got: " + warns);
+        // ...but a genuinely too-wide strip still warns with the right number
+        c.setStripWidth(120.0);
+        assertTrue(LabelGeometryService.validate(t).stream()
+                .anyMatch(w -> w.contains("108 mm")));
+    }
+
+    @Test
     void testPageAndFeedPitch() {
         LabelConfig c = new LabelConfig();
         c.setLabelWidth(50);

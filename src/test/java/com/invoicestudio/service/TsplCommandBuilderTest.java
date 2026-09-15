@@ -260,7 +260,8 @@ class TsplCommandBuilderTest {
 
     @Test
     void testTa210MaxWidthConstant() {
-        assertEquals(54.0, TsplCommandBuilder.TA210_MAX_PRINT_MM, 1e-9);
+        // Official TA210 datasheet: 4-inch head — 108 mm (4.25") at 203 dpi.
+        assertEquals(108.0, TsplCommandBuilder.TA210_MAX_PRINT_MM, 1e-9);
     }
 
     // ------------------------------------------------------------------

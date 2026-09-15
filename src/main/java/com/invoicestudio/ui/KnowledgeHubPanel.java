@@ -174,6 +174,7 @@ public class KnowledgeHubPanel extends VBox {
     private List<Topic> buildTopics() {
         return List.of(
             ta210Overview(),
+            stockSensingAndOrientation(),
             tsplLanguage(),
             scriptAnatomy(),
             setupCommands(),
@@ -190,20 +191,73 @@ public class KnowledgeHubPanel extends VBox {
         return new Topic("TSC TA210 — Printer Overview",
             "The desktop label printer this app targets: specs, sensors and what makes it different from an A4 printer.",
             new Node[] {
-                para("The TSC TA210 is a 2-inch desktop label printer. Unlike an office printer it prints one "
-                    + "die-cut label at a time from a roll, burning an image with a thermal print head. It supports "
-                    + "both direct thermal media (heat-sensitive paper) and thermal transfer (ribbon + media)."),
-                heading("KEY SPECIFICATIONS"),
+                para("The TSC TA210 is a 4-inch desktop label printer (the TA310 is its 300-dpi sibling). Unlike an "
+                    + "office printer it prints one die-cut label at a time from a roll, burning an image with a thermal "
+                    + "print head. It supports both direct thermal media (heat-sensitive paper) and thermal transfer "
+                    + "(ribbon + media)."),
+                heading("KEY SPECIFICATIONS (OFFICIAL TSC DATASHEET)"),
                 bullet("Resolution: 203 dpi = 8 dots per mm (TA300/TA310 are the 300 dpi / 12 dots-per-mm siblings)."),
-                bullet("Maximum print width: 2.13 in / 54 mm — the physical width of the print head."),
+                bullet("Maximum print width: 4.25 in / 108 mm — the physical width of the print head (300-dpi TA310: "
+                    + "104 mm / 4.09 in)."),
                 bullet("Maximum print speed: 5 ips (127 mm/s); maximum print length 90 in (2286 mm)."),
                 bullet("Media sensors: movable GAP sensor (die-cut labels) and BLACK MARK sensor (continuous stock with marks)."),
                 bullet("Command languages: TSPL / TSPL2 natively (also supports EPL/ZPL emulation on some firmware)."),
-                note("Because the head is exactly 54 mm wide, a strip design wider than 54 mm gets clipped on the right. "
-                    + "The app warns when your Label Stock strip width exceeds this."),
+                note("Because the head is 108 mm wide, any liner up to that width prints full-bleed — a 77 mm two-up "
+                    + "liner is perfectly in range. The app warns only when the Label Stock paper width exceeds 108 mm. "
+                    + "(Early app builds wrongly claimed a 2-inch / 54 mm head and warned about clipping — corrected "
+                    + "against the official datasheet.)"),
                 sep(),
                 para("Why this matters in the app: every label dimension you configure (Label Stock dialog) is converted "
                     + "from millimeters to dots at 8 dots/mm, and the print head receives a bitmap at exactly that density.")
+            });
+    }
+
+    private Topic stockSensingAndOrientation() {
+        return new Topic("Label Stock, Sensors & Orientation — Who Knows What",
+            "What the printer figures out by itself, what the software must declare, and how "
+                + "BarTender's Page Setup maps to the Label Stock dialog.",
+            new Node[] {
+                para("A thermal printer is smart about the FEED direction only. Its gap sensor watches one vertical "
+                    + "line of the web and sees the die-cut gaps (or black marks) scroll past. Everything ACROSS the "
+                    + "strip — how many labels sit side by side, the liner width, the side margins — is invisible to "
+                    + "that sensor and must be declared by the software that drives the printer."),
+                heading("WHAT THE PRINTER LEARNS BY ITSELF — SENSOR CALIBRATION"),
+                bullet("Calibration feeds a few labels through the sensor and MEASURES the roll's real pitch (label "
+                    + "length + gap), then stores sensor thresholds. TSPL exposes it as GAPDETECT and AUTODETECT "
+                    + "(manual p.6: \"feeds the paper through the sensor to determine the paper and gap sizes\"); "
+                    + "the printer menu has the same function (Sensor → Auto Calibration)."),
+                bullet("The app's one-click equivalent: Bulk Print dialog → Calibrate Sensor — it spools AUTODETECT "
+                    + "as its own RAW job. Reprint after calibrating whenever the roll was changed."),
+                bullet("That is the full extent of the printer's own knowledge: WHERE each label ends along the feed. "
+                    + "It cannot name the label size, count the columns across, or place content — arrangement is "
+                    + "always the sender's job."),
+                heading("WHAT THE SOFTWARE MUST DECLARE — OUR SCRIPT OR THE DRIVER"),
+                para("Printing through the Windows driver, the driver's Page Setup declares the stock and BarTender "
+                    + "reads it. InvoiceStudio skips the GDI layer and spools raw TSPL, so OUR script is the "
+                    + "declaration: SIZE (liner width × row height in dots), GAP (feed gap), DIRECTION, then the "
+                    + "bitmap and PRINT. The Label Stock dialog is therefore exactly the driver's Page Setup — the "
+                    + "numbers there must match the physical roll."),
+                heading("BARTENDER PAGE SETUP ↔ LABEL STOCK DIALOG"),
+                bullet("Paper Size 77.0 × 38.0 mm ↔ Paper (liner) width 77 mm; BarTender's paper height (38) = label "
+                    + "height (36) + feed gap (2) — the FEED PITCH our dialog shows live."),
+                bullet("Label Size 75.0 × 36.0 mm ↔ Label width/height ON STRIP (width across, height along the feed)."),
+                bullet("Columns: 2 across, Rows: 1 down ↔ Columns across: 2 (our stock feeds one row per print)."),
+                bullet("Margins 1.0 mm ↔ Left/Right margin. Corner radius ↔ Shape tab."),
+                bullet("Orientation Portrait/Landscape ↔ Artwork direction. Seagull's own doc: orientation \"does not "
+                    + "change the width and height Paper Size\" — BOTH systems rotate the CONTENT only; the label on "
+                    + "the roll stays exactly the size you measured."),
+                heading("THE SIMPLE WAY TO THINK ABOUT IT"),
+                para("Measure the roll with a ruler: label width across, label height along the feed, the gap between "
+                    + "rows, how many labels across. Type those numbers into Label Stock — the diagram mirrors the "
+                    + "roll. Then decide only HOW the canvas artwork lands on that label: as designed, or rotated 90°. "
+                    + "The canvas keeps showing the design cell; the diagram and Strip Preview always show the physical "
+                    + "label, so nothing is ever in two minds about what prints."),
+                note("Correction history: early app builds described the TA210 as a 2-inch / 54 mm printer and warned "
+                    + "that 77 mm liners would clip. The official datasheet says 4-inch / 108 mm (4.25\") at 203 dpi — "
+                    + "the app now matches the datasheet."),
+                sep(),
+                para("References: TSC TA210/TA310 datasheet (max print width 108 mm / 104 mm); TSPL/TSPL2 manual — "
+                    + "AUTODETECT & GAPDETECT (p.6), GAP (p.2), SIZE (p.1); Seagull driver help — Page orientation.")
             });
     }
 
@@ -441,8 +495,9 @@ public class KnowledgeHubPanel extends VBox {
                 para("Raise the Brightness Threshold (Settings → Print) so more pixels burn; on thermal transfer also "
                     + "check ribbon seating and the driver's darkness setting. Clean the head with isopropyl alcohol."),
                 heading("CONTENT IS CLIPPED ON THE RIGHT"),
-                para("The strip is wider than the 54 mm TA210 head. Reduce strip width in the Label Stock dialog — the "
-                    + "app prints a warning toast when this happens."),
+                para("The strip is wider than the TA210's 108 mm (4.25 in) print head. Reduce paper width in the Label "
+                    + "Stock dialog — the app prints a warning toast when this happens. (Older builds warned at 54 mm; "
+                    + "that limit was wrong — the official datasheet gives 108 mm.)"),
                 heading("PRINTS, THEN THE APP USED TO FREEZE"),
                 para("The RAW spool wait is now on a background thread; the dialog shows Sending… and reports the result "
                     + "when the spooler answers. If Windows shows the job stuck in the queue, the printer is paused or "

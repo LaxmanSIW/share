@@ -39,3 +39,4 @@ graphify-out/
 .agent/
 .gemini/
 *.graphify*
+labelstock-verify/

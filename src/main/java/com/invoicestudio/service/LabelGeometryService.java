@@ -73,6 +73,25 @@ public final class LabelGeometryService {
                 ? c.getLabelWidth() : c.getLabelHeight();
     }
 
+    // ------------------------------------------------------------------
+    // Physical ↔ design mapping (BarTender-style stock-first dialog)
+    // ------------------------------------------------------------------
+
+    /**
+     * Design-canvas width that produces the given PHYSICAL label width
+     * (as it sits on the strip) at this print orientation. Mirrors
+     * {@link #physicalCellWidth}: for 90°/270° artwork the design is
+     * rotated at print, so the canvas is as tall as the label is wide.
+     */
+    public static double designWidthFor(double physicalWmm, double physicalHmm, String orientation) {
+        return ("90".equals(orientation) || "270".equals(orientation)) ? physicalHmm : physicalWmm;
+    }
+
+    /** Design-canvas height that produces the given PHYSICAL label height at this orientation. */
+    public static double designHeightFor(double physicalWmm, double physicalHmm, String orientation) {
+        return ("90".equals(orientation) || "270".equals(orientation)) ? physicalWmm : physicalHmm;
+    }
+
     /** True when the labels + gaps + margins actually fit the strip width. */
     public static boolean fitsStrip(LabelConfig c) {
         return requiredStripWidth(c) <= c.getStripWidth() + 1e-6;
@@ -272,13 +291,13 @@ public final class LabelGeometryService {
                     "Labels do not fit the strip: need %.1f mm but strip is %.1f mm (labels will overflow).",
                     requiredStripWidth(c), c.getStripWidth()));
         }
-        if (c.getStripWidth() > 118.0) {
-            warn.add("Strip width above 118 mm exceeds even 4-inch thermal printers; "
-                    + "note the TSC TA210 (2-inch) prints at most 54 mm across.");
-        } else if (c.getStripWidth() > TsplCommandBuilder.TA210_MAX_PRINT_MM) {
+        // Official TA210 datasheet: 4-inch head, 108 mm (4.25") at 203 dpi.
+        // (Early app builds wrongly claimed 2-inch / 54 mm and scared users
+        // printing perfectly valid 77 mm liners — fixed to match hardware.)
+        if (c.getStripWidth() > TsplCommandBuilder.TA210_MAX_PRINT_MM) {
             warn.add(String.format(java.util.Locale.US,
-                    "Strip width %.1f mm exceeds the TSC TA210 print head (54 mm) — "
-                            + "use 1-up stock or a 4-inch printer.", c.getStripWidth()));
+                    "Strip width %.1f mm exceeds the TSC TA210 print head (108 mm, 4-inch) — "
+                            + "trim margins/columns or use a wider printer.", c.getStripWidth()));
         }
         boolean hasBarcode = template.getElements() != null && template.getElements().stream()
                 .anyMatch(e -> e.getType() == com.invoicestudio.model.ElementType.BARCODE

@@ -6261,41 +6261,98 @@ public class TemplateDesigner extends BorderPane {
         updatePageFormatLabel();
     }
 
-    /** Strip-stock settings dialog — the "barcode page setting" (hidden in normal mode). */
+    /** Strip-stock settings dialog — the "barcode page setting" (hidden in normal mode).
+     *  BarTender-style stock-first setup: you describe the PHYSICAL roll (label size as
+     *  it sits on the strip, columns, gaps, margins) plus how the canvas artwork lands
+     *  on it, and a live diagram mirrors every change — no more "why is my label 35 mm
+     *  wide when the paper is 75?" orientation confusion. */
     private void showLabelSettingsDialog() {
         LabelConfig cfg = template.labelOrNew();
         cfg.sanitize();
 
+        // Stock-first seeds: PHYSICAL label size (on the strip) + the artwork
+        // rotation that maps the canvas design onto it. Round-trip safe: a
+        // dialog opened and confirmed unchanged rewrites the exact same config.
+        final String[] theta = {cfg.getOrientation()};
+        double physW0 = LabelGeometryService.physicalCellWidth(cfg);
+        double physH0 = LabelGeometryService.physicalCellHeight(cfg);
+
         Dialog<Boolean> dlg = new Dialog<>();
         DialogHelper.styleDialog(dlg);
         dlg.setTitle("Label Stock Settings");
-        dlg.setHeaderText("Barcode Mode — Strip & Die-Cut Geometry");
+        dlg.setHeaderText("Barcode Mode — Describe Your Label Roll");
+
+        // What the printer knows by itself vs what must be declared (researched:
+        // TSPL manual AUTODETECT/GAPDETECT p.6 + TSC/Seagull driver docs).
+        Label explainer = new Label("The printer works out ONE thing by itself: where each label ends along the "
+                + "feed (gap sensor — after Calibrate Sensor). Everything ACROSS the strip — label size, columns, "
+                + "margins — must be declared to it, and this dialog is that declaration. Describe the roll exactly "
+                + "as it is; the picture mirrors every change.");
+        explainer.setWrapText(true);
+        explainer.getStyleClass().add("text-muted");
+
+        // ── Live strip diagram + BarTender-style numbers caption ──
+        Pane diagram = new Pane();
+        diagram.setStyle("-fx-background-color: #1E293B; -fx-background-radius: 6;");
+        diagram.setPrefSize(588, 218);
+        diagram.setMinSize(588, 218);
+        diagram.setMaxSize(588, 218);
+        diagram.setClip(new Rectangle(588, 218));
+        Label caption = new Label();
+        caption.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #D9A13B;");
+        caption.setAlignment(Pos.CENTER);
+        caption.setMaxWidth(Double.MAX_VALUE);
+        caption.setWrapText(true);
+
+        VBox content = new VBox(10);
+        content.setPadding(new Insets(14));
+        content.getChildren().addAll(explainer, diagram, caption);
 
         GridPane g = new GridPane();
-        g.setHgap(10); g.setVgap(10); g.setPadding(new Insets(16));
+        g.setHgap(10); g.setVgap(10);
 
         Spinner<Integer> colsSpin = new Spinner<>(1, 8, cfg.getColumns());
         colsSpin.setPrefWidth(90);
-        Spinner<Double> stripWSpin = new Spinner<>(20.0, 300.0, cfg.getStripWidth(), 0.5);
-        configureNumberSpinner(stripWSpin); stripWSpin.setPrefWidth(90);
-        Spinner<Double> labelWSpin = new Spinner<>(10.0, 200.0, cfg.getLabelWidth(), 0.5);
-        configureNumberSpinner(labelWSpin); labelWSpin.setPrefWidth(90);
-        Spinner<Double> labelHSpin = new Spinner<>(10.0, 200.0, cfg.getLabelHeight(), 0.5);
-        configureNumberSpinner(labelHSpin); labelHSpin.setPrefWidth(90);
+        Spinner<Double> physWSpin = new Spinner<>(10.0, 200.0, physW0, 0.5);
+        configureNumberSpinner(physWSpin); physWSpin.setPrefWidth(90);
+        Spinner<Double> physHSpin = new Spinner<>(10.0, 200.0, physH0, 0.5);
+        configureNumberSpinner(physHSpin); physHSpin.setPrefWidth(90);
         Spinner<Double> gapXSpin = new Spinner<>(0.0, 40.0, cfg.getGapX(), 0.5);
         configureNumberSpinner(gapXSpin); gapXSpin.setPrefWidth(90);
         Spinner<Double> gapYSpin = new Spinner<>(0.0, 40.0, cfg.getGapY(), 0.5);
         configureNumberSpinner(gapYSpin); gapYSpin.setPrefWidth(90);
         Spinner<Double> cornerSpin = new Spinner<>(0.0, 12.0, cfg.getCornerRadius(), 0.5);
         configureNumberSpinner(cornerSpin); cornerSpin.setPrefWidth(90);
-        ComboBox<String> orientCb = new ComboBox<>(FXCollections.observableArrayList("0", "90", "180", "270"));
-        orientCb.setValue(cfg.getOrientation());
         Spinner<Double> mlSpin = new Spinner<>(0.0, 60.0, cfg.getMarginL(), 0.5);
         configureNumberSpinner(mlSpin); mlSpin.setPrefWidth(90);
         Spinner<Double> mrSpin = new Spinner<>(0.0, 60.0, cfg.getMarginR(), 0.5);
         configureNumberSpinner(mrSpin); mrSpin.setPrefWidth(90);
-        ComboBox<String> stockCb = new ComboBox<>(FXCollections.observableArrayList("gap", "continuous"));
-        stockCb.setValue(cfg.getStockType());
+        Spinner<Double> stripWSpin = new Spinner<>(20.0, 300.0, cfg.getStripWidth(), 0.5);
+        configureNumberSpinner(stripWSpin); stripWSpin.setPrefWidth(90);
+
+        // Paper width auto-fits the layout (BarTender computes its paper size
+        // the same way) — editing the spinner manually flips the flag off, so
+        // existing templates with a hand-set liner width are never changed.
+        CheckBox autoPaper = new CheckBox("Auto-fit paper width to labels + gaps + margins");
+        boolean auto0 = Math.abs(cfg.getStripWidth()
+                - LabelGeometryService.requiredStripWidth(cfg)) < 0.05;
+        autoPaper.setSelected(auto0);
+
+        // Human labels for the print-time artwork rotation (codes 0/90/180/270).
+        final String[] orientLabels = {
+                "Prints as designed (no rotation)",
+                "Rotates 90° clockwise at print",
+                "Rotates 180° at print",
+                "Rotates 270° clockwise at print"};
+        final String[] orientCodes = {"0", "90", "180", "270"};
+        ComboBox<String> orientCb = new ComboBox<>(FXCollections.observableArrayList(orientLabels));
+        int oi = Arrays.asList(orientCodes).indexOf(theta[0]);
+        orientCb.getSelectionModel().select(Math.max(0, oi));
+
+        ComboBox<String> stockCb = new ComboBox<>(FXCollections.observableArrayList(
+                "Gap (die-cut roll — sensor finds each label)",
+                "Continuous (receipt-style, no gaps)"));
+        stockCb.getSelectionModel().select("continuous".equalsIgnoreCase(cfg.getStockType()) ? 1 : 0);
 
         Label needLbl = new Label();
         needLbl.getStyleClass().add("text-muted");
@@ -6311,36 +6368,64 @@ public class TemplateDesigner extends BorderPane {
         pitchLbl.setWrapText(true);
         pitchLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #D9A13B;");
 
-        int r = 0;
-        g.add(new Label("Columns across strip:"), 0, r); g.add(colsSpin, 1, r);
-        g.add(new Label("Strip (liner) width (mm):"), 2, r); g.add(stripWSpin, 3, r); r++;
-        g.add(new Label("Label width (mm):"), 0, r); g.add(labelWSpin, 1, r);
-        g.add(new Label("Label height (mm):"), 2, r); g.add(labelHSpin, 3, r); r++;
-        g.add(new Label("Gap between columns (mm):"), 0, r); g.add(gapXSpin, 1, r);
-        g.add(new Label("Feed gap / rows (mm):"), 2, r); g.add(gapYSpin, 3, r); r++;
-        g.add(new Label("Corner radius (mm):"), 0, r); g.add(cornerSpin, 1, r);
-        g.add(new Label("Print orientation:"), 2, r); g.add(orientCb, 3, r); r++;
-        g.add(new Label("Left margin (mm):"), 0, r); g.add(mlSpin, 1, r);
-        g.add(new Label("Right margin (mm):"), 2, r); g.add(mrSpin, 3, r); r++;
-        g.add(new Label("Stock type:"), 0, r); g.add(stockCb, 1, r); r++;
+        Label artCaption = new Label();
+        artCaption.setWrapText(true);
+        artCaption.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
 
+        Label stockHead = new Label("STOCK — THE PHYSICAL ROLL");
+        stockHead.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #94A3B8;");
+        Label artHead = new Label("ARTWORK — HOW THE CANVAS LANDS ON THE LABEL");
+        artHead.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #94A3B8;");
+
+        // Live recompute: derives the design canvas from the PHYSICAL spinners
+        // + artwork rotation, auto-fits the paper width, refreshes every number
+        // and redraws the strip diagram.
+        final boolean[] syncingPaper = {false};
         Runnable upd = () -> {
+            String code = theta[0];
+            double pw = physWSpin.getValue(), ph = physHSpin.getValue();
             LabelConfig tmp = new LabelConfig();
-            tmp.setStripWidth(stripWSpin.getValue());
+            tmp.setOrientation(code);
+            tmp.setLabelWidth(LabelGeometryService.designWidthFor(pw, ph, code));
+            tmp.setLabelHeight(LabelGeometryService.designHeightFor(pw, ph, code));
             tmp.setColumns(colsSpin.getValue());
-            tmp.setLabelWidth(labelWSpin.getValue());
-            tmp.setLabelHeight(labelHSpin.getValue());
             tmp.setGapX(gapXSpin.getValue());
             tmp.setGapY(gapYSpin.getValue());
             tmp.setMarginL(mlSpin.getValue());
             tmp.setMarginR(mrSpin.getValue());
+            tmp.setStockType(stockCb.getSelectionModel().getSelectedIndex() == 1 ? "continuous" : "gap");
+            tmp.setStripWidth(stripWSpin.getValue());
             tmp.sanitize();
+            if (autoPaper.isSelected()) {
+                double need = LabelGeometryService.requiredStripWidth(tmp);
+                syncingPaper[0] = true;
+                stripWSpin.getValueFactory().setValue(Math.round(need * 10.0) / 10.0);
+                syncingPaper[0] = false;
+                tmp.setStripWidth(stripWSpin.getValue());
+            }
             boolean fits = LabelGeometryService.fitsStrip(tmp);
             needLbl.setText(String.format(java.util.Locale.US,
-                    "%s Labels need %.1f mm; strip is %.1f mm · feed pitch %.1f mm",
+                    "%s Labels need %.1f mm; paper is %.1f mm wide · feed pitch %.1f mm",
                     fits ? "✓" : "⚠", LabelGeometryService.requiredStripWidth(tmp),
                     tmp.getStripWidth(), LabelGeometryService.feedPitchMm(tmp)));
             needLbl.setStyle(fits ? "-fx-text-fill: #16a34a;" : "-fx-text-fill: #dc2626;");
+            caption.setText(String.format(java.util.Locale.US,
+                    "Paper (liner) %.1f mm wide   ·   Label on strip %.1f × %.1f mm (W × H)   ·   Feed pitch %.1f mm/row",
+                    tmp.getStripWidth(), pw, ph, LabelGeometryService.feedPitchMm(tmp)));
+            double dw = tmp.getLabelWidth(), dh = tmp.getLabelHeight();
+            switch (code) {
+                case "90" -> artCaption.setText(String.format(java.util.Locale.US,
+                        "Canvas designs %.1f × %.1f mm — at print the artwork rotates 90° clockwise "
+                                + "into the %.1f × %.1f mm label above.", dw, dh, pw, ph));
+                case "270" -> artCaption.setText(String.format(java.util.Locale.US,
+                        "Canvas designs %.1f × %.1f mm — at print the artwork rotates 270° clockwise "
+                                + "(90° counter-clockwise) into the %.1f × %.1f mm label above.", dw, dh, pw, ph));
+                case "180" -> artCaption.setText(String.format(java.util.Locale.US,
+                        "Canvas designs %.1f × %.1f mm — at print the artwork rotates 180° "
+                                + "into the %.1f × %.1f mm label above.", dw, dh, pw, ph));
+                default -> artCaption.setText(String.format(java.util.Locale.US,
+                        "Canvas designs %.1f × %.1f mm — artwork prints as designed, no rotation.", dw, dh));
+            }
             double cellH = LabelGeometryService.physicalCellHeight(tmp);
             double pitch = LabelGeometryService.feedPitchMm(tmp);
             int dpm = TsplPrintService.dotsPerMm((String) null);
@@ -6352,18 +6437,36 @@ public class TemplateDesigner extends BorderPane {
                     + "than the roll's real pitch: fix Label Height / Feed Gap, or Rotate the design.",
                     pitch, cellH, Math.max(0, tmp.getGapY()),
                     (int) Math.round(cellH * dpm), (int) Math.round(tmp.getGapY() * dpm), dpm));
+            drawStripDiagram(diagram, tmp);
         };
-        upd.run();
-        colsSpin.valueProperty().addListener((o, a, b) -> upd.run());
-        for (Spinner<Double> s : List.of(stripWSpin, labelWSpin, labelHSpin, gapXSpin, gapYSpin, mlSpin, mrSpin)) {
-            s.valueProperty().addListener((o, a, b) -> upd.run());
-        }
+
+        int r = 0;
+        g.add(stockHead, 0, r, 4, 1); r++;
+        g.add(new Label("Label width on strip (mm):"), 0, r); g.add(physWSpin, 1, r);
+        g.add(new Label("Label height on strip (mm):"), 2, r); g.add(physHSpin, 3, r); r++;
+        g.add(new Label("Columns across:"), 0, r); g.add(colsSpin, 1, r);
+        g.add(new Label("Gap between columns (mm):"), 2, r); g.add(gapXSpin, 3, r); r++;
+        g.add(new Label("Feed gap between rows (mm):"), 0, r); g.add(gapYSpin, 1, r);
+        g.add(new Label("Corner radius (mm):"), 2, r); g.add(cornerSpin, 3, r); r++;
+        g.add(new Label("Left margin (mm):"), 0, r); g.add(mlSpin, 1, r);
+        g.add(new Label("Right margin (mm):"), 2, r); g.add(mrSpin, 3, r); r++;
+        g.add(new Label("Paper (liner) width (mm):"), 0, r); g.add(stripWSpin, 1, r);
+        g.add(new Label("Stock type:"), 2, r); g.add(stockCb, 3, r); r++;
+        g.add(autoPaper, 0, r, 4, 1); r++;
+
         g.add(needLbl, 0, r, 4, 1); r++;
+
+        g.add(artHead, 0, r, 4, 1); r++;
+        g.add(new Label("Artwork direction:"), 0, r);
+        GridPane.setColumnSpan(orientCb, 3);
+        g.add(orientCb, 1, r); r++;
+        g.add(artCaption, 0, r, 4, 1); r++;
+
         g.add(pitchLbl, 0, r, 4, 1); r++;
 
-        Label hint = new Label("The designer canvas is ONE label cell (label width × height). "
-                + "Printing long-format stock? Rotate the design (button below) — the canvas then shows "
-                + "exactly what the printer outputs.");
+        Label hint = new Label("The canvas is ONE label cell — the design size shown under Artwork direction. "
+                + "The picture and Strip Preview always show the physical roll. Want a true WYSIWYG canvas? "
+                + "Rotate the design below: every element spins 90° and Artwork direction resets to none.");
         hint.setWrapText(true); hint.getStyleClass().add("text-muted");
         g.add(hint, 0, r, 4, 1); r++;
 
@@ -6371,33 +6474,52 @@ public class TemplateDesigner extends BorderPane {
         rotBtn.getStyleClass().addAll("button-sm", "button-secondary");
         rotBtn.setTooltip(new Tooltip(
                 "Spins the whole design 90° clockwise: label width/height swap, every element moves and "
-                + "rotates with it, and Print orientation resets to 0° — canvas, preview and print all match."));
+                + "rotates with it, and Artwork direction resets to none — canvas, preview and print all match."));
         rotBtn.setOnAction(e -> {
             rotateLabelDesign90();
-            // keep the dialog's editors consistent with the rotated design
-            labelWSpin.getValueFactory().setValue(cfg.getLabelWidth());
-            labelHSpin.getValueFactory().setValue(cfg.getLabelHeight());
-            orientCb.setValue(cfg.getOrientation());
+            // keep the stock-first editors consistent with the rotated design
+            theta[0] = cfg.getOrientation(); // "0" after the bake
+            physWSpin.getValueFactory().setValue(LabelGeometryService.physicalCellWidth(cfg));
+            physHSpin.getValueFactory().setValue(LabelGeometryService.physicalCellHeight(cfg));
+            orientCb.getSelectionModel().select(Math.max(0, Arrays.asList(orientCodes).indexOf(theta[0])));
             upd.run();
         });
         g.add(rotBtn, 0, r, 4, 1); r++;
 
-        dlg.getDialogPane().setContent(g);
+        colsSpin.valueProperty().addListener((o, a, b) -> upd.run());
+        for (Spinner<Double> s : List.of(physWSpin, physHSpin, gapXSpin, gapYSpin, mlSpin, mrSpin)) {
+            s.valueProperty().addListener((o, a, b) -> upd.run());
+        }
+        stripWSpin.valueProperty().addListener((o, a, b) -> {
+            if (!syncingPaper[0]) autoPaper.setSelected(false); // manual edit = manual width
+            upd.run();
+        });
+        autoPaper.setOnAction(e -> upd.run());
+        orientCb.setOnAction(e -> {
+            theta[0] = orientCodes[Math.max(0, orientCb.getSelectionModel().getSelectedIndex())];
+            upd.run();
+        });
+        upd.run();
+
+        content.getChildren().add(g);
+        dlg.getDialogPane().setContent(content);
         dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         dlg.setResultConverter(btn -> btn == ButtonType.OK);
         dlg.showAndWait().ifPresent(ok -> {
             if (ok) {
+                String code = theta[0];
+                double pw = physWSpin.getValue(), ph = physHSpin.getValue();
                 cfg.setColumns(colsSpin.getValue());
                 cfg.setStripWidth(stripWSpin.getValue());
-                cfg.setLabelWidth(labelWSpin.getValue());
-                cfg.setLabelHeight(labelHSpin.getValue());
+                cfg.setLabelWidth(LabelGeometryService.designWidthFor(pw, ph, code));
+                cfg.setLabelHeight(LabelGeometryService.designHeightFor(pw, ph, code));
+                cfg.setOrientation(code);
                 cfg.setGapX(gapXSpin.getValue());
                 cfg.setGapY(gapYSpin.getValue());
                 cfg.setCornerRadius(cornerSpin.getValue());
-                cfg.setOrientation(orientCb.getValue());
                 cfg.setMarginL(mlSpin.getValue());
                 cfg.setMarginR(mrSpin.getValue());
-                cfg.setStockType(stockCb.getValue());
+                cfg.setStockType(stockCb.getSelectionModel().getSelectedIndex() == 1 ? "continuous" : "gap");
                 cfg.sanitize();
 
                 syncPageFromLabelConfig();
@@ -6406,14 +6528,83 @@ public class TemplateDesigner extends BorderPane {
                 updatePropertiesPanel();
                 saveState();
                 Toast.show(app.getRootPane(), "Label Stock Updated",
-                        "Strip " + (int) Math.round(cfg.getStripWidth()) + " mm · " + cfg.getColumns()
-                        + " across · label " + (int) Math.round(cfg.getLabelWidth()) + "×"
-                        + (int) Math.round(cfg.getLabelHeight()) + " mm."
+                        "Roll " + (int) Math.round(cfg.getStripWidth()) + " mm · " + cfg.getColumns()
+                        + " across · label " + (int) Math.round(pw) + "×" + (int) Math.round(ph)
+                        + " mm on the strip"
                         + ("0".equals(cfg.getOrientation())
                                 ? ""
-                                : "  Tip: ↻ Rotate Design 90° gives a true WYSIWYG canvas."), false);
+                                : " · canvas " + (int) Math.round(cfg.getLabelWidth()) + "×"
+                                  + (int) Math.round(cfg.getLabelHeight()) + " prints rotated "
+                                  + cfg.getOrientation() + "°"), false);
             }
         });
+    }
+
+    /**
+     * Draws the BarTender-style page thumbnail for the Label Stock dialog:
+     * the liner with its die-cut labels (row 1 full, row 2 peeking below the
+     * feed gap) using the PHYSICAL layout — exactly what the printer sees.
+     * Pure UI; every number comes from the live LabelConfig snapshot.
+     */
+    private void drawStripDiagram(Pane bed, LabelConfig tmp) {
+        bed.getChildren().clear();
+        final double W = 588, H = 218;
+        boolean continuous = "continuous".equalsIgnoreCase(tmp.getStockType());
+        double linerW = Math.max(1, tmp.getStripWidth());
+        double rowH = LabelGeometryService.physicalCellHeight(tmp);
+        double gapY = continuous ? 0 : Math.max(0, tmp.getGapY());
+        double pitch = rowH + gapY;
+        double peek = rowH * 0.35;                        // second-row hint
+        double totalH = pitch + peek;
+        double s = Math.min((W - 32) / linerW, (H - 32) / totalH);
+        s = Math.max(0.5, s);
+        double x0 = (W - linerW * s) / 2.0;
+        double y0 = (H - totalH * s) / 2.0;
+
+        // liner — the backing paper the die-cuts sit on
+        Rectangle liner = new Rectangle(x0, y0, linerW * s, totalH * s);
+        liner.setFill(Color.web("#64748B"));
+        bed.getChildren().add(liner);
+
+        double[] xs = LabelGeometryService.columnOffsets(tmp);
+        double cellW = LabelGeometryService.physicalCellWidth(tmp);
+        double arc = Math.max(0, Math.min(2.0 * tmp.getCornerRadius() * s, rowH * s * 0.5));
+
+        // row 1 — the labels that carry content
+        for (int i = 0; i < xs.length; i++) {
+            Rectangle lab = new Rectangle(x0 + xs[i] * s, y0, cellW * s, rowH * s);
+            lab.setArcHeight(arc); lab.setArcWidth(arc);
+            lab.setFill(Color.web("#F8FAFC"));
+            lab.setStroke(Color.web("#0F172A"));
+            bed.getChildren().add(lab);
+            if (xs.length > 1) {
+                Text num = new Text(String.valueOf(i + 1));
+                num.setFont(Font.font(11));
+                num.setFill(Color.web("#94A3B8"));
+                num.setX(x0 + xs[i] * s + 5);
+                num.setY(y0 + 15);
+                bed.getChildren().add(num);
+            }
+        }
+
+        // feed gap marker (the dashed line the gap sensor hunts for)
+        if (gapY > 0) {
+            Line gapLine = new Line(x0, y0 + (rowH + gapY / 2.0) * s,
+                    x0 + linerW * s, y0 + (rowH + gapY / 2.0) * s);
+            gapLine.setStroke(Color.web("#D9A13B"));
+            gapLine.setStrokeWidth(1.2);
+            gapLine.getStrokeDashArray().addAll(4d, 3d);
+            bed.getChildren().add(gapLine);
+        }
+
+        // row 2 peeking below — shows the roll continues at the same pitch
+        for (int i = 0; i < xs.length; i++) {
+            Rectangle lab = new Rectangle(x0 + xs[i] * s, y0 + pitch * s, cellW * s, peek * s);
+            lab.setArcHeight(arc); lab.setArcWidth(arc);
+            lab.setFill(Color.web("#F8FAFC", 0.45));
+            lab.setStroke(Color.web("#CBD5E1"));
+            bed.getChildren().add(lab);
+        }
     }
 
     /**

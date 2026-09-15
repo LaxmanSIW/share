@@ -579,9 +579,10 @@ Driver setup notes:
 - **The driver's stock no longer matters** for TSC printers — the script
   declares its own size. Keep the driver stock roughly correct anyway so
   Windows print dialogs show sane previews.
-- Keep `stripWidth` within the print head: TA210 (2-inch) prints at most
-  **54 mm** across; TA300/TA310 (4-inch) up to ~105 mm. The Bulk Print
-  result warns when a strip exceeds the TA210 head.
+- Keep `stripWidth` within the print head: the TA210 (4-inch, 203 dpi) prints
+  at most **108 mm** across per the official datasheet (the 300-dpi TA310:
+  104 mm). The Bulk Print result warns when a strip exceeds the head.
+  (Older builds wrongly said 2-inch / 54 mm.)
 - For sideways labels (vertical dispensers) use the Label Stock dialog's
   **Rotate Design 90°** button — one-click WYSIWYG spin of the whole
   design into the print orientation (preferred over legacy `orientation`).
