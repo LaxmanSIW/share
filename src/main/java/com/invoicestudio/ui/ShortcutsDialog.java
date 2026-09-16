@@ -87,10 +87,18 @@ public class ShortcutsDialog extends StackPane {
         ScrollPane sc = new ScrollPane(columns);
         sc.setFitToWidth(true);
         sc.getStyleClass().add("scroll-pane");
-        sc.setMaxHeight(520);
+        sc.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(sc, Priority.ALWAYS);
         card.getChildren().add(sc);
 
         getChildren().add(card);
+
+        // Fill the window height with a 48px margin top/bottom (list scales
+        // with the window instead of capping at a fixed 520px).
+        card.minHeightProperty().bind(javafx.beans.binding.Bindings.max(
+                320, heightProperty().subtract(96)));
+        card.prefHeightProperty().bind(javafx.beans.binding.Bindings.max(
+                320, heightProperty().subtract(96)));
 
         // Escape closes (when this overlay has focus)
         addEventFilter(KeyEvent.KEY_PRESSED, e -> {

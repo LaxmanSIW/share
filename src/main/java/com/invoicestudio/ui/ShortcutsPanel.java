@@ -60,6 +60,12 @@ public class ShortcutsPanel extends VBox {
         return bar;
     }
 
+    /**
+     * Groups laid out flat — no nested ScrollPane: SettingsView.createTab
+     * already wraps every tab in an outer ScrollPane, and a nested one pins
+     * the list to its preferred height (clipping the rest). Full content
+     * height = the outer settings scroll scrolls naturally.
+     */
     private Node buildGroups() {
         VBox all = new VBox(18);
         for (var entry : ShortcutManager.grouped().entrySet()) {
@@ -73,12 +79,7 @@ public class ShortcutsPanel extends VBox {
             }
             all.getChildren().add(rows);
         }
-        ScrollPane sc = new ScrollPane(all);
-        sc.setFitToWidth(true);
-        sc.getStyleClass().add("scroll-pane");
-        sc.setPrefHeight(460);
-        VBox.setVgrow(sc, Priority.ALWAYS);
-        return sc;
+        return all;
     }
 
     private HBox actionRow(ShortcutManager.ShortcutAction a) {

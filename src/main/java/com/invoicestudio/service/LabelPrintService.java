@@ -333,12 +333,169 @@ public final class LabelPrintService {
             return TsplPrintService.printLabelsQueued(template, settings, lines, variableOrder,
                     target, silentHistory, onDone);
         }
+        if (javafx.application.Platform.isFxApplicationThread()) {
+            return printLabelsChunked(template, settings, lines, variableOrder, target, silentHistory, onDone);
+        }
+        // Off-FX callers (tests, tools) keep the synchronous behavior.
         PrintResult r = printLabels(template, settings, lines, variableOrder, printer, silentHistory);
         if (onDone != null) {
-            if (javafx.application.Platform.isFxApplicationThread()) onDone.accept(r);
-            else javafx.application.Platform.runLater(() -> onDone.accept(r));
+            javafx.application.Platform.runLater(() -> onDone.accept(r));
         }
         return r;
+    }
+
+    /**
+     * Driver-path printing that never blocks the UI thread for the whole job.
+     * <p>
+     * JavaFX {@link PrinterJob} work (page-node build + {@code printPage}) must
+     * happen on the FX thread, so the job is CHUNKED: one strip row per UI
+     * pulse via {@code Platform.runLater}. The UI processes input between
+     * pulses, so the app stays responsive while a large queue prints.
+     * History logging runs on the I/O executor; the result callback is
+     * delivered on the FX thread.
+     */
+    private static PrintResult printLabelsChunked(Template template, Settings settings,
+                                                  List<LabelGeometryService.PrintLine> lines,
+                                                  List<String> variableOrder,
+                                                  Printer target, boolean silentHistory,
+                                                  java.util.function.Consumer<PrintResult> onDone) {
+        if (template == null || !template.isLabelMode()) {
+            return finishGeneric(new PrintResult(false, 0, 0, "Template is not in Barcode Mode."), null, silentHistory,
+                    template, target, lines, variableOrder, 0, 0, onDone);
+        }
+        LabelConfig cfg = template.labelOrNew();
+        cfg.sanitize();
+
+        int labels = LabelGeometryService.totalLabels(lines);
+        if (labels == 0) {
+            return finishGeneric(new PrintResult(false, 0, 0, "Nothing to print — the queue is empty."), null, silentHistory,
+                    template, target, lines, variableOrder, 0, 0, onDone);
+        }
+        if (target == null) {
+            return finishGeneric(new PrintResult(false, 0, 0, "No printer installed."), null, silentHistory,
+                    template, target, lines, variableOrder, 0, 0, onDone);
+        }
+
+        PrinterJob job = PrinterJob.createPrinterJob(target);
+        if (job == null) {
+            return finishGeneric(new PrintResult(false, 0, 0,
+                    "Could not open a print job for " + target.getName() + "."), null, silentHistory,
+                    template, target, lines, variableOrder, 0, 0, onDone);
+        }
+
+        double[] pageSize = LabelGeometryService.pageSizeMm(cfg);
+        SelectedForm form = selectForm(target, pageSize[0], pageSize[1]);
+        if (form == null) {
+            return finishGeneric(new PrintResult(false, 0, 0,
+                    "Printer " + target.getName() + " did not report a usable page form."), job, silentHistory,
+                    template, target, lines, variableOrder, 0, labels, onDone);
+        }
+        job.getJobSettings().setJobName("Labels — " + template.getName());
+        job.getJobSettings().setPageLayout(form.layout());
+
+        double pageWpx = pageSize[0] * LabelRenderUtil.MM_PX;
+        double pageHpx = pageSize[1] * LabelRenderUtil.MM_PX;
+        boolean transposeForm = form.transposed();
+        double srcWpx = transposeForm ? pageHpx : pageWpx;
+        double srcHpx = transposeForm ? pageWpx : pageHpx;
+        double scale = PrintingService.computePrintScale(srcWpx, srcHpx,
+                form.layout().getPrintableWidth(), form.layout().getPrintableHeight());
+
+        Map<Integer, List<LabelGeometryService.LabelSlot>> byPage =
+                LabelGeometryService.slotsByPage(LabelGeometryService.expandSlots(lines, cfg));
+        double cellWmm = LabelGeometryService.physicalCellWidth(cfg);
+        double cellHmm = LabelGeometryService.physicalCellHeight(cfg);
+        double parsedAngle;
+        try { parsedAngle = Double.parseDouble(cfg.getOrientation()); } catch (Exception ignored) {
+            AppLog.debug(ignored); parsedAngle = 0; }
+        final double angle = parsedAngle;
+
+        // Chunked state — captured by the per-pulse runnable below.
+        java.util.ArrayDeque<Map.Entry<Integer, List<LabelGeometryService.LabelSlot>>> queue =
+                new java.util.ArrayDeque<>(byPage.entrySet());
+        int totalRows = byPage.size();
+        int[] printedRows = {0};
+
+        javafx.application.Platform.runLater(new Runnable() {
+            @Override public void run() {
+                if (queue.isEmpty()) {
+                    finishGeneric(null, job, silentHistory, template, target, lines, variableOrder,
+                            totalRows, labels, onDone);
+                    return;
+                }
+                try {
+                    Map.Entry<Integer, List<LabelGeometryService.LabelSlot>> e = queue.poll();
+                    Pane pageNode = buildStripRowPage(template, settings, e.getValue(),
+                            cfg, pageWpx, pageHpx, cellWmm, cellHmm, angle);
+                    Node sheet = pageNode;
+                    if (transposeForm) {
+                        sheet = rotatedSheet(pageNode, pageHpx);
+                    }
+                    Group printGroup = new Group(sheet);
+                    printGroup.getTransforms().setAll(new Scale(scale, scale, 0, 0));
+                    if (job.printPage(form.layout(), printGroup)) {
+                        printedRows[0]++;
+                    } else {
+                        finishGeneric(new PrintResult(false, printedRows[0], printedRows[0] * cfg.getColumns(),
+                                "Printer stopped at page " + (e.getKey() + 1) + " of " + totalRows + "."),
+                                job, silentHistory, template, target, lines, variableOrder,
+                                printedRows[0], labels, onDone);
+                        return;
+                    }
+                } catch (Exception ex) {
+                    finishGeneric(new PrintResult(false, printedRows[0], printedRows[0] * cfg.getColumns(),
+                            "Print failed: " + ex.getMessage()), job, silentHistory,
+                            template, target, lines, variableOrder, printedRows[0], labels, onDone);
+                    return;
+                }
+                // Next strip row on the following UI pulse — input events flow in between.
+                javafx.application.Platform.runLater(this);
+            }
+        });
+
+        return new PrintResult(true, 0, labels,
+                "Sending " + labels + " labels (" + totalRows + " strip rows) to " + target.getName() + "…");
+    }
+
+    /**
+     * Terminal path for the chunked driver job: ends the job on success,
+     * logs history off the FX thread, delivers the final result on the FX
+     * thread. Also used for immediate failures (with {@code job == null} or
+     * a non-null {@code error} that skips the job entirely).
+     */
+    private static PrintResult finishGeneric(PrintResult error, PrinterJob job, boolean silentHistory,
+                                             Template template, Printer target,
+                                             List<LabelGeometryService.PrintLine> lines,
+                                             List<String> variableOrder,
+                                             int rows, int labels,
+                                             java.util.function.Consumer<PrintResult> onDone) {
+        PrintResult finalResult;
+        if (error != null) {
+            finalResult = error;
+            if (job != null) {
+                try { job.endJob(); } catch (Exception ignored) { AppLog.debug(ignored); }
+            }
+        } else {
+            try { job.endJob(); } catch (Exception ignored) { AppLog.debug(ignored); }
+            String formDesc = "";
+            finalResult = new PrintResult(true, rows, labels,
+                    "Sent " + labels + " labels (" + rows + " strip rows) to "
+                            + (target != null ? target.getName() : "printer") + formDesc + ".");
+        }
+        PrintResult fr = finalResult;
+        if (fr.success() && !silentHistory) {
+            com.invoicestudio.service.AppExecutors.io().execute(() -> {
+                try {
+                    logHistory(template, target != null ? target.getName() : "", lines, variableOrder, rows, labels);
+                } catch (Exception e) {
+                    AppLog.error("Label history logging failed", e);
+                }
+                javafx.application.Platform.runLater(() -> { if (onDone != null) onDone.accept(fr); });
+            });
+        } else if (onDone != null) {
+            javafx.application.Platform.runLater(() -> onDone.accept(fr));
+        }
+        return fr;
     }
 
     /**
