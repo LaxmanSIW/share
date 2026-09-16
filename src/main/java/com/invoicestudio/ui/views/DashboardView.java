@@ -37,7 +37,13 @@ import java.util.stream.Collectors;
  * polish: animated KPI counters, CSS hover-lift cards, cached data access and
  * zero inline styles.
  */
+
 public class DashboardView extends BorderPane {
+
+    // Cached formatters — ofPattern re-parses its pattern on every call (skill 2.1).
+    private static final DateTimeFormatter F_YM = DateTimeFormatter.ofPattern("yyyy-MM");
+    private static final DateTimeFormatter F_MON_YY = DateTimeFormatter.ofPattern("MMM yy");
+    private static final DateTimeFormatter F_MON_YYYY = DateTimeFormatter.ofPattern("MMMM yyyy");
 
     private final StudioApp app;
 
@@ -143,7 +149,7 @@ public class DashboardView extends BorderPane {
             refresh();
         });
 
-        monthLabel.setText(selectedMonth.format(DateTimeFormatter.ofPattern("MMM yyyy")));
+        monthLabel.setText(selectedMonth.format(F_MON_YYYY));
         monthLabel.getStyleClass().add("month-label");
 
         Button nextBtn = UiTheme.smallBtn("›");
@@ -217,7 +223,7 @@ public class DashboardView extends BorderPane {
     // ------------------------------------------------------------------
 
     private Node createKpiCards(List<Bill> bills, Settings settings) {
-        String monthKey = selectedMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+        String monthKey = selectedMonth.format(F_YM);
         String cur = settings.getCurrency();
 
         List<Bill> invoices = bills.stream()
@@ -228,7 +234,7 @@ public class DashboardView extends BorderPane {
                 .filter(b -> b.getDate() != null && b.getDate().startsWith(monthKey))
                 .mapToDouble(b -> b.getTotals().getGrandTotal()).sum();
 
-        String prevMonthKey = selectedMonth.minusMonths(1).format(DateTimeFormatter.ofPattern("yyyy-MM"));
+        String prevMonthKey = selectedMonth.minusMonths(1).format(F_YM);
         double prevRevenue = invoices.stream()
                 .filter(b -> b.getDate() != null && b.getDate().startsWith(prevMonthKey))
                 .mapToDouble(b -> b.getTotals().getGrandTotal()).sum();
@@ -340,11 +346,11 @@ public class DashboardView extends BorderPane {
         List<Double> values = new ArrayList<>();
         for (int i = 5; i >= 0; i--) {
             LocalDate d = selectedMonth.minusMonths(i);
-            String key = d.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+            String key = d.format(F_YM);
             double rev = bills.stream()
                     .filter(b -> b.getDocType() == DocType.INVOICE && b.getStatus() != BillStatus.CANCELLED && b.getDate() != null && b.getDate().startsWith(key))
                     .mapToDouble(b -> b.getTotals().getGrandTotal()).sum();
-            months.add(d.format(DateTimeFormatter.ofPattern("MMM yy")));
+            months.add(d.format(F_MON_YY));
             values.add(rev);
         }
 

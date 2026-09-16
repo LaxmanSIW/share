@@ -278,7 +278,7 @@ public class VariablesView extends VBox {
             choicesInput.clear();
             reload();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             Toast.show(this, "Error", "Failed to add variable: " + e.getMessage(), true);
         }
     }
@@ -418,7 +418,7 @@ public class VariablesView extends VBox {
             card.getChildren().addAll(head, grid);
             buyerFieldsContainer.getChildren().add(card);
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -540,7 +540,7 @@ public class VariablesView extends VBox {
                 customVarsContainer.getChildren().add(rowBox);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 

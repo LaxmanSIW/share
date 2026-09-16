@@ -41,7 +41,7 @@ public class SupplierDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -59,7 +59,7 @@ public class SupplierDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return null;
     }
@@ -79,7 +79,7 @@ public class SupplierDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return null;
     }
@@ -110,7 +110,7 @@ public class SupplierDao {
             ps.setString(9, supplier.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -123,7 +123,7 @@ public class SupplierDao {
             ps.setString(2, uid);
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -138,7 +138,7 @@ public class SupplierDao {
                 if (rs.next()) return rs.getInt("c");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return 0;
     }

@@ -1,5 +1,6 @@
 package com.invoicestudio.service;
 
+import com.invoicestudio.service.AppLog;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.invoicestudio.AppDirs;
@@ -124,7 +125,8 @@ public class CustomComponentManager {
                 copy.setGroupName(groupName);
                 copy.setComponentType(comp.getName());
                 result.add(copy);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         }
 
         return result;

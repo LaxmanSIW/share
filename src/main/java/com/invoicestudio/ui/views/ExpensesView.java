@@ -1,5 +1,6 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.Expense;
 import com.invoicestudio.service.PurchaseService;
 import com.invoicestudio.ui.DialogHelper;
@@ -256,7 +257,8 @@ public class ExpensesView extends BorderPane {
         try {
             datePick.setValue(existing != null && existing.getDate() != null && !existing.getDate().isBlank()
                     ? java.time.LocalDate.parse(existing.getDate()) : java.time.LocalDate.now());
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
         ComboBox<String> catBox = new ComboBox<>(FXCollections.observableArrayList(Expense.CATEGORIES));
         catBox.setEditable(true);
@@ -298,7 +300,8 @@ public class ExpensesView extends BorderPane {
                 return null;
             }
             double amount = 0;
-            try { amount = Double.parseDouble(amountF.getText().trim()); } catch (Exception ignored) {}
+            try { amount = Double.parseDouble(amountF.getText().trim()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             if (amount <= 0) {
                 Toast.show(app.getRootPane(), "Validation Error", "Amount must be greater than zero.", true);
                 return null;

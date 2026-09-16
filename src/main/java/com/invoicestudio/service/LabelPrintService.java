@@ -1,5 +1,6 @@
 package com.invoicestudio.service;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.db.LabelPrintHistoryDao;
 import com.invoicestudio.db.DatabaseManager;
 import com.invoicestudio.model.LabelPrintHistory;
@@ -159,7 +160,8 @@ public final class LabelPrintService {
                 papers.add(p);
                 dims.add(new double[]{pw, ph});
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
         FormChoice choice = chooseForm(dims.toArray(new double[0][]), pageWmm, pageHmm);
         if (choice == null) {
@@ -189,6 +191,7 @@ public final class LabelPrintService {
             return printer.createPageLayout(paper, PageOrientation.PORTRAIT,
                     Printer.MarginType.HARDWARE_MINIMUM);
         } catch (Exception ignored) {
+            AppLog.debug(ignored);
             try {
                 return printer.createPageLayout(paper, PageOrientation.PORTRAIT,
                         Printer.MarginType.DEFAULT);
@@ -269,7 +272,8 @@ public final class LabelPrintService {
         double cellWmm = LabelGeometryService.physicalCellWidth(cfg);
         double cellHmm = LabelGeometryService.physicalCellHeight(cfg);
         double angle = 0;
-        try { angle = Double.parseDouble(cfg.getOrientation()); } catch (Exception ignored) {}
+        try { angle = Double.parseDouble(cfg.getOrientation()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
         int printed = 0;
         try {
@@ -400,7 +404,7 @@ public final class LabelPrintService {
             h.setLinesJson(LabelGeometryService.linesToJson(lines, variableOrder));
             new LabelPrintHistoryDao(DatabaseManager.getInstance()).insert(h);
         } catch (Throwable t) {
-            t.printStackTrace();
+            com.invoicestudio.service.AppLog.error(t);
         }
     }
 }

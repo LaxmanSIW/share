@@ -1,5 +1,6 @@
 package com.invoicestudio.ui;
 
+import com.invoicestudio.service.AppLog;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
@@ -129,7 +130,8 @@ public class CustomColorChooserDialog extends Stage {
                     Color c = Color.web(val);
                     setColor(c, false);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         });
 
         Button dropperBtn = new Button();
@@ -388,7 +390,8 @@ public class CustomColorChooserDialog extends Stage {
                     if (ly + 70 > totalH) ly = e.getSceneY() - 80;
                     loupe.setLayoutX(lx);
                     loupe.setLayoutY(ly);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             });
 
             scene.setOnMouseClicked(e -> {
@@ -414,7 +417,7 @@ public class CustomColorChooserDialog extends Stage {
             pickerStage.setScene(scene);
             pickerStage.show();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 

@@ -1,5 +1,6 @@
 package com.invoicestudio.ui;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.PageConfig;
 import com.invoicestudio.model.PageSizeName;
 import com.invoicestudio.model.Template;
@@ -348,7 +349,8 @@ public class PrintPreviewDialog {
                     String key = String.format(java.util.Locale.US, "%.0fx%.0f", short_, long_);
                     byDims.putIfAbsent(key, new PaperItem(p, prettyPaperName(p, wMm, hMm)));
                 }
-            } catch (Exception ignored) { /* keep whatever we have */ }
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); /* keep whatever we have */ }
         }
 
         // Always offer the template's own paper (resolved on this printer) and select it

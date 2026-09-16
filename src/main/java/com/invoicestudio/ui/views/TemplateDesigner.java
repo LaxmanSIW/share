@@ -1,5 +1,6 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.db.SettingsDao;
 import com.invoicestudio.db.TemplateDao;
 import com.invoicestudio.db.VariableDao;
@@ -46,6 +47,7 @@ import javafx.scene.text.Text;
 import javafx.scene.transform.Scale;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.event.EventHandler;
+import javafx.util.Duration;
 import javafx.geometry.Bounds;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
@@ -98,10 +100,7 @@ public class TemplateDesigner extends BorderPane {
 
     private Template template;
     private TemplateElement selectedElement;
-    private TemplateElement clipboardElement;
-    private final Stack<String> undoStack = new Stack<>();
-    private final Stack<String> redoStack = new Stack<>();
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final DesignerState designerState = new DesignerState();
 
     private final Pane canvasContainer = new Pane();
     private final Pane canvas = new Pane();
@@ -130,6 +129,12 @@ public class TemplateDesigner extends BorderPane {
      *  skip themselves when a newer request superseded them. */
     private int anchorGeneration = 0;
     private double renderedGridStepMm = -1;
+    /** Coalescing timer for the ruler repaint during zoom gestures (skill rule
+     *  6.1 "coalesce-then-refine"): one trailing-edge repaint ~150 ms after
+     *  the last zoom change settles, instead of one full rebuild per wheel
+     *  notch. */
+    private PauseTransition rulerRepaintDebounce;
+    private boolean rulerRepaintPending;
     /** Grey panning margin (px) around the scaled canvas inside the wrapper.
      *  At least half the viewport per side, so the scaled content ALWAYS
      *  overflows the viewport and horizontal/vertical scrolling never dead-ends
@@ -827,9 +832,42 @@ public class TemplateDesigner extends BorderPane {
         buildGridCanvas(pageW, pageH);
         buildMarginGuides(); // guides keep hairline stroke & legend size in sync with zoom
         // Rulers are screen-constant (tick lengths & fonts are 1/zoom local px)
-        // AND their 1-2-5 scale adapts to zoom — redraw them on EVERY zoom
-        // change, not just when the major step changes.
-        buildRulers(pageW, pageH);
+        // AND their 1-2-5 scale adapts to zoom — they must be redrawn on every
+        // zoom change, but NOT once per wheel notch: a full rebuild clears and
+        // recreates hundreds of Line/Label nodes mid-gesture, which is exactly
+        // the jank Ctrl+scroll feels. Industry pattern (canvas editors, map
+        // tiles): keep the scene valid during the gesture and schedule ONE
+        // trailing-edge repaint after the last zoom change settles.
+        scheduleRulerRepaint(pageW, pageH);
+    }
+
+    /**
+     * Coalesces ruler repaints: at most one repaint stays pending, always for
+     * the latest zoom/page metrics. The current rulers remain on screen (valid
+     * for the previous zoom) until the gesture settles, then a single repaint
+     * swaps them for the exact new scale. {@link #flushPendingRulerRepaint()}
+     * forces the swap immediately (used by tests and full re-renders).
+     */
+    private void scheduleRulerRepaint(double pageW, double pageH) {
+        rulerRepaintPending = true;
+        if (rulerRepaintDebounce == null) {
+            rulerRepaintDebounce = new PauseTransition(Duration.millis(150));
+            rulerRepaintDebounce.setOnFinished(e -> {
+                if (!rulerRepaintPending) return;
+                rulerRepaintPending = false;
+                PageConfig pg = template.getPage();
+                buildRulers(pg.getWidth() * MM_PX, pg.getHeight() * MM_PX);
+            });
+        }
+        rulerRepaintDebounce.playFromStart();
+    }
+
+    /** Runs a pending coalesced ruler repaint NOW (no-op if none pending). */
+    void flushPendingRulerRepaint() {
+        if (rulerRepaintPending && rulerRepaintDebounce != null) {
+            rulerRepaintDebounce.stop();
+            rulerRepaintDebounce.getOnFinished().handle(null);
+        }
     }
 
     /**
@@ -1423,6 +1461,7 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void buildRulers(double pageW, double pageH) {
+        rulerRepaintPending = false; // a synchronous rebuild supersedes any queued one
         rulerTop.getChildren().clear();
         rulerLeft.getChildren().clear();
         rulerCorner.getChildren().clear();
@@ -1866,6 +1905,7 @@ public class TemplateDesigner extends BorderPane {
                 }
             }
         } catch (Exception ignored) {
+            AppLog.debug(ignored);
             // Variable source unavailable — canvas falls back to {{key}} text.
         }
         return ctx;
@@ -2017,6 +2057,7 @@ public class TemplateDesigner extends BorderPane {
                 geoRotSpin.getValueFactory().setValue((double) Math.round(selectedElement.getRotation()));
             }
         } catch (Exception ignored) {
+            AppLog.debug(ignored);
         } finally {
             updatingProperties = false;
         }
@@ -2705,7 +2746,8 @@ public class TemplateDesigner extends BorderPane {
                         double val = Double.parseDouble(text.trim());
                         spinner.getValueFactory().setValue(val);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             }
         });
 
@@ -2716,7 +2758,8 @@ public class TemplateDesigner extends BorderPane {
                     double val = Double.parseDouble(text.trim());
                     spinner.getValueFactory().setValue(val);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         });
     }
 
@@ -3160,7 +3203,8 @@ public class TemplateDesigner extends BorderPane {
                     el.setBold(num >= 700);
                     boldBtn.setSelected(num >= 700);
                     refreshCanvas();
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             }
         });
 
@@ -3520,7 +3564,8 @@ public class TemplateDesigner extends BorderPane {
             if (currentImg == null) {
                 try {
                     currentImg = new Image(getClass().getResourceAsStream("/icons/Invoicewhitebackground.png"));
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             }
         } else if (el.getSrc() != null && !el.getSrc().isBlank()) {
             currentImg = decodeFxImage(el.getSrc());
@@ -3629,37 +3674,11 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private Image decodeFxImage(String src) {
-        if (src == null || src.isBlank()) return null;
-        try {
-            if (src.startsWith("data:image")) {
-                int comma = src.indexOf(",");
-                if (comma != -1) {
-                    byte[] bytes = Base64.getDecoder().decode(src.substring(comma + 1));
-                    BufferedImage bi = ImageIO.read(new ByteArrayInputStream(bytes));
-                    return SwingFXUtils.toFXImage(bi, null);
-                }
-            } else if (src.startsWith("/") || src.startsWith("classpath:")) {
-                String path = src.startsWith("classpath:") ? src.substring(10) : src;
-                var in = getClass().getResourceAsStream(path);
-                if (in != null) return new Image(in);
-            } else {
-                File f = new File(src);
-                if (f.exists()) return new Image(f.toURI().toString());
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-        return null;
+        return VectorGeometryUtil.decodeFxImage(src);
     }
 
     private String loadResourceAsBase64(String resourcePath) {
-        try (var in = getClass().getResourceAsStream(resourcePath)) {
-            if (in != null) {
-                byte[] bytes = in.readAllBytes();
-                return "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes);
-            }
-        } catch (Exception ignored) {}
-        return null;
+        return VectorGeometryUtil.loadResourceAsBase64(resourcePath);
     }
 
     private void buildQrProperties(TemplateElement el) {
@@ -4475,247 +4494,30 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private boolean isPointEditable(TemplateElement el) {
-        if (el == null) return false;
-        ElementType t = el.getType();
-        if (t == ElementType.POLYGON || t == ElementType.POLYLINE || t == ElementType.FREEHAND) {
-            return el.getPoints() != null && !el.getPoints().isBlank();
-        }
-        if (t == ElementType.PATH) {
-            return (el.getPathData() != null && !el.getPathData().isBlank()) || (el.getPoints() != null && !el.getPoints().isBlank());
-        }
-        if (t == ElementType.SVG) {
-            return (el.getSvgSource() != null && !el.getSvgSource().isBlank()) || (el.getPoints() != null && !el.getPoints().isBlank());
-        }
-        return false;
+        return VectorGeometryUtil.isPointEditable(el);
     }
 
     private boolean isCurved(TemplateElement el) {
-        if (el == null) return false;
-        if (el.getType() == ElementType.PATH && el.getPathData() != null && !el.getPathData().isBlank()) {
-            String d = el.getPathData().toUpperCase(java.util.Locale.ROOT);
-            return d.contains("C") || d.contains("S") || d.contains("Q") || d.contains("T");
-        }
-        if (el.getType() == ElementType.SVG && el.getSvgSource() != null && !el.getSvgSource().isBlank()) {
-            String s = el.getSvgSource().toUpperCase(java.util.Locale.ROOT);
-            return s.contains("C") || s.contains("S") || s.contains("Q") || s.contains("T");
-        }
-        return false;
+        return VectorGeometryUtil.isCurved(el);
     }
 
+    /** Kept for the existing unit tests; logic now lives in {@link VectorGeometryUtil}. */
     public static List<Point2D> parseElementVertices(TemplateElement el) {
-        List<Point2D> pts = new ArrayList<>();
-        if (el == null) return pts;
-
-        boolean hasCustomPoints = el.getPoints() != null && !el.getPoints().isBlank() && !"0,0 20,40 40,0".equals(el.getPoints().trim());
-
-        if (el.getType() == ElementType.PATH && el.getPathData() != null && !el.getPathData().isBlank() && !hasCustomPoints) {
-            pts.addAll(extractPointsFromSvgPath(el.getPathData()));
-        } else if (el.getType() == ElementType.SVG && el.getSvgSource() != null && !el.getSvgSource().isBlank() && !hasCustomPoints) {
-            pts.addAll(extractPointsFromSvgPath(el.getSvgSource()));
-        } else if (el.getPoints() != null && !el.getPoints().isBlank()) {
-            String[] tokens = el.getPoints().trim().split("[,\\s]+");
-            for (int i = 0; i + 1 < tokens.length; i += 2) {
-                try {
-                    double x = Double.parseDouble(tokens[i]);
-                    double y = Double.parseDouble(tokens[i + 1]);
-                    pts.add(new Point2D(x, y));
-                } catch (Exception ignored) {}
-            }
-        }
-        return pts;
+        return VectorGeometryUtil.parseElementVertices(el);
     }
 
+    /** Kept for the existing unit tests; logic now lives in {@link VectorGeometryUtil}. */
     public static List<Point2D> extractPointsFromSvgPath(String d) {
-        List<Point2D> pts = new ArrayList<>();
-        if (d == null || d.isBlank()) return pts;
-        try {
-            java.util.regex.Matcher m = java.util.regex.Pattern.compile("([a-zA-Z])|([-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)").matcher(d);
-            List<String> tokens = new ArrayList<>();
-            while (m.find()) {
-                tokens.add(m.group());
-            }
-            char cmd = 'M';
-            int i = 0;
-            double curX = 0, curY = 0;
-            while (i < tokens.size()) {
-                String tok = tokens.get(i);
-                if (Character.isLetter(tok.charAt(0))) {
-                    cmd = tok.charAt(0);
-                    i++;
-                }
-                switch (cmd) {
-                    case 'M' -> {
-                        if (i + 1 < tokens.size()) {
-                            curX = Double.parseDouble(tokens.get(i++));
-                            curY = Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'm' -> {
-                        if (i + 1 < tokens.size()) {
-                            curX += Double.parseDouble(tokens.get(i++));
-                            curY += Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'L' -> {
-                        if (i + 1 < tokens.size()) {
-                            curX = Double.parseDouble(tokens.get(i++));
-                            curY = Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'l' -> {
-                        if (i + 1 < tokens.size()) {
-                            curX += Double.parseDouble(tokens.get(i++));
-                            curY += Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'H' -> {
-                        if (i < tokens.size()) {
-                            curX = Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'h' -> {
-                        if (i < tokens.size()) {
-                            curX += Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'V' -> {
-                        if (i < tokens.size()) {
-                            curY = Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'v' -> {
-                        if (i < tokens.size()) {
-                            curY += Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'C' -> {
-                        if (i + 5 < tokens.size()) {
-                            i += 4;
-                            curX = Double.parseDouble(tokens.get(i++));
-                            curY = Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'c' -> {
-                        if (i + 5 < tokens.size()) {
-                            i += 4;
-                            curX += Double.parseDouble(tokens.get(i++));
-                            curY += Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'S', 'Q' -> {
-                        if (i + 3 < tokens.size()) {
-                            i += 2;
-                            curX = Double.parseDouble(tokens.get(i++));
-                            curY = Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 's', 'q' -> {
-                        if (i + 3 < tokens.size()) {
-                            i += 2;
-                            curX += Double.parseDouble(tokens.get(i++));
-                            curY += Double.parseDouble(tokens.get(i++));
-                            pts.add(new Point2D(curX, curY));
-                        }
-                    }
-                    case 'Z', 'z' -> {
-                        // Closed
-                    }
-                    default -> i++;
-                }
-            }
-        } catch (Exception ignored) {}
-        return pts;
+        return VectorGeometryUtil.extractPointsFromSvgPath(d);
     }
 
+    /** Kept for the existing unit tests; logic now lives in {@link VectorGeometryUtil}. */
     public static String generateSmoothBezierPath(List<Point2D> pts, double tension, boolean closed) {
-        if (pts == null || pts.isEmpty()) return "";
-        if (pts.size() == 1) {
-            Point2D p = pts.get(0);
-            return String.format(java.util.Locale.US, "M %.2f,%.2f", p.getX(), p.getY());
-        }
-        if (pts.size() == 2) {
-            Point2D p0 = pts.get(0);
-            Point2D p1 = pts.get(1);
-            return String.format(java.util.Locale.US, "M %.2f,%.2f L %.2f,%.2f%s",
-                    p0.getX(), p0.getY(), p1.getX(), p1.getY(), closed ? " Z" : "");
-        }
-
-        double t = Math.max(0.05, Math.min(1.5, tension));
-        double factor = t / 3.0;
-
-        StringBuilder sb = new StringBuilder();
-        Point2D p0 = pts.get(0);
-        sb.append(String.format(java.util.Locale.US, "M %.2f,%.2f", p0.getX(), p0.getY()));
-
-        int n = pts.size();
-        int count = closed ? n : n - 1;
-
-        for (int i = 0; i < count; i++) {
-            Point2D curr = pts.get(i);
-            Point2D next = pts.get((i + 1) % n);
-
-            Point2D prev;
-            if (i > 0) {
-                prev = pts.get(i - 1);
-            } else if (closed) {
-                prev = pts.get(n - 1);
-            } else {
-                prev = new Point2D(curr.getX() - (next.getX() - curr.getX()), curr.getY() - (next.getY() - curr.getY()));
-            }
-
-            Point2D nextNext;
-            if (i + 2 < n) {
-                nextNext = pts.get(i + 2);
-            } else if (closed) {
-                nextNext = pts.get((i + 2) % n);
-            } else {
-                nextNext = new Point2D(next.getX() + (next.getX() - curr.getX()), next.getY() + (next.getY() - curr.getY()));
-            }
-
-            double cp1x = curr.getX() + factor * (next.getX() - prev.getX());
-            double cp1y = curr.getY() + factor * (next.getY() - prev.getY());
-            double cp2x = next.getX() - factor * (nextNext.getX() - curr.getX());
-            double cp2y = next.getY() - factor * (nextNext.getY() - curr.getY());
-
-            sb.append(String.format(java.util.Locale.US, " C %.2f,%.2f %.2f,%.2f %.2f,%.2f",
-                    cp1x, cp1y, cp2x, cp2y, next.getX(), next.getY()));
-        }
-
-        if (closed) {
-            sb.append(" Z");
-        }
-        return sb.toString();
+        return VectorGeometryUtil.generateSmoothBezierPath(pts, tension, closed);
     }
 
     private void syncVerticesToElement(TemplateElement el, List<Point2D> curPts, boolean curved, double tension) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < curPts.size(); i++) {
-            Point2D p = curPts.get(i);
-            if (i > 0) sb.append(" ");
-            sb.append(String.format(java.util.Locale.US, "%.1f,%.1f", p.getX(), p.getY()));
-        }
-        el.setPoints(sb.toString());
-        if (curved) {
-            boolean closed = el.getType() != ElementType.POLYLINE && el.getType() != ElementType.FREEHAND;
-            String bezierD = generateSmoothBezierPath(curPts, tension, closed);
-            el.setPathData(bezierD);
-            if (el.getType() == ElementType.SVG) {
-                el.setSvgSource(bezierD);
-            } else {
-                el.setType(ElementType.PATH);
-            }
-        }
+        VectorGeometryUtil.syncVerticesToElement(el, curPts, curved, tension);
     }
 
     private void addVertexAnchorHandles(Pane selBox, TemplateElement el) {
@@ -5791,20 +5593,11 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private String colorToHex(Color c) {
-        if (c == null) return "#000000";
-        return String.format("#%02X%02X%02X",
-                (int) Math.round(c.getRed() * 255),
-                (int) Math.round(c.getGreen() * 255),
-                (int) Math.round(c.getBlue() * 255));
+        return VectorGeometryUtil.colorToHex(c);
     }
 
     private Color hexToColor(String hex, Color def) {
-        try {
-            if (hex == null || hex.isBlank() || "transparent".equalsIgnoreCase(hex)) return def;
-            return Color.web(hex);
-        } catch (Exception e) {
-            return def;
-        }
+        return VectorGeometryUtil.hexToColor(hex, def);
     }
 
     private void insertVariableIntoTarget(TextArea target, String placeholder, TemplateElement el) {
@@ -5837,7 +5630,7 @@ public class TemplateDesigner extends BorderPane {
             refreshCanvas();
             target.requestFocus();
         } catch (Exception ex) {
-            ex.printStackTrace();
+            com.invoicestudio.service.AppLog.error(ex);
         }
     }
 
@@ -5958,7 +5751,7 @@ public class TemplateDesigner extends BorderPane {
             dlg.setScene(scene);
             dlg.showAndWait();
         } catch (Exception ex) {
-            ex.printStackTrace();
+            com.invoicestudio.service.AppLog.error(ex);
             Toast.show(app != null ? app.getRootPane() : this, "Variable Picker", "Could not open variable browser: " + ex.getMessage(), true);
         }
     }
@@ -5998,7 +5791,8 @@ public class TemplateDesigner extends BorderPane {
                     }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
         // Business Profile
         map.put("business_name", new VariableDef("business_name", "My Business Name", "BUSINESS", true));
@@ -6767,7 +6561,8 @@ public class TemplateDesigner extends BorderPane {
                     vars.add(v);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
         // Any placeholder typed on the label but not defined as a barcode
         // variable still gets a column, so a run is never blocked.
@@ -6816,7 +6611,8 @@ public class TemplateDesigner extends BorderPane {
             for (VariableDef v : variableDao.getBarcodeScopeVariables()) {
                 if (v != null && used.contains(v.getKey())) vars.add(v);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         if (vars.isEmpty()) {
             out.add(new LinkedHashMap<>());
             return out;
@@ -7353,91 +7149,58 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void saveState() {
-        try {
-            String json = mapper.writeValueAsString(template);
-            if (!undoStack.isEmpty() && undoStack.peek().equals(json)) {
-                return;
-            }
-            undoStack.push(json);
-            if (undoStack.size() > 50) {
-                undoStack.remove(0);
-            }
-            redoStack.clear();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        designerState.saveState(template);
     }
 
     private void undo() {
-        if (undoStack.size() <= 1) {
+        Template previous = designerState.undo();
+        if (previous == null) {
             Toast.show(app.getRootPane(), "Undo", "Nothing to undo.", false);
             return;
         }
-        try {
-            String current = undoStack.pop();
-            redoStack.push(current);
-            String previous = undoStack.peek();
-            this.template = mapper.readValue(previous, Template.class);
-            this.selectedElement = null;
-            nameField.setText(template.getName());
-            refreshCanvas();
-            updatePropertiesPanel();
-            refreshLayersList();
-            Toast.show(app.getRootPane(), "Undo", "Action undone.", false);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        this.template = previous;
+        this.selectedElement = null;
+        nameField.setText(template.getName());
+        refreshCanvas();
+        updatePropertiesPanel();
+        refreshLayersList();
+        Toast.show(app.getRootPane(), "Undo", "Action undone.", false);
     }
 
     private void redo() {
-        if (redoStack.isEmpty()) {
+        Template next = designerState.redo();
+        if (next == null) {
             Toast.show(app.getRootPane(), "Redo", "Nothing to redo.", false);
             return;
         }
-        try {
-            String next = redoStack.pop();
-            undoStack.push(next);
-            this.template = mapper.readValue(next, Template.class);
-            this.selectedElement = null;
-            nameField.setText(template.getName());
-            refreshCanvas();
-            updatePropertiesPanel();
-            refreshLayersList();
-            Toast.show(app.getRootPane(), "Redo", "Action redone.", false);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        this.template = next;
+        this.selectedElement = null;
+        nameField.setText(template.getName());
+        refreshCanvas();
+        updatePropertiesPanel();
+        refreshLayersList();
+        Toast.show(app.getRootPane(), "Redo", "Action redone.", false);
     }
 
     private void copySelected() {
         if (selectedElement == null) return;
-        try {
-            String json = mapper.writeValueAsString(selectedElement);
-            clipboardElement = mapper.readValue(json, TemplateElement.class);
-            Toast.show(app.getRootPane(), "Copied", "Element copied to clipboard.", false);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        designerState.copy(selectedElement);
+        Toast.show(app.getRootPane(), "Copied", "Element copied to clipboard.", false);
     }
 
     private void pasteCopied() {
-        if (clipboardElement == null) return;
-        try {
-            String json = mapper.writeValueAsString(clipboardElement);
-            TemplateElement pasted = mapper.readValue(json, TemplateElement.class);
-            pasted.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
-            pasted.setX(pasted.getX() + 5);
-            pasted.setY(pasted.getY() + 5);
-            template.getElements().add(pasted);
-            selectedElement = pasted;
-            saveState();
-            refreshCanvas();
-            updatePropertiesPanel();
-            refreshLayersList();
-            Toast.show(app.getRootPane(), "Pasted", "Element pasted.", false);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        TemplateElement pasted = designerState.pasteSource();
+        if (pasted == null) return;
+        pasted.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
+        pasted.setX(pasted.getX() + 5);
+        pasted.setY(pasted.getY() + 5);
+        template.getElements().add(pasted);
+        selectedElement = pasted;
+        saveState();
+        refreshCanvas();
+        updatePropertiesPanel();
+        refreshLayersList();
+        Toast.show(app.getRootPane(), "Pasted", "Element pasted.", false);
     }
 
     private final EventHandler<KeyEvent> sceneKeyFilter = this::handleGlobalKeyPress;

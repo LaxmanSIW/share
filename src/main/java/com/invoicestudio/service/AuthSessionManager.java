@@ -24,7 +24,7 @@ public final class AuthSessionManager {
             try {
                 l.accept(session);
             } catch (Exception e) {
-                e.printStackTrace();
+                com.invoicestudio.service.AppLog.error(e);
             }
         }
     }

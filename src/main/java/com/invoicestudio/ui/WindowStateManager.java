@@ -1,5 +1,6 @@
 package com.invoicestudio.ui;
 
+import com.invoicestudio.service.AppLog;
 import javafx.application.Platform;
 import javafx.geometry.Rectangle2D;
 import javafx.stage.Screen;
@@ -84,7 +85,8 @@ public final class WindowStateManager {
                 stage.setMaximized(true);
                 return true;
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         return false;
     }
 
@@ -112,6 +114,7 @@ public final class WindowStateManager {
                 prefs.putDouble(KEY_Y, stage.getY());
             }
             prefs.flush();
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
     }
 }

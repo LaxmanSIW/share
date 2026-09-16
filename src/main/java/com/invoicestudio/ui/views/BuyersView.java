@@ -1,5 +1,6 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.Bill;
 import com.invoicestudio.model.BillPayment;
 import com.invoicestudio.model.BillStatus;
@@ -577,12 +578,14 @@ public class BuyersView extends BorderPane {
                 try {
                     String obStr = openingBalF.getText().trim();
                     if (!obStr.isEmpty()) b.setOpeningBalance(Double.parseDouble(obStr));
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
                 try {
                     String clStr = creditLimitF.getText().trim();
                     if (!clStr.isEmpty()) b.setCreditLimit(Double.parseDouble(clStr));
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
                 if (transportBox.getValue() != null) {
                     b.setDefaultTransportId(transportBox.getValue().getId());

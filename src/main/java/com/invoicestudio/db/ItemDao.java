@@ -1,5 +1,6 @@
 package com.invoicestudio.db;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.ItemRecord;
 
 import java.sql.Connection;
@@ -43,18 +44,23 @@ public class ItemDao {
                     try {
                         it.setCategoryId(rs.getString("category_id"));
                         it.setCategoryName(rs.getString("category_name"));
-                    } catch (Exception ignored) {}
-                    try { it.setPurchaseRate(rs.getDouble("purchase_rate")); } catch (Exception ignored) {}
-                    try { it.setCurrentStock(rs.getDouble("current_stock")); } catch (Exception ignored) {}
-                    try { it.setOpeningStock(rs.getDouble("opening_stock")); } catch (Exception ignored) {}
-                    try { it.setReorderLevel(rs.getDouble("reorder_level")); } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+                    try { it.setPurchaseRate(rs.getDouble("purchase_rate")); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+                    try { it.setCurrentStock(rs.getDouble("current_stock")); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+                    try { it.setOpeningStock(rs.getDouble("opening_stock")); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+                    try { it.setReorderLevel(rs.getDouble("reorder_level")); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                     it.setCreatedAt(rs.getString("created_at"));
                     it.setUpdatedAt(rs.getString("updated_at"));
                     list.add(it);
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -79,18 +85,23 @@ public class ItemDao {
                     try {
                         it.setCategoryId(rs.getString("category_id"));
                         it.setCategoryName(rs.getString("category_name"));
-                    } catch (Exception ignored) {}
-                    try { it.setPurchaseRate(rs.getDouble("purchase_rate")); } catch (Exception ignored) {}
-                    try { it.setCurrentStock(rs.getDouble("current_stock")); } catch (Exception ignored) {}
-                    try { it.setOpeningStock(rs.getDouble("opening_stock")); } catch (Exception ignored) {}
-                    try { it.setReorderLevel(rs.getDouble("reorder_level")); } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+                    try { it.setPurchaseRate(rs.getDouble("purchase_rate")); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+                    try { it.setCurrentStock(rs.getDouble("current_stock")); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+                    try { it.setOpeningStock(rs.getDouble("opening_stock")); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+                    try { it.setReorderLevel(rs.getDouble("reorder_level")); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                     it.setCreatedAt(rs.getString("created_at"));
                     it.setUpdatedAt(rs.getString("updated_at"));
                     return it;
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return null;
     }
@@ -138,7 +149,7 @@ public class ItemDao {
             ps.setString(15, item.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -164,7 +175,7 @@ public class ItemDao {
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             throw new RuntimeException("Failed to delete item: " + e.getMessage(), e);
         }
     }
@@ -192,7 +203,7 @@ public class ItemDao {
                 if (rs.next()) return rs.getInt(1);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return 0;
     }
@@ -213,7 +224,7 @@ public class ItemDao {
             ps.setString(4, categoryId.trim());
             return ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return 0;
     }

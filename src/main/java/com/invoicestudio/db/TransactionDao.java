@@ -36,7 +36,7 @@ public class TransactionDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -71,7 +71,7 @@ public class TransactionDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -92,7 +92,7 @@ public class TransactionDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -110,7 +110,7 @@ public class TransactionDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return null;
     }
@@ -158,7 +158,7 @@ public class TransactionDao {
             ps.setString(20, t.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -176,7 +176,7 @@ public class TransactionDao {
             ps.setString(5, uid);
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -189,7 +189,7 @@ public class TransactionDao {
             ps.setString(2, uid);
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 

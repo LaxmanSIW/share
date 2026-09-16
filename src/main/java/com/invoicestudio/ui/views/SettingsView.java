@@ -1,6 +1,8 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.*;
+import com.invoicestudio.service.AppExecutors;
 import com.invoicestudio.service.AuthSessionManager;
 import com.invoicestudio.service.BackupRestoreService;
 import com.invoicestudio.service.FirebaseAuthService;
@@ -32,7 +34,6 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Executors;
 import javafx.scene.text.Font;
 
 /**
@@ -142,7 +143,7 @@ public class SettingsView extends VBox {
             createTab("Knowledge", IconHelper.ICON_HELP, new com.invoicestudio.ui.KnowledgeHubPanel()),
             createTab("Backup", IconHelper.ICON_BACKUP, buildBackupStorageSection()),
             createTab("Shortcuts", IconHelper.ICON_CODE, new com.invoicestudio.ui.ShortcutsPanel()),
-            createTab("MCP Server", IconHelper.ICON_CODE, new com.invoicestudio.mcp.McpSettingsPanel(
+            createTab("MCP Server", IconHelper.ICON_MCP, new com.invoicestudio.mcp.McpSettingsPanel(
                     com.invoicestudio.mcp.McpConfig.load()))
         );
     }
@@ -437,7 +438,7 @@ public class SettingsView extends VBox {
             errorLbl.setVisible(false);
             errorLbl.setManaged(false);
 
-            Executors.newSingleThreadExecutor().submit(() -> {
+            AppExecutors.io().submit(() -> {
                 try {
                     UserSession updated = FirebaseAuthService.getInstance().updatePassword(session.getIdToken(), np.trim());
                     if (updated != null) {
@@ -628,7 +629,8 @@ public class SettingsView extends VBox {
         Runnable updateLivePreview = () -> {
             String p = prefixField.getText() != null ? prefixField.getText().trim() : "";
             int num = 1;
-            try { num = Integer.parseInt(nextNoField.getText().trim()); } catch (Exception ignored) {}
+            try { num = Integer.parseInt(nextNoField.getText().trim()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             int dig = digitsSpinner.getValue() != null ? digitsSpinner.getValue() : 4;
             String f = dig <= 1 ? p + num : String.format("%s%0" + dig + "d", p, num);
             previewBadge.setText(f);
@@ -670,7 +672,8 @@ public class SettingsView extends VBox {
 
         String p = prefixField.getText() != null ? prefixField.getText().trim() : "";
         int num = 1;
-        try { num = Integer.parseInt(nextNoField.getText().trim()); } catch (Exception ignored) {}
+        try { num = Integer.parseInt(nextNoField.getText().trim()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         int dig = digitsSpinner.getValue() != null ? digitsSpinner.getValue() : 4;
         String formatted = dig <= 1 ? p + num : String.format("%s%0" + dig + "d", p, num);
 
@@ -980,7 +983,7 @@ public class SettingsView extends VBox {
                     Toast.show(this, "Could not load font file. Please verify it is a valid .ttf or .otf file.", true);
                 }
             } catch (Exception ex) {
-                ex.printStackTrace();
+                com.invoicestudio.service.AppLog.error(ex);
                 Toast.show(this, "Error reading font file: " + ex.getMessage(), true);
             }
         }
@@ -1106,13 +1109,13 @@ public class SettingsView extends VBox {
             try {
                 ox = Double.parseDouble(offsetXField.getText().trim());
                 oy = Double.parseDouble(offsetYField.getText().trim());
-            } catch (Exception ignore) {}
+            } catch (Exception ignore) { AppLog.debug(ignore); }
             boolean ok = app.getPrintingService().printCalibrationSheet(ox, oy);
             if (ok) {
                 Toast.show(this, "Calibration sheet sent to printer.", false);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             Toast.show(this, "Print failed: " + e.getMessage(), true);
         }
     }
@@ -1164,7 +1167,7 @@ public class SettingsView extends VBox {
                 app.getBackupService().exportToFile(file);
                 Toast.show(this, "Backup saved: " + file.getName(), false);
             } catch (Exception e) {
-                e.printStackTrace();
+                com.invoicestudio.service.AppLog.error(e);
                 Toast.show(this, "Backup failed: " + e.getMessage(), true);
             }
         }
@@ -1192,7 +1195,7 @@ public class SettingsView extends VBox {
                     app.getData().invalidateSettings();
                     reload();
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    com.invoicestudio.service.AppLog.error(e);
                     Toast.show(this, "Restore error: " + e.getMessage(), true);
                 }
             }
@@ -1271,14 +1274,15 @@ public class SettingsView extends VBox {
                         if (fl.exists()) {
                             try (FileInputStream fis = new FileInputStream(fl)) {
                                 Font.loadFont(fis, 14.0);
-                            } catch (Exception ignored) {}
+                            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                         }
                     }
                 }
             }
             renderCustomFontsList();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             Toast.show(this, "Failed to load settings: " + e.getMessage(), true);
         }
     }
@@ -1293,7 +1297,7 @@ public class SettingsView extends VBox {
                 logoImageView.setImage(img);
                 removeLogoBtn.setVisible(true);
                 return;
-            } catch (Exception ignore) {}
+            } catch (Exception ignore) { AppLog.debug(ignore); }
         }
         logoImageView.setImage(null);
         removeLogoBtn.setVisible(false);
@@ -1365,7 +1369,7 @@ public class SettingsView extends VBox {
             currentSettings.setBillNoPrefix(prefixField.getText() != null ? prefixField.getText().trim() : "");
             try {
                 currentSettings.setBillNoNext(Math.max(1, Integer.parseInt(nextNoField.getText().trim())));
-            } catch (Exception ignore) {}
+            } catch (Exception ignore) { AppLog.debug(ignore); }
             currentSettings.setBillNoDigits(digitsSpinner.getValue() != null ? digitsSpinner.getValue() : 4);
             currentSettings.setInterState(interStateBox.isSelected());
             currentSettings.setAutoRecurring(autoRecurringBox.isSelected());
@@ -1373,10 +1377,10 @@ public class SettingsView extends VBox {
 
             try {
                 currentSettings.setPrintOffsetX(Double.parseDouble(offsetXField.getText().trim()));
-            } catch (Exception ignore) {}
+            } catch (Exception ignore) { AppLog.debug(ignore); }
             try {
                 currentSettings.setPrintOffsetY(Double.parseDouble(offsetYField.getText().trim()));
-            } catch (Exception ignore) {}
+            } catch (Exception ignore) { AppLog.debug(ignore); }
             currentSettings.setStatusStamp(statusStampBox.isSelected());
             currentSettings.setBarcodeThreshold((int) Math.round(barcodeThresholdSlider.getValue()));
 
@@ -1386,58 +1390,16 @@ public class SettingsView extends VBox {
             app.getData().saveSettings(currentSettings);
             Toast.show(this, "Settings saved successfully!", false);
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             Toast.show(this, "Failed to save settings: " + e.getMessage(), true);
         }
     }
 
     private VBox createExpandableField(String labelText, TextArea ta, String prompt, int minRows, int maxRows) {
-        ta.setPromptText(prompt);
-        ta.setWrapText(true);
-        ta.setPrefRowCount(minRows);
-        ta.getStyleClass().add("setting-expandable-textbox");
-
-        // Auto-expand dynamically as content is typed/pasted
-        ta.textProperty().addListener((obs, o, v) -> {
-            int lines = 1;
-            if (v != null && !v.isEmpty()) {
-                lines = v.split("\r\n|\r|\n", -1).length;
-                int wrapLines = (int) Math.ceil((double) v.length() / 50.0);
-                lines = Math.max(lines, wrapLines);
-            }
-            ta.setPrefRowCount(Math.min(maxRows, Math.max(minRows, lines)));
-        });
-
-        // Header with title and manual expand/collapse toggle button
-        HBox header = new HBox(8);
-        header.setAlignment(Pos.CENTER_LEFT);
-        Label lbl = new Label(labelText);
-        lbl.getStyleClass().add("field-label");
-
-        Region sp = new Region();
-        HBox.setHgrow(sp, Priority.ALWAYS);
-
-        Button toggleBtn = new Button("⤢ Expand");
-        toggleBtn.getStyleClass().add("link-toggle");
-        toggleBtn.setOnAction(e -> {
-            if (ta.getPrefRowCount() <= minRows + 1) {
-                ta.setPrefRowCount(maxRows);
-                toggleBtn.setText("⤡ Collapse");
-            } else {
-                ta.setPrefRowCount(minRows);
-                toggleBtn.setText("⤢ Expand");
-            }
-        });
-
-        header.getChildren().addAll(lbl, sp, toggleBtn);
-
-        VBox box = new VBox(4);
-        box.getChildren().addAll(header, ta);
-        return box;
+        return SettingsFieldSupport.createExpandableField(labelText, ta, prompt, minRows, maxRows);
     }
 
     private static String slugify(String s) {
-        if (s == null) return "";
-        return s.toLowerCase().replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
+        return SettingsFieldSupport.slugify(s);
     }
 }

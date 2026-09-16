@@ -2,6 +2,7 @@ package com.invoicestudio.db;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.invoicestudio.model.Expense;
+import com.invoicestudio.service.AppLog;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -41,7 +42,7 @@ public class ExpenseDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -57,7 +58,7 @@ public class ExpenseDao {
                 if (rs.next()) return mapper.readValue(rs.getString("json_data"), Expense.class);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return null;
     }
@@ -87,7 +88,7 @@ public class ExpenseDao {
             ps.setString(9, e.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception ex) {
-            ex.printStackTrace();
+            AppLog.error(ex);
         }
     }
 
@@ -100,7 +101,7 @@ public class ExpenseDao {
             ps.setString(2, uid);
             ps.executeUpdate();
         } catch (Exception ex) {
-            ex.printStackTrace();
+            AppLog.error(ex);
         }
     }
 

@@ -1,5 +1,6 @@
 package com.invoicestudio.db;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.VariableDef;
 
 import java.sql.Connection;
@@ -31,6 +32,7 @@ public class VariableDao {
             String choices = rs.getString("choices");
             v.setChoices(choices != null ? choices : "");
         } catch (Exception ignored) {
+            AppLog.debug(ignored);
             // Older schema without the choices column — leave empty.
         }
         return v;
@@ -55,7 +57,7 @@ public class VariableDao {
                 while (rs.next()) list.add(fromResultSet(rs));
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -71,7 +73,7 @@ public class VariableDao {
                 while (rs.next()) list.add(fromResultSet(rs));
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -92,7 +94,7 @@ public class VariableDao {
                 while (rs.next()) list.add(fromResultSet(rs));
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -113,7 +115,7 @@ public class VariableDao {
                 while (rs.next()) list.add(fromResultSet(rs));
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -131,7 +133,7 @@ public class VariableDao {
                 while (rs.next()) list.add(fromResultSet(rs));
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -154,7 +156,7 @@ public class VariableDao {
             ps.setString(8, v.getChoices());
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -168,7 +170,7 @@ public class VariableDao {
             int rows = ps.executeUpdate();
             return rows > 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             return false;
         }
     }

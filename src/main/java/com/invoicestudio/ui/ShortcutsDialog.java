@@ -53,8 +53,18 @@ public class ShortcutsDialog extends StackPane {
         card.getChildren().add(head);
         card.getChildren().add(new Separator());
 
-        // Two-column groups (shared catalog — same data as Settings → Shortcuts)
-        Map<String, String[][]> groups = com.invoicestudio.ui.ShortcutCatalog.groups();
+        // Live registry bindings first (always reflects user rebindings),
+        // then contextual catalog sections (designer tool keys etc.).
+        Map<String, String[][]> groups = new LinkedHashMap<>();
+        for (var e : ShortcutManager.grouped().entrySet()) {
+            String[][] rows = e.getValue().stream()
+                    .map(a -> new String[]{
+                            ShortcutManager.comboOf(a.id()) == null ? "—" : ShortcutManager.comboOf(a.id()),
+                            a.label()})
+                    .toArray(String[][]::new);
+            groups.put(e.getKey(), rows);
+        }
+        groups.putAll(com.invoicestudio.ui.ShortcutCatalog.contextGroups());
 
         HBox columns = new HBox(24);
         VBox left = new VBox(10);

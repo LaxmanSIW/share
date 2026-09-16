@@ -118,18 +118,48 @@ public class TemplatesView extends BorderPane {
         presetSec.getChildren().add(presetGrid);
         contentBox.getChildren().add(presetSec);
 
-        // 3. User Saved Templates
+        // 3. User Saved Templates — split into bills/receipts vs barcode/label
+        List<Template> billTemplates = templates.stream().filter(t -> !t.isLabelMode()).toList();
+        List<Template> labelTemplates = templates.stream().filter(Template::isLabelMode).toList();
+
         VBox userSec = new VBox(12);
-        Label uTitle = new Label("YOUR SAVED TEMPLATES (" + templates.size() + ")");
+        Label uTitle = new Label("YOUR BILL & RECEIPT TEMPLATES (" + billTemplates.size() + ")");
         uTitle.getStyleClass().add("overline");
         userSec.getChildren().add(uTitle);
 
         FlowPane userGrid = new FlowPane(16, 16);
-        for (Template t : templates) {
+        for (Template t : billTemplates) {
             userGrid.getChildren().add(buildUserTemplateCard(t, settings));
+        }
+        if (billTemplates.isEmpty()) {
+            userSec.getChildren().add(emptyHint("No bill templates yet — load a preset above or click + New Template."));
         }
         userSec.getChildren().add(userGrid);
         contentBox.getChildren().add(userSec);
+
+        // 4. Barcode & Label Templates (label-strip stock, e.g. TSC TA210)
+        VBox labelSec = new VBox(12);
+        Label lTitle = new Label("YOUR BARCODE & LABEL TEMPLATES (" + labelTemplates.size() + ")");
+        lTitle.getStyleClass().add("overline");
+        labelSec.getChildren().add(lTitle);
+
+        FlowPane labelGrid = new FlowPane(16, 16);
+        for (Template t : labelTemplates) {
+            labelGrid.getChildren().add(buildUserTemplateCard(t, settings));
+        }
+        if (labelTemplates.isEmpty()) {
+            labelSec.getChildren().add(emptyHint("No label templates yet — click + New Label Template to design one for label-strip stock."));
+        }
+        labelSec.getChildren().add(labelGrid);
+        contentBox.getChildren().add(labelSec);
+    }
+
+    /** Muted one-line hint shown when a saved-templates section is empty. */
+    private Node emptyHint(String text) {
+        Label hint = new Label(text);
+        hint.getStyleClass().add("text-dim");
+        hint.setWrapText(true);
+        return hint;
     }
 
     private Node buildPresetCard(String name, String size, String desc, String accentColor, Runnable onAdd) {

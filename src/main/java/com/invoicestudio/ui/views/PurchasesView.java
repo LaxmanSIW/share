@@ -1,5 +1,6 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.BillPayment;
 import com.invoicestudio.model.PurchaseBill;
 import com.invoicestudio.service.PurchaseService;
@@ -390,7 +391,8 @@ public class PurchasesView extends BorderPane {
         dlg.setResultConverter(btn -> {
             if (btn != ButtonType.OK) return null;
             double amt = 0;
-            try { amt = Double.parseDouble(amountF.getText().trim()); } catch (Exception ignored) {}
+            try { amt = Double.parseDouble(amountF.getText().trim()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             if (amt <= 0) {
                 Toast.show(app.getRootPane(), "Validation Error", "Amount must be positive.", true);
                 return null;

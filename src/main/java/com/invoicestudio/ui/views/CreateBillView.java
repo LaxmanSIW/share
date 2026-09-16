@@ -1,5 +1,6 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.db.*;
 import com.invoicestudio.model.*;
 import com.invoicestudio.model.TableColumn;
@@ -524,7 +525,7 @@ public class CreateBillView extends BorderPane {
         try {
             fixedVars = variableDao.getFixedScopeVariables();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             return null;
         }
         if (fixedVars.isEmpty()) return null;
@@ -722,7 +723,8 @@ public class CreateBillView extends BorderPane {
         if (editingBill != null) {
             selectedDocType = editingBill.getDocType();
             billNoField.setText(editingBill.getBillNo());
-            try { datePicker.setValue(LocalDate.parse(editingBill.getDate())); } catch (Exception ignored) {}
+            try { datePicker.setValue(LocalDate.parse(editingBill.getDate())); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             buyerNameField.setText(editingBill.getVariables().getOrDefault("buyer_name", ""));
             buyerAddressField.setText(editingBill.getVariables().getOrDefault("buyer_address", ""));
             buyerGstField.setText(editingBill.getVariables().getOrDefault("buyer_gst", ""));
@@ -804,7 +806,8 @@ public class CreateBillView extends BorderPane {
     private void updateTotalsAndPreview() {
         List<BillItem> items = itemRows.stream().map(BillItemRow::getItem).collect(Collectors.toList());
         double disc = 0;
-        try { disc = Double.parseDouble(discountPctField.getText()); } catch (Exception ignored) {}
+        try { disc = Double.parseDouble(discountPctField.getText()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
         boolean interState = isInterStateSale();
         BillTotals totals = BillingService.computeTotals(items, disc, interState);
@@ -863,7 +866,8 @@ public class CreateBillView extends BorderPane {
         try {
             parcelCount = Integer.parseInt(parcelField.getText().trim());
             if (parcelCount <= 0) parcelCount = 1;
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         b.setParcel(parcelCount);
         vars.put("parcel", String.valueOf(parcelCount));
         vars.put("parcels", String.valueOf(parcelCount));
@@ -880,7 +884,8 @@ public class CreateBillView extends BorderPane {
 
         b.setItems(itemRows.stream().map(BillItemRow::getItem).collect(Collectors.toList()));
         double disc = 0;
-        try { disc = Double.parseDouble(discountPctField.getText()); } catch (Exception ignored) {}
+        try { disc = Double.parseDouble(discountPctField.getText()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         b.setDiscountPct(disc);
 
         b.setTotals(totals);
@@ -901,7 +906,8 @@ public class CreateBillView extends BorderPane {
 
         List<BillItem> items = itemRows.stream().map(BillItemRow::getItem).collect(Collectors.toList());
         double disc = 0;
-        try { disc = Double.parseDouble(discountPctField.getText()); } catch (Exception ignored) {}
+        try { disc = Double.parseDouble(discountPctField.getText()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         boolean interState = isInterStateSale();
         BillTotals totals = BillingService.computeTotals(items, disc, interState);
         String words = BillingService.amountInWords(totals.getGrandTotal());
@@ -1007,93 +1013,11 @@ public class CreateBillView extends BorderPane {
     }
 
     private double getColumnControlWidth(TableColumn col) {
-        if (col == null || col.getKey() == null) return 60;
-        String k = col.getKey().toLowerCase().trim();
-        return switch (k) {
-            case "sr", "index", "#", "s_no", "sno" -> 30;
-            case "hsn", "sac", "hsn_sac" -> 65;
-            case "qty", "quantity" -> 50;
-            case "unit" -> 55;
-            case "rate", "price", "unit_price" -> 65;
-            case "gst", "tax" -> 45;
-            case "disc", "discount" -> 45;
-            case "taxable", "taxable_value" -> 70;
-            case "amount", "total", "total_amount" -> 75;
-            default -> {
-                if (col.getWidth() > 0) {
-                    yield Math.max(50.0, Math.min(130.0, col.getWidth() * 5.5));
-                }
-                yield 70.0;
-            }
-        };
+        return LineItemsLayout.columnControlWidth(col);
     }
 
     private Node createLineItemsHeader() {
-        HBox header = new HBox(8);
-        header.setAlignment(Pos.CENTER_LEFT);
-        header.getStyleClass().add("items-header-strip");
-
-        // Catalog pick spacer (matches pick item button)
-        Label hPick = new Label("");
-        hPick.setPrefWidth(30); hPick.setMinWidth(30); hPick.setMaxWidth(30);
-        header.getChildren().add(hPick);
-
-        List<TableColumn> cols = getActiveTableColumns();
-        boolean descAdded = false;
-
-        for (TableColumn col : cols) {
-            String k = col.getKey() != null ? col.getKey().toLowerCase().trim() : "";
-            String labelText = col.getLabel() != null && !col.getLabel().isBlank() ? col.getLabel().toUpperCase() : k.toUpperCase();
-            Label lbl = new Label(labelText);
-
-            if ("desc".equals(k) || "description".equals(k) || "name".equals(k) || "item_name".equals(k)) {
-                descAdded = true;
-                lbl.setMinWidth(140);
-                lbl.setAlignment(Pos.CENTER_LEFT);
-                HBox.setHgrow(lbl, Priority.ALWAYS);
-            } else {
-                double w = getColumnControlWidth(col);
-                lbl.setPrefWidth(w);
-                lbl.setMinWidth(w);
-                lbl.setMaxWidth(w);
-
-                if ("right".equalsIgnoreCase(col.getAlign()) || "qty".equals(k) || "rate".equals(k) || "gst".equals(k) || "disc".equals(k) || "taxable".equals(k) || "amount".equals(k)) {
-                    lbl.setAlignment(Pos.CENTER_RIGHT);
-                } else if ("center".equalsIgnoreCase(col.getAlign()) || "sr".equals(k) || "hsn".equals(k) || "unit".equals(k)) {
-                    lbl.setAlignment(Pos.CENTER);
-                } else {
-                    lbl.setAlignment(Pos.CENTER_LEFT);
-                }
-            }
-
-            header.getChildren().add(lbl);
-
-            // Catalog save spacer next to description column
-            if ("desc".equals(k) || "description".equals(k) || "name".equals(k) || "item_name".equals(k)) {
-                Label hSave = new Label("");
-                hSave.setPrefWidth(30); hSave.setMinWidth(30); hSave.setMaxWidth(30);
-                header.getChildren().add(hSave);
-            }
-        }
-
-        if (!descAdded) {
-            Label hDesc = new Label("ITEM DESCRIPTION");
-            hDesc.setMinWidth(140);
-            hDesc.setAlignment(Pos.CENTER_LEFT);
-            HBox.setHgrow(hDesc, Priority.ALWAYS);
-            header.getChildren().add(1, hDesc);
-
-            Label hSave = new Label("");
-            hSave.setPrefWidth(30); hSave.setMinWidth(30); hSave.setMaxWidth(30);
-            header.getChildren().add(2, hSave);
-        }
-
-        // Delete button spacer
-        Label hAction = new Label("");
-        hAction.setPrefWidth(30); hAction.setMinWidth(30); hAction.setMaxWidth(30);
-        header.getChildren().add(hAction);
-
-        return header;
+        return LineItemsLayout.buildHeader(getActiveTableColumns());
     }
 
     private void rebuildLineItemsUI() {
@@ -1303,10 +1227,14 @@ public class CreateBillView extends BorderPane {
 
         public BillItem getItem() {
             double q = 1, r = 0, g = 18, d = 0;
-            try { q = Double.parseDouble(qtyField.getText()); } catch (Exception ignored) {}
-            try { r = Double.parseDouble(rateField.getText()); } catch (Exception ignored) {}
-            try { g = Double.parseDouble(gstField.getText()); } catch (Exception ignored) {}
-            try { d = Double.parseDouble(discField.getText()); } catch (Exception ignored) {}
+            try { q = Double.parseDouble(qtyField.getText()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { r = Double.parseDouble(rateField.getText()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { g = Double.parseDouble(gstField.getText()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { d = Double.parseDouble(discField.getText()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
             BillItem bi = new BillItem(itemId, descField.getText(), hsnField.getText(), q, unitField.getText(), r, g, d);
             bi.setCustom(new HashMap<>(customData));

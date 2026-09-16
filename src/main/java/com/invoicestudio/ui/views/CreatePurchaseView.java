@@ -1,5 +1,6 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.BillItem;
 import com.invoicestudio.model.BillTotals;
 import com.invoicestudio.model.ItemRecord;
@@ -345,7 +346,8 @@ public class CreatePurchaseView extends VBox {
                     if (v != null && v.toString().length() >= 2) return v.toString().substring(0, 2);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         return "";
     }
 
@@ -420,7 +422,8 @@ public class CreatePurchaseView extends VBox {
             if (no != null && no.startsWith("PUR-")) {
                 try {
                     max = Math.max(max, Integer.parseInt(no.substring(4)));
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             }
         }
         return max + 1;
@@ -433,7 +436,8 @@ public class CreatePurchaseView extends VBox {
             if (b.getDate() != null && !b.getDate().isBlank()) {
                 datePick.setValue(java.time.LocalDate.parse(b.getDate()));
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         freightF.setText(String.valueOf(b.getFreight()));
         paidCb.setSelected(b.isPaid());
         if (b.getPaymentMode() != null && !b.getPaymentMode().isBlank()) {

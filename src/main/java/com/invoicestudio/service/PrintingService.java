@@ -1,5 +1,6 @@
 package com.invoicestudio.service;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.Template;
 import com.invoicestudio.ui.BillPreviewPane;
@@ -198,6 +199,7 @@ public class PrintingService {
             try {
                 return printer.createPageLayout(paper, orientation, Printer.MarginType.HARDWARE_MINIMUM);
             } catch (Exception ignored) {
+            AppLog.debug(ignored);
                 try {
                     return printer.createPageLayout(paper, orientation, Printer.MarginType.DEFAULT);
                 } catch (Exception ignoredAgain) { /* fall through */ }

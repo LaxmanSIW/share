@@ -1,5 +1,6 @@
 package com.invoicestudio.ui;
 
+import com.invoicestudio.service.AppLog;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.control.Dialog;
@@ -27,6 +28,7 @@ public class DialogHelper {
                     cachedIcon.set(ic);
                 }
             } catch (Exception ignored) {
+            AppLog.debug(ignored);
             }
             if (ic == null) {
                 try (InputStream is = DialogHelper.class.getResourceAsStream("/icons/Invoicewhitebackground.png")) {
@@ -35,6 +37,7 @@ public class DialogHelper {
                         cachedIcon.set(ic);
                     }
                 } catch (Exception ignored) {
+            AppLog.debug(ignored);
                 }
             }
         }
@@ -53,6 +56,7 @@ public class DialogHelper {
             Image ic = getAppIcon();
             if (ic != null) stage.getIcons().add(ic);
         } catch (Exception ignored) {
+            AppLog.debug(ignored);
         }
     }
 
@@ -114,7 +118,8 @@ public class DialogHelper {
                         pane.getScene().getStylesheets().add(css);
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         });
     }
 

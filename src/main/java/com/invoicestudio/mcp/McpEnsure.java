@@ -1,5 +1,6 @@
 package com.invoicestudio.mcp;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.Buyer;
 import com.invoicestudio.model.ItemCategory;
 import com.invoicestudio.model.ItemRecord;
@@ -353,6 +354,7 @@ public final class McpEnsure {
                     default -> { }
                 }
             } catch (Exception ignored) {
+            AppLog.debug(ignored);
                 // compensation is best-effort; the original error is propagated
             }
         }

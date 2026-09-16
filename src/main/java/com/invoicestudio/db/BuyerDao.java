@@ -40,7 +40,7 @@ public class BuyerDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -58,7 +58,7 @@ public class BuyerDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return null;
     }
@@ -77,7 +77,7 @@ public class BuyerDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return null;
     }
@@ -102,7 +102,7 @@ public class BuyerDao {
             ps.setString(9, buyer.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -115,7 +115,7 @@ public class BuyerDao {
             ps.setString(2, uid);
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 

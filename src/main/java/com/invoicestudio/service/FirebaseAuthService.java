@@ -1,5 +1,6 @@
 package com.invoicestudio.service;
 
+import com.invoicestudio.service.AppLog;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -21,7 +22,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -40,6 +44,21 @@ public class FirebaseAuthService {
 
     private static final String IDENTITY_BASE_URL = "https://identitytoolkit.googleapis.com/v1/accounts";
     private static final String TOKEN_BASE_URL = "https://securetoken.googleapis.com/v1/token";
+
+    /** Shared HTTP callback pool for the Google loopback server (daemon threads, app-lifetime). */
+    private static final ExecutorService GOOGLE_HTTP_POOL = Executors.newCachedThreadPool(daemonFactory("google-oauth"));
+
+    /** Shared scheduler for delayed loopback-server stops and the 3-minute timeout. */
+    private static final ScheduledExecutorService GOOGLE_STOP_SCHEDULER =
+            Executors.newSingleThreadScheduledExecutor(daemonFactory("google-oauth-timer"));
+
+    private static ThreadFactory daemonFactory(String prefix) {
+        return r -> {
+            Thread t = new Thread(r, prefix);
+            t.setDaemon(true);
+            return t;
+        };
+    }
 
     private static FirebaseAuthService instance;
 
@@ -155,7 +174,8 @@ public class FirebaseAuthService {
                         idToken = updateNode.get("idToken").asText();
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         }
 
         UserSession session = new UserSession(userId, resEmail, finalDisplayName, idToken, refreshToken, expiresAtMillis, rememberMe);
@@ -260,7 +280,7 @@ public class FirebaseAuthService {
      * Desktop Google Sign-In with loopback HTTP listener.
      */
     public void signInWithGoogle(Consumer<UserSession> onSuccess, Consumer<String> onError) {
-        Executors.newSingleThreadExecutor().submit(() -> {
+        AppExecutors.io().submit(() -> {
             HttpServer server = null;
             try {
                 // Pick port 8085 or next available port
@@ -304,8 +324,11 @@ public class FirebaseAuthService {
 
                                 if (handled.compareAndSet(false, true)) {
                                     Platform.runLater(() -> onSuccess.accept(session));
-                                    Executors.newSingleThreadScheduledExecutor().schedule(() -> {
-                                        try { finalServer.stop(0); } catch (Exception ignored) {}
+                                    // Delayed server stop on a managed scheduler (skill rule 1.4:
+                                    // no inline Executors). The scheduler is torn down with the app.
+                                    GOOGLE_STOP_SCHEDULER.schedule(() -> {
+                                        try { finalServer.stop(0); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                                     }, 1, java.util.concurrent.TimeUnit.SECONDS);
                                 }
                             } catch (Exception ex) {
@@ -327,7 +350,7 @@ public class FirebaseAuthService {
                     }
                 });
 
-                finalServer.setExecutor(Executors.newCachedThreadPool());
+                finalServer.setExecutor(GOOGLE_HTTP_POOL);
                 finalServer.start();
 
                 String authUrl = "http://127.0.0.1:" + port + "/";
@@ -337,18 +360,20 @@ public class FirebaseAuthService {
                     Platform.runLater(() -> onError.accept("Desktop browser not supported. Please open: " + authUrl));
                 }
 
-                // Safety timeout after 3 minutes
+                // Safety timeout after 3 minutes (managed scheduler, not an inline executor)
                 final HttpServer cancelServer = finalServer;
-                Executors.newSingleThreadScheduledExecutor().schedule(() -> {
+                GOOGLE_STOP_SCHEDULER.schedule(() -> {
                     if (handled.compareAndSet(false, true)) {
-                        try { cancelServer.stop(0); } catch (Exception ignored) {}
+                        try { cancelServer.stop(0); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                         Platform.runLater(() -> onError.accept("Google sign-in timed out. Please try again."));
                     }
                 }, 3, java.util.concurrent.TimeUnit.MINUTES);
 
             } catch (Exception e) {
                 if (server != null) {
-                    try { server.stop(0); } catch (Exception ignored) {}
+                    try { server.stop(0); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                 }
                 Platform.runLater(() -> onError.accept("Unable to start Google authentication: " + e.getMessage()));
             }
@@ -496,7 +521,8 @@ public class FirebaseAuthService {
                     return message.replace('_', ' ');
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         return "Authentication request failed. Please check your internet connection and try again.";
     }
 }

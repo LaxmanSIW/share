@@ -1,5 +1,6 @@
 package com.invoicestudio.service;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.TemplateElement;
 import javafx.scene.Group;
 import javafx.scene.Node;
@@ -103,7 +104,8 @@ public class SvgVectorParser {
                 factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
                 factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
                 factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
             DocumentBuilder builder = factory.newDocumentBuilder();
             Document doc = builder.parse(new ByteArrayInputStream(cleanXml.getBytes(StandardCharsets.UTF_8)));
@@ -120,7 +122,8 @@ public class SvgVectorParser {
                         result.width = Double.parseDouble(parts[2]);
                         result.height = Double.parseDouble(parts[3]);
                         result.hasViewBox = true;
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                 }
             } else {
                 String wAttr = root.getAttribute("width").replaceAll("[^0-9.]", "");
@@ -130,7 +133,8 @@ public class SvgVectorParser {
                         result.width = Double.parseDouble(wAttr);
                         result.height = Double.parseDouble(hAttr);
                         result.hasViewBox = true;
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                 }
             }
 
@@ -165,7 +169,8 @@ public class SvgVectorParser {
                 String fillRule = styles.getOrDefault("fill-rule", el.getAttribute("fill-rule"));
                 Double strokeW = null;
                 if (!strokeWStr.isBlank()) {
-                    try { strokeW = Double.parseDouble(strokeWStr.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
+                    try { strokeW = Double.parseDouble(strokeWStr.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                 }
 
                 switch (tag) {

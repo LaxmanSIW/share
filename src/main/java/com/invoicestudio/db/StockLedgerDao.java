@@ -68,7 +68,7 @@ public class StockLedgerDao {
             ps.setString(10, Instant.now().toString());
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -82,7 +82,7 @@ public class StockLedgerDao {
             ps.setString(2, uid);
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -127,7 +127,7 @@ public class StockLedgerDao {
                 // items.current_stock missing on legacy DBs
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -154,7 +154,7 @@ public class StockLedgerDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return map;
     }

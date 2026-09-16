@@ -1,5 +1,6 @@
 package com.invoicestudio.ui;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.LabelConfig;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.Template;
@@ -588,7 +589,8 @@ public class LabelBulkPrintDialog extends Stage {
         double cellH = cfg != null ? LabelGeometryService.physicalCellHeight(cfg) : designH;
         double angle = 0;
         if (cfg != null) {
-            try { angle = Double.parseDouble(cfg.getOrientation()); } catch (Exception ignored) {}
+            try { angle = Double.parseDouble(cfg.getOrientation()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         }
 
         Pane art = LabelRenderUtil.renderLabelNode(template, previewValues(), designW, designH, settings);
@@ -643,14 +645,17 @@ public class LabelBulkPrintDialog extends Stage {
             return;
         }
         Printer p = printerBox.getValue();
-        setSpooling(true);
+        // Capture the toast surface before closing (scene detaches on close).
+        javafx.scene.layout.Pane toastRoot = this.getScene() != null && this.getScene().getRoot() instanceof javafx.scene.layout.Pane pr
+                ? pr : null;
+        // Close immediately on Print — the job spools in the background; the
+        // toast confirms delivery so the user is never left watching the dialog.
+        close();
         LabelPrintService.printLabelsQueued(template, settings, lines, variableOrder(), p, false,
                 res -> {
-                    setSpooling(false);
-                    Toast.show(this.getScene().getRoot(),
+                    Toast.show(toastRoot,
                             res.success() ? "Labels Sent" : "Print Failed",
                             res.message(), !res.success());
-                    if (res.success()) close();
                 });
     }
 

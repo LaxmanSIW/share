@@ -54,7 +54,7 @@ public class LabelPrintHistoryDao {
                     ? h.getCreatedAt() : java.time.Instant.now().toString());
             ps.executeUpdate();
         } catch (SQLException e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -70,7 +70,7 @@ public class LabelPrintHistoryDao {
                 while (rs.next()) list.add(fromResultSet(rs));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return list;
     }
@@ -86,7 +86,7 @@ public class LabelPrintHistoryDao {
             ps.setString(2, uid);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             return false;
         }
     }
@@ -101,7 +101,7 @@ public class LabelPrintHistoryDao {
             ps.setString(1, uid);
             return ps.executeUpdate();
         } catch (SQLException e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             return 0;
         }
     }

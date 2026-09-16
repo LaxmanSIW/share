@@ -118,7 +118,7 @@ public class RecurringEngine {
                 if (rs.next()) return rs.getString("val");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return null;
     }
@@ -133,7 +133,7 @@ public class RecurringEngine {
             ps.setString(3, val);
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.invoicestudio.ui;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.db.*;
 import com.invoicestudio.model.Bill;
 import com.invoicestudio.model.Settings;
@@ -96,6 +97,57 @@ public final class DataManager {
 
     // ---------- DAO access (shared instances) ----------
 
+    /**
+     * Monotonic counter bumped on EVERY cache invalidation (any data write) —
+     * views compare the epoch they were built against to detect staleness
+     * without re-reading anything (stale-while-revalidate navigation).
+     */
+    private volatile long dataEpoch = 0L;
+
+    /** Current data generation; changes on every write/invalidation. */
+    public long dataEpoch() { return dataEpoch; }
+
+    private void bumpEpoch() { dataEpoch++; }
+
+    /**
+     * Pre-loads every cached collection on a background executor so the first
+     * navigation to each view paints instantly. {@code onDone} runs on the
+     * worker thread — wrap in {@code Platform.runLater} if it touches UI.
+     */
+    public void warmCachesAsync(java.util.concurrent.ExecutorService executor, Runnable onDone) {
+        executor.execute(() -> {
+            try {
+                getSettings();
+                getAllBills();
+                getAllTransactions();
+                getAllBuyers();
+                getAllPurchases();
+                getAllExpenses();
+                getAllCategories();
+                getAllTransports();
+            } catch (Exception e) {
+                com.invoicestudio.service.AppLog.error("Cache warm failed", e);
+            }
+            if (onDone != null) onDone.run();
+        });
+    }
+
+    /**
+     * Synchronously touches every cached collection — call from a BACKGROUND
+     * thread (e.g. inside {@link #warmCachesAsync} or a nav re-warm) so the
+     * next FX-thread read finds warm caches. Safe to call from any thread.
+     */
+    public void warmCachesNow() {
+        getSettings();
+        getAllBills();
+        getAllTransactions();
+        getAllBuyers();
+        getAllPurchases();
+        getAllExpenses();
+        getAllCategories();
+        getAllTransports();
+    }
+
     public DatabaseManager getDb() { return db; }
     public BillDao bills() { return billDao; }
     public TemplateDao templates() { return templateDao; }
@@ -121,6 +173,7 @@ public final class DataManager {
             purchasesCache = null;
             settingsCache = null;
         }
+        bumpEpoch();
         notifyBillsChanged();
     }
 
@@ -161,6 +214,7 @@ public final class DataManager {
         synchronized (this) {
             billsCache = null;
         }
+        bumpEpoch();
         notifyBillsChanged();
     }
 
@@ -169,6 +223,7 @@ public final class DataManager {
         synchronized (this) {
             settingsCache = null;
         }
+        bumpEpoch();
     }
 
     /**
@@ -209,7 +264,8 @@ public final class DataManager {
                     deleteTransaction(t.getId(), "Deleted with invoice");
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
     }
 
     private void syncBillTransaction(Bill bill) {
@@ -338,7 +394,7 @@ public final class DataManager {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -362,6 +418,7 @@ public final class DataManager {
         synchronized (this) {
             transportsCache = null;
         }
+        bumpEpoch();
     }
 
     public com.invoicestudio.model.Transport getTransportById(String id) {
@@ -402,6 +459,7 @@ public final class DataManager {
         synchronized (this) {
             categoriesCache = null;
         }
+        bumpEpoch();
     }
 
     public void saveCategory(com.invoicestudio.model.ItemCategory c) {
@@ -429,6 +487,7 @@ public final class DataManager {
         synchronized (this) {
             transactionsCache = null;
         }
+        bumpEpoch();
     }
 
     public void saveTransaction(com.invoicestudio.model.Transaction t) {
@@ -456,6 +515,7 @@ public final class DataManager {
         synchronized (this) {
             purchasesCache = null;
         }
+        bumpEpoch();
     }
 
     /** Live stock balance per item id (opening + ledger movements). */
@@ -601,7 +661,8 @@ public final class DataManager {
         for (Consumer<List<Bill>> l : billsListeners) {
             try {
                 l.accept(snapshot);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         }
     }
 
@@ -628,7 +689,7 @@ public final class DataManager {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 

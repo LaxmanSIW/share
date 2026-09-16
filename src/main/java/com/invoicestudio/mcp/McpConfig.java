@@ -1,5 +1,6 @@
 package com.invoicestudio.mcp;
 
+import com.invoicestudio.service.AppLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.invoicestudio.AppDirs;
@@ -32,6 +33,7 @@ public final class McpConfig {
                 return MAPPER.readValue(f, McpConfig.class);
             }
         } catch (Exception ignored) {
+            AppLog.debug(ignored);
             // fall through to defaults
         }
         McpConfig cfg = new McpConfig();
@@ -43,6 +45,7 @@ public final class McpConfig {
         try {
             MAPPER.writeValue(file(), this);
         } catch (Exception ignored) {
+            AppLog.debug(ignored);
             // config persistence is best-effort; server still runs with in-memory values
         }
     }

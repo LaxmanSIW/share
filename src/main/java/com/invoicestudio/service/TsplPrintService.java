@@ -1,5 +1,6 @@
 package com.invoicestudio.service;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.LabelConfig;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.Template;
@@ -76,7 +77,8 @@ public final class TsplPrintService {
     public static int dotsPerMm(String printerName) {
         String prop = System.getProperty("invoicestudio.tspl.dotsPerMm");
         if (prop != null) {
-            try { return Math.max(4, Integer.parseInt(prop.trim())); } catch (Exception ignored) {}
+            try { return Math.max(4, Integer.parseInt(prop.trim())); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         }
         String name = printerName != null ? printerName.toLowerCase(Locale.ROOT) : "";
         boolean dpi300 = name.contains("ta300") || name.contains("ta310") || name.contains("12 dot");
@@ -285,7 +287,8 @@ public final class TsplPrintService {
         double cellWmm = LabelGeometryService.physicalCellWidth(cfg);
         double cellHmm = LabelGeometryService.physicalCellHeight(cfg);
         double angle = 0;
-        try { angle = Double.parseDouble(cfg.getOrientation()); } catch (Exception ignored) {}
+        try { angle = Double.parseDouble(cfg.getOrientation()); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
         double pageWpx = pageSize[0] * LabelRenderUtil.MM_PX;
         double pageHpx = pageSize[1] * LabelRenderUtil.MM_PX;
@@ -322,6 +325,7 @@ public final class TsplPrintService {
             try {
                 java.nio.file.Files.write(java.nio.file.Path.of(dumpPath), script);
             } catch (Exception ignored) {
+            AppLog.debug(ignored);
                 // diagnostics must never break the print
             }
         }
@@ -392,7 +396,8 @@ public final class TsplPrintService {
                 int v = Integer.parseInt(prop);
                 if (v >= 0 && v <= 255) return v;
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         int t = settings != null ? settings.getBarcodeThreshold() : MonoImage.DEFAULT_THRESHOLD;
         return t < 0 || t > 255 ? MonoImage.DEFAULT_THRESHOLD : t;
     }

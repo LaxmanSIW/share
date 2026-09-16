@@ -1,7 +1,7 @@
 package com.invoicestudio.ui;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.db.DatabaseManager;
-import com.invoicestudio.db.TemplateDao;
 import com.invoicestudio.model.*;
 import com.invoicestudio.service.*;
 import com.invoicestudio.ui.auth.AuthView;
@@ -15,18 +15,12 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.SVGPath;
 import javafx.stage.Stage;
 import javafx.stage.Window;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyCombination;
 import javafx.util.Duration;
 
 import java.io.InputStream;
@@ -39,8 +33,10 @@ import java.util.concurrent.Executors;
 /**
  * InvoiceStudio — application shell (v3, "Obsidian & Gold").
  *
- * Production-hardened shell:
- * - Sidebar navigation (VS Code style) with active gold indicator + hover states.
+ * Production-hardened shell (skill rule 5.2 role 1 — coordination only):
+ * - Sidebar navigation (VS Code style) with active gold indicator + hover states
+ *   (built by {@link SidebarController}, user pill by {@link UserProfilePill}).
+ * - Shortcuts live in {@link AppShortcuts}.
  * - View caching: heavy views are built once and refreshed on show, navigation
  *   is instant instead of rebuilding the whole scene graph per click.
  * - Fade transition between views.
@@ -54,21 +50,22 @@ public class StudioApp extends Application {
     private StackPane rootPane;
     private BorderPane mainLayout;
     private StackPane mainContentPane;
-    private VBox sidebar;
 
     private DataManager data;
     private BackupRestoreService backupService;
     private PrintingService printingService;
 
-    private String currentView = "dashboard";
-    private final Map<String, Button> navButtons = new HashMap<>();
     private final Map<String, Node> viewCache = new HashMap<>();
-    private boolean sidebarCollapsed = false;
 
-    private HBox userProfilePill;
-    private Label userAvatarLabel;
-    private Label userNameLabel;
-    private Label userEmailLabel;
+    /** Data generation the visible cached views were last built against (stale-while-revalidate). */
+    private long lastDataEpoch = Long.MIN_VALUE;
+    private Label refreshPill;
+    private boolean refreshInProgress;
+    private final java.util.List<Runnable> pendingRefreshers = new ArrayList<>();
+
+    private final SidebarController sidebarController = new SidebarController(this);
+    private final AppShortcuts shortcuts = new AppShortcuts(this);
+    private UserProfilePill userProfilePill;
 
     /** Single background worker for DB-touching tasks (SQLite is single-writer anyway). */
     private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -76,8 +73,6 @@ public class StudioApp extends Application {
         t.setDaemon(true);
         return t;
     });
-
-    private record NavItem(String id, String label, String icon, Runnable action) {}
 
     @Override
     public void start(Stage stage) {
@@ -95,13 +90,12 @@ public class StudioApp extends Application {
         mainContentPane.getStyleClass().add("content-area");
         mainLayout.setCenter(mainContentPane);
 
-        sidebar = buildSidebar();
-        mainLayout.setLeft(sidebar);
+        mainLayout.setLeft(sidebarController.buildSidebar());
 
         rootPane.getChildren().add(mainLayout);
 
         Scene scene = new Scene(rootPane, 1440, 900);
-        installGlobalShortcuts(scene);
+        shortcuts.installGlobalShortcuts(scene);
         String css = getClass().getResource("/css/globalfile.css") != null
                 ? getClass().getResource("/css/globalfile.css").toExternalForm()
                 : null;
@@ -125,7 +119,8 @@ public class StudioApp extends Application {
             if (iconStream != null) {
                 stage.getIcons().add(new Image(iconStream));
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
         new WindowStateManager().applyAndTrack(stage, 1440, 900, 1024, 640);
         stage.show();
@@ -164,15 +159,20 @@ public class StudioApp extends Application {
                 Platform.runLater(() -> {
                     if (finalSession != null) {
                         AuthSessionManager.setActiveSession(finalSession);
-                        updateUserProfilePill();
+                        if (userProfilePill != null) userProfilePill.refresh();
                         // Seeding only runs once the user is authenticated with their userId context
                         dbExecutor.execute(() -> {
                             try {
                                 data.seedIfEmpty();
-                            } catch (Exception ignored) {}
+                            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                         });
                         showDashboardInternal();
                         checkRecurringSweepAsync();
+                        // Pre-load every cached collection in the background so
+                        // the first navigation to each view paints instantly.
+                        data.warmCachesAsync(dbExecutor, () -> Platform.runLater(() ->
+                                lastDataEpoch = data.dataEpoch()));
                     } else {
                         showAuthScreen(AuthView.AuthState.SIGN_IN);
                     }
@@ -187,107 +187,19 @@ public class StudioApp extends Application {
     public void stop() {
         // The MCP server must never outlive the app (localhost port + pending ops die with it)
         com.invoicestudio.mcp.McpServer.shutdown();
+        com.invoicestudio.service.AppExecutors.shutdownAll();
         dbExecutor.shutdownNow();
     }
 
     // ------------------------------------------------------------------
-    // Global keyboard shortcuts (F1 help · Ctrl+N new bill · Ctrl+P/E/B/D)
+    // Help overlay (F1) — overlay chrome, kept in the shell
     // ------------------------------------------------------------------
 
-    private void installGlobalShortcuts(Scene scene) {
-        scene.getAccelerators().put(KeyCombination.valueOf("F1"), this::toggleShortcutsHelp);
-        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+N"), this::showCreateBill);
-        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+P"), this::showCreatePurchase);
-        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+E"), this::showExpensesDialog);
-        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+B"), this::showBuyers);
-        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+D"), this::showDashboard);
-        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+Shift+L"), this::openLabelDesignerShortcut);
-        scene.getAccelerators().put(KeyCombination.valueOf("Ctrl+Shift+B"), this::openBulkPrintShortcut);
-    }
-
-    // ------------------------------------------------------------------
-    // Label / Barcode quick jumps (Ctrl+Shift+L · Ctrl+Shift+B)
-    // ------------------------------------------------------------------
-
-    /** The designer currently on screen, or null when another view is active. */
-    private com.invoicestudio.ui.views.TemplateDesigner activeDesigner() {
-        if (!"designer".equals(currentView)) return null;
-        for (Node n : mainContentPane.getChildren()) {
-            if (n instanceof com.invoicestudio.ui.views.TemplateDesigner td) return td;
-        }
-        return null;
-    }
-
-    /** Most recently touched label template, or null when none exists yet. */
-    private Template findLatestLabelTemplate() {
-        try {
-            TemplateDao dao = new TemplateDao(DatabaseManager.getInstance());
-            Template best = null;
-            for (Template t : dao.getAllTemplates()) {
-                if (t != null && t.isLabelMode()) {
-                    if (best == null || String.valueOf(t.getUpdatedAt()).compareTo(String.valueOf(best.getUpdatedAt())) >= 0) {
-                        best = t;
-                    }
-                }
-            }
-            return best;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /** Ctrl+Shift+L — jump straight into the Template Designer in Barcode Mode. */
-    private void openLabelDesignerShortcut() {
-        if (data == null) return;
-        com.invoicestudio.ui.views.TemplateDesigner designer = activeDesigner();
-        if (designer != null) {
-            designer.enterBarcodeModeFromShortcut();
-            return;
-        }
-        Template lbl = findLatestLabelTemplate();
-        if (lbl == null) {
-            // First run: persist the starter label template, then open it.
-            lbl = PresetTemplates.buildLabelTemplate();
-            try {
-                new TemplateDao(DatabaseManager.getInstance()).saveTemplate(lbl);
-            } catch (Exception ignored) {}
-        }
-        showTemplateDesigner(lbl);
-    }
-
-    /** Ctrl+Shift+B — open the Bulk Label Print window (designing first if needed). */
-    private void openBulkPrintShortcut() {
-        if (data == null) return;
-        com.invoicestudio.ui.views.TemplateDesigner designer = activeDesigner();
-        if (designer != null) {
-            designer.openBulkPrintFromShortcut();
-            return;
-        }
-        Template lbl = findLatestLabelTemplate();
-        if (lbl == null) {
-            lbl = PresetTemplates.buildLabelTemplate();
-            try {
-                new TemplateDao(DatabaseManager.getInstance()).saveTemplate(lbl);
-            } catch (Exception ignored) {}
-        }
-        showTemplateDesigner(lbl);
-        designer = activeDesigner();
-        if (designer != null) designer.openBulkPrintFromShortcut();
-    }
-
-    private void showExpensesDialog() {
-        showExpenses();
-    }
-
-    private void toggleShortcutsHelp() {
+    void toggleShortcutsHelp() {
         // Remove existing overlay if present (toggle behavior)
         rootPane.getChildren().removeIf(n -> n instanceof ShortcutsDialog);
         ShortcutsDialog dlg = new ShortcutsDialog(() -> rootPane.getChildren().removeIf(n -> n instanceof ShortcutsDialog));
         rootPane.getChildren().add(dlg);
-    }
-
-    private void showShortcutsHelp() {
-        toggleShortcutsHelp();
     }
 
     /** Create the shared data layer + long-lived services. Kept cheap: heavy DB work is deferred. */
@@ -313,241 +225,6 @@ public class StudioApp extends Application {
     }
 
     // ------------------------------------------------------------------
-    // Sidebar
-    // ------------------------------------------------------------------
-
-    private VBox buildSidebar() {
-        VBox side = new VBox();
-        side.getStyleClass().add("app-sidebar");
-
-        // Brand block (click = dashboard)
-        VBox brand = new VBox(2);
-        brand.getStyleClass().add("sidebar-brand");
-        brand.setAlignment(Pos.CENTER_LEFT);
-
-        HBox brandRow = new HBox(10);
-        brandRow.setAlignment(Pos.CENTER_LEFT);
-
-        StackPane iconBox = new StackPane();
-        iconBox.getStyleClass().add("brand-icon");
-        iconBox.setPrefSize(34, 34);
-        iconBox.setMaxSize(34, 34);
-        Label iconLbl = IconHelper.createIconLabel(IconHelper.ICON_RECEIPT, 17, "#0B0E13");
-        iconLbl.getStyleClass().add("brand-icon-glyph");
-        iconBox.getChildren().add(iconLbl);
-
-        VBox titleBox = new VBox(1);
-        Label title = new Label("InvoiceStudio");
-        title.getStyleClass().add("sidebar-brand-text");
-        Label subtitle = new Label("BILL DESIGN & PRINT");
-        subtitle.getStyleClass().add("sidebar-brand-sub");
-        titleBox.getChildren().addAll(title, subtitle);
-
-        brandRow.getChildren().addAll(iconBox, titleBox);
-        brand.getChildren().add(brandRow);
-        brand.setOnMouseClicked(e -> showDashboard());
-
-        // Navigation
-        VBox nav = new VBox(2);
-        nav.getStyleClass().add("sidebar-nav");
-        VBox.setVgrow(nav, Priority.NEVER);
-
-        Label sectionMain = new Label("WORKSPACE");
-        sectionMain.getStyleClass().add("sidebar-section-label");
-
-        Label sectionSales = new Label("SALES");
-        sectionSales.getStyleClass().add("sidebar-section-label");
-
-        Label sectionPurchase = new Label("PURCHASE & EXPENSES");
-        sectionPurchase.getStyleClass().add("sidebar-section-label");
-
-        Label sectionFinance = new Label("INSIGHTS");
-        sectionFinance.getStyleClass().add("sidebar-section-label");
-
-        Label sectionManage = new Label("DIRECTORY & CATALOG");
-        sectionManage.getStyleClass().add("sidebar-section-label");
-
-        Label sectionSystem = new Label("SYSTEM");
-        sectionSystem.getStyleClass().add("sidebar-section-label");
-
-        nav.getChildren().add(sectionMain);
-        addNavButton(nav, "dashboard", "Dashboard", IconHelper.ICON_DASHBOARD, this::showDashboard);
-
-        nav.getChildren().add(sectionSales);
-        addNavButton(nav, "history", "Invoices", IconHelper.ICON_HISTORY, this::showHistory);
-        addNavButton(nav, "transactions", "Transactions", IconHelper.ICON_TRANSACTIONS, this::showTransactions);
-        addNavButton(nav, "reports", "Reports & Ledger", IconHelper.ICON_REPORTS, this::showReports);
-
-        nav.getChildren().add(sectionPurchase);
-        addNavButton(nav, "purchases", "Purchases", IconHelper.ICON_BILLING, this::showPurchases);
-        addNavButton(nav, "expenses", "Expenses", IconHelper.ICON_TAG, this::showExpenses);
-
-        nav.getChildren().add(sectionFinance);
-        addNavButton(nav, "financials", "Financials", IconHelper.ICON_BAR_CHART, this::showFinancials);
-        addNavButton(nav, "stockanalysis", "Stock & Profit", IconHelper.ICON_TRENDING_UP, this::showStockAnalysis);
-
-        nav.getChildren().add(sectionManage);
-        // Directory & Catalog collapsed into ONE button to keep the sidebar short;
-        // the 7 catalog destinations live in a themed popup (same icons/design).
-        Button catalogBtn = new Button("Catalog");
-        catalogBtn.setGraphic(IconHelper.getIcon(IconHelper.ICON_CATEGORIES, 15, "#94A3B8"));
-        catalogBtn.getStyleClass().add("sidebar-nav-btn");
-        catalogBtn.setMaxWidth(Double.MAX_VALUE);
-        catalogBtn.setAlignment(Pos.CENTER_LEFT);
-        catalogBtn.setTooltip(new Tooltip("Buyers, Sellers, Items, Categories, Templates, Transports, Variables & Label History"));
-        catalogBtn.setOnAction(e -> showCatalogPopup(catalogBtn));
-        navButtons.put("catalog", catalogBtn);
-        nav.getChildren().add(catalogBtn);
-
-        nav.getChildren().add(sectionSystem);
-        addNavButton(nav, "settings", "Settings", IconHelper.ICON_SETTINGS, this::showSettings);
-
-        // Push footer down
-        Region filler = new Region();
-        VBox.setVgrow(filler, Priority.ALWAYS);
-
-        // Footer: + New Bill button + user profile pill (sidebar-footer border provides single divider above)
-        VBox footer = new VBox(10);
-        footer.getStyleClass().add("sidebar-footer");
-
-        Button newBillBtn = new Button("+  New Bill");
-        newBillBtn.getStyleClass().addAll("gold-btn", "sidebar-cta");
-        newBillBtn.setMaxWidth(Double.MAX_VALUE);
-        newBillBtn.setTooltip(new Tooltip("Create a new invoice (Ctrl+N)"));
-        newBillBtn.setOnAction(e -> showCreateBill());
-
-        HBox userPill = buildUserProfilePill();
-
-        Region midDivider = new Region();
-        midDivider.setStyle("-fx-background-color: -color-border; -fx-pref-height: 1px; -fx-max-height: 1px;");
-        VBox.setMargin(midDivider, new Insets(14, 0, 14, 0));
-
-        footer.getChildren().addAll(newBillBtn, midDivider, userPill);
-
-        side.getChildren().addAll(brand, nav, filler, footer);
-        return side;
-    }
-
-    private void addNavButton(VBox container, String id, String label, String iconName, Runnable action) {
-        Button btn = new Button(label);
-        btn.setGraphic(IconHelper.getIcon(iconName, 15, "#94A3B8"));
-        btn.getStyleClass().add("sidebar-nav-btn");
-        btn.setMaxWidth(Double.MAX_VALUE);
-        btn.setAlignment(Pos.CENTER_LEFT);
-        btn.setOnAction(e -> action.run());
-        navButtons.put(id, btn);
-        container.getChildren().add(btn);
-    }
-
-    private void updateNavActive(String activeId) {
-        this.currentView = activeId;
-        // Views that live inside the collapsed Catalog popup light up the Catalog button.
-        boolean catalogGroup = switch (activeId) {
-            case "buyers", "sellers", "items", "categories", "templates", "transports", "variables", "labelhistory", "designer" -> true;
-            default -> false;
-        };
-        for (Map.Entry<String, Button> entry : navButtons.entrySet()) {
-            Button btn = entry.getValue();
-            boolean isActive = entry.getKey().equalsIgnoreCase(activeId) ||
-                    ("designer".equalsIgnoreCase(activeId) && "templates".equalsIgnoreCase(entry.getKey())) ||
-                    ("dashboard2".equalsIgnoreCase(activeId) && "dashboard".equalsIgnoreCase(entry.getKey())) ||
-                    (catalogGroup && "catalog".equalsIgnoreCase(entry.getKey()));
-            btn.getStyleClass().remove("active");
-            if (isActive) {
-                btn.getStyleClass().add("active");
-                btn.setGraphic(IconHelper.getIcon(navIconFor(entry.getKey()), 15, "#F2CA6B"));
-            } else {
-                btn.setGraphic(IconHelper.getIcon(navIconFor(entry.getKey()), 15, "#94A3B8"));
-            }
-        }
-    }
-
-    /** Catalog destinations shown inside the popup (id, label, icon). */
-    private static final String[][] CATALOG_ITEMS = {
-            {"buyers", "Buyers", "buyers"},
-            {"sellers", "Sellers", "business"},
-            {"items", "Items", "items"},
-            {"categories", "Categories", "categories"},
-            {"templates", "Templates", "templates"},
-            {"transports", "Transports", "transport"},
-            {"variables", "Variables", "variables"},
-            {"labelhistory", "Label Print History", "history"}
-    };
-
-    /** Themed popup listing the Directory & Catalog destinations (same icons/design). */
-    private void showCatalogPopup(Button anchor) {
-        javafx.stage.Popup popup = new javafx.stage.Popup();
-        popup.setAutoHide(true);
-        popup.setAutoFix(true);
-
-        VBox panel = new VBox(4);
-        panel.getStyleClass().add("catalog-popup");
-
-        Label head = new Label("DIRECTORY & CATALOG");
-        head.getStyleClass().add("sidebar-section-label");
-        head.setStyle("-fx-padding: 2 8 8 8;");
-        panel.getChildren().add(head);
-
-        for (String[] item : CATALOG_ITEMS) {
-            String id = item[0];
-            String label = item[1];
-            String iconKey = navIconFor(id);
-            Button b = new Button(label);
-            boolean active = id.equalsIgnoreCase(currentView)
-                    || ("designer".equalsIgnoreCase(currentView) && "templates".equals(id));
-            b.setGraphic(IconHelper.getIcon(iconKey, 15, active ? "#F2CA6B" : "#94A3B8"));
-            b.getStyleClass().add("sidebar-nav-btn");
-            if (active) b.getStyleClass().add("catalog-popup-item-active");
-            b.setMaxWidth(Double.MAX_VALUE);
-            b.setAlignment(Pos.CENTER_LEFT);
-            b.setOnAction(ev -> {
-                popup.hide();
-                switch (id) {
-                    case "buyers" -> showBuyers();
-                    case "sellers" -> showSuppliers();
-                    case "items" -> showItems();
-                    case "categories" -> showCategories();
-                    case "templates" -> showTemplates();
-                    case "transports" -> showTransports();
-                    case "variables" -> showVariables();
-                    case "labelhistory" -> showLabelHistory();
-                }
-            });
-            panel.getChildren().add(b);
-        }
-
-        popup.getContent().add(panel);
-        // Position below the anchor, aligned to its left edge
-        javafx.geometry.Bounds bounds = anchor.localToScreen(anchor.getBoundsInLocal());
-        popup.show(anchor, bounds.getMinX(), bounds.getMaxY() + 6);
-    }
-
-    private String navIconFor(String id) {
-        return switch (id) {
-            case "dashboard" -> IconHelper.ICON_DASHBOARD;
-            case "dashboard2" -> IconHelper.ICON_DASHBOARD2;
-            case "templates" -> IconHelper.ICON_TEMPLATES;
-            case "new" -> IconHelper.ICON_RECEIPT;
-            case "history" -> IconHelper.ICON_HISTORY;
-            case "transactions" -> IconHelper.ICON_TRANSACTIONS;
-            case "purchases" -> IconHelper.ICON_BILLING;
-            case "expenses" -> IconHelper.ICON_TAG;
-            case "financials" -> IconHelper.ICON_BAR_CHART;
-            case "reports" -> IconHelper.ICON_REPORTS;
-            case "buyers" -> IconHelper.ICON_USERS;
-            case "sellers" -> IconHelper.ICON_BUSINESS;
-            case "items" -> IconHelper.ICON_PACKAGE;
-            case "stockanalysis" -> IconHelper.ICON_TRENDING_UP;
-            case "categories" -> IconHelper.ICON_CATEGORIES;
-            case "transports" -> IconHelper.ICON_TRANSPORT;
-            case "variables" -> IconHelper.ICON_VARIABLE;
-            case "labelhistory" -> IconHelper.ICON_HISTORY;
-            case "settings" -> IconHelper.ICON_SETTINGS;
-            default -> IconHelper.ICON_RECEIPT;
-        };
-    }
-
-    // ------------------------------------------------------------------
     // View switching with cache + fade transition
     // ------------------------------------------------------------------
 
@@ -556,7 +233,7 @@ public class StudioApp extends Application {
     }
 
     private void setView(String id, Node viewNode, boolean animate) {
-        updateNavActive(id);
+        sidebarController.updateNavActive(id);
 
         Node content = viewNode;
         if (content instanceof VBox) {
@@ -579,18 +256,78 @@ public class StudioApp extends Application {
         }
     }
 
-    /** Cached views are refreshed (data re-read) but NOT rebuilt → instant nav. */
+    /**
+     * Cached views are refreshed (data re-read) but NOT rebuilt → instant nav.
+     * Stale-while-revalidate: the cached UI is returned immediately; if the
+     * data epoch moved since it was built, caches are re-warmed on the
+     * background executor and only the refresher (data re-read) runs on the
+     * FX thread afterwards — the click never waits on disk or a rebuild.
+     */
     private Node cached(String id, java.util.function.Supplier<Node> factory, Runnable refresher) {
         Node view = viewCache.get(id);
         if (view == null) {
             view = factory.get();
             viewCache.put(id, view);
-        } else if (refresher != null) {
-            try {
-                refresher.run();
-            } catch (Exception ignored) {}
+        } else if (refresher != null && data != null && data.dataEpoch() != lastDataEpoch) {
+            refreshViewAsync(refresher);
         }
         return view;
+    }
+
+    /** Warms caches off the FX thread, then re-reads data into the live view with a small pill indicator. */
+    private void refreshViewAsync(Runnable refresher) {
+        if (refreshInProgress) {
+            // Another refresh is mid-flight; queue this view so it is never
+            // left stale (fast A→B navigation before A's refresh lands).
+            pendingRefreshers.add(refresher);
+            return;
+        }
+        refreshInProgress = true;
+        showRefreshPill();
+        dbExecutor.execute(() -> {
+            try {
+                data.warmCachesNow();
+            } catch (Exception e) {
+                AppLog.error("Cache re-warm failed", e);
+            }
+            Platform.runLater(() -> {
+                try {
+                    refresher.run();
+                    for (Runnable queued : pendingRefreshers) {
+                        try {
+                            queued.run();
+                        } catch (Exception e) {
+                            AppLog.error("Queued view refresh failed", e);
+                        }
+                    }
+                    pendingRefreshers.clear();
+                    lastDataEpoch = data.dataEpoch();
+                } catch (Exception e) {
+                    AppLog.error("View refresh failed", e);
+                } finally {
+                    hideRefreshPill();
+                    refreshInProgress = false;
+                }
+            });
+        });
+    }
+
+    private void showRefreshPill() {
+        if (refreshPill == null) {
+            refreshPill = new Label("⟳  Refreshing…");
+            refreshPill.getStyleClass().add("refresh-pill");
+            refreshPill.setMouseTransparent(true);
+            StackPane.setAlignment(refreshPill, Pos.BOTTOM_RIGHT);
+            StackPane.setMargin(refreshPill, new Insets(0, 18, 18, 0));
+        }
+        if (refreshPill.getParent() == null && rootPane != null) {
+            rootPane.getChildren().add(refreshPill);
+        }
+        refreshPill.setVisible(true);
+    }
+
+    private void hideRefreshPill() {
+        if (refreshPill != null) refreshPill.setVisible(false);
     }
 
     private void showLoading() {
@@ -824,7 +561,7 @@ public class StudioApp extends Application {
 
     public void reloadAllData() {
         // Views refresh themselves on show now; just refresh the active one.
-        switch (currentView) {
+        switch (sidebarController.currentView()) {
             case "dashboard" -> showDashboard();
             case "dashboard2" -> showDashboard2();
             case "templates" -> showTemplates();
@@ -855,12 +592,13 @@ public class StudioApp extends Application {
                     Platform.runLater(() -> {
                         Toast.show(rootPane, "Recurring Invoices",
                                 "Auto-created " + res.created.size() + " due recurring invoice(s).", false);
-                        if ("dashboard".equals(currentView)) {
+                        if ("dashboard".equals(sidebarController.currentView())) {
                             showDashboard();
                         }
                     });
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         });
     }
 
@@ -900,72 +638,25 @@ public class StudioApp extends Application {
         return rootPane;
     }
 
-    private HBox buildUserProfilePill() {
-        HBox pill = new HBox(10);
-        pill.setAlignment(Pos.CENTER_LEFT);
-        pill.setStyle("-fx-background-color: #121721; -fx-background-radius: 8px; -fx-padding: 8px 10px; -fx-border-color: #1E2738; -fx-border-radius: 8px; -fx-border-width: 1px;");
+    // --- Package-private surface for collaborators (skill rule 5.2) ---
 
-        userAvatarLabel = new Label("IS");
-        userAvatarLabel.setStyle("-fx-background-color: linear-gradient(to bottom right, #D4AF37, #AA820A); -fx-background-radius: 50%; -fx-min-width: 30px; -fx-min-height: 30px; -fx-max-width: 30px; -fx-max-height: 30px; -fx-alignment: center; -fx-font-size: 11px; -fx-font-weight: 800; -fx-text-fill: #0B0E13;");
+    boolean hasData() { return data != null; }
 
-        VBox textBox = new VBox(1);
-        HBox.setHgrow(textBox, Priority.ALWAYS);
+    SidebarController sidebar() { return sidebarController; }
 
-        userNameLabel = new Label("Account");
-        userNameLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 11.5px; -fx-font-weight: 600;");
+    StackPane mainContentPane() { return mainContentPane; }
 
-        userEmailLabel = new Label("");
-        userEmailLabel.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px;");
-
-        textBox.getChildren().addAll(userNameLabel, userEmailLabel);
-
-        Button logoutBtn = new Button();
-        logoutBtn.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 4px;");
-        SVGPath logoutIcon = new SVGPath();
-        logoutIcon.setContent("M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z");
-        logoutIcon.setFill(Color.web("#94A3B8"));
-        logoutIcon.setScaleX(0.7);
-        logoutIcon.setScaleY(0.7);
-        logoutBtn.setGraphic(logoutIcon);
-        logoutBtn.setTooltip(new Tooltip("Log Out"));
-
-        logoutBtn.setOnMouseEntered(e -> logoutIcon.setFill(Color.web("#EF4444")));
-        logoutBtn.setOnMouseExited(e -> logoutIcon.setFill(Color.web("#94A3B8")));
-        logoutBtn.setOnAction(e -> promptLogout());
-
-        pill.getChildren().addAll(userAvatarLabel, textBox, logoutBtn);
-        userProfilePill = pill;
-        updateUserProfilePill();
-        return pill;
+    HBox newUserProfilePill() {
+        userProfilePill = new UserProfilePill(this);
+        return userProfilePill.node();
     }
 
-    private void updateUserProfilePill() {
-        if (userNameLabel == null || userEmailLabel == null) return;
-        String name = AuthSessionManager.getCurrentUserDisplayName();
-        String email = AuthSessionManager.getCurrentUserEmail();
-
-        userNameLabel.setText(name.isBlank() ? "Account" : name);
-        userEmailLabel.setText(email);
-
-        String initials = "IS";
-        if (!name.isBlank() && !name.equalsIgnoreCase("User")) {
-            String[] parts = name.trim().split("\\s+");
-            if (parts.length >= 2) {
-                initials = ("" + parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
-            } else if (!parts[0].isEmpty()) {
-                initials = parts[0].substring(0, Math.min(2, parts[0].length())).toUpperCase();
-            }
-        } else if (!email.isBlank()) {
-            initials = email.substring(0, Math.min(2, email.length())).toUpperCase();
-        }
-        userAvatarLabel.setText(initials);
-    }
-
-    private void promptLogout() {
+    void promptLogout() {
         LogoutDialog dialog = new LogoutDialog(
                 () -> {
                     rootPane.getChildren().removeIf(node -> node instanceof LogoutDialog);
                     performLogout();
+
                 },
                 () -> rootPane.getChildren().removeIf(node -> node instanceof LogoutDialog)
         );
@@ -976,7 +667,8 @@ public class StudioApp extends Application {
         dbExecutor.execute(() -> {
             try {
                 data.auth().clearSession();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             AuthSessionManager.clear();
             Platform.runLater(() -> {
                 viewCache.clear();
@@ -992,13 +684,14 @@ public class StudioApp extends Application {
     }
 
     private void onAuthenticationSuccess() {
-        updateUserProfilePill();
+        if (userProfilePill != null) userProfilePill.refresh();
         rootPane.getChildren().clear();
         rootPane.getChildren().add(mainLayout);
         dbExecutor.execute(() -> {
             try {
                 data.seedIfEmpty();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             Platform.runLater(this::showDashboard);
         });
     }

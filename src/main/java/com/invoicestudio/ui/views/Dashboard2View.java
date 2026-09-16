@@ -3,6 +3,7 @@ package com.invoicestudio.ui.views;
 import com.invoicestudio.model.Bill;
 import com.invoicestudio.model.Buyer;
 import com.invoicestudio.model.Transaction;
+import com.invoicestudio.service.AppFormatters;
 import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.UiTheme;
@@ -33,11 +34,20 @@ import java.util.stream.Collectors;
  * Matches the layout and analytics of the reference financial web dashboard.
  * Coexists seamlessly with the original Dashboard 1.
  */
+
 public class Dashboard2View extends BorderPane {
+
+    // Cached formatters — ofPattern re-parses its pattern on every call (skill 2.1).
+    private static final DateTimeFormatter F_YM = DateTimeFormatter.ofPattern("yyyy-MM");
+    private static final DateTimeFormatter F_MON_YY = DateTimeFormatter.ofPattern("MMM yy");
+    private static final DateTimeFormatter F_MON_YYYY = DateTimeFormatter.ofPattern("MMMM yyyy");
+    private static final DateTimeFormatter F_DD_MMM = DateTimeFormatter.ofPattern("dd MMM");
+    private static final DateTimeFormatter F_DD_MM = DateTimeFormatter.ofPattern("dd/MM");
 
     private final StudioApp app;
     private final VBox contentBox = new VBox(20);
-    private final DecimalFormat currencyFmt = new DecimalFormat("#,##,##0.00");
+    /** Indian-grouped money format from the shared cache (skill 2.1) — same pattern, zero re-parse. */
+    private final DecimalFormat currencyFmt = AppFormatters.inrFormat();
 
     private String activeBook = "ALL"; // "ALL", "CC", "CS"
     private String parcelPeriod = "Month"; // "Day", "Week", "Month", "Year"
@@ -196,9 +206,9 @@ public class Dashboard2View extends BorderPane {
         VBox section = new VBox(8);
 
         LocalDate now = LocalDate.now();
-        String currentMonthKey = now.format(DateTimeFormatter.ofPattern("yyyy-MM"));
-        String lastMonthKey = now.minusMonths(1).format(DateTimeFormatter.ofPattern("yyyy-MM"));
-        String monthName = now.format(DateTimeFormatter.ofPattern("MMMM yyyy"));
+        String currentMonthKey = now.format(F_YM);
+        String lastMonthKey = now.minusMonths(1).format(F_YM);
+        String monthName = now.format(F_MON_YYYY);
 
         Label header = new Label("CURRENT PERIOD & LOGISTICS PERFORMANCE (" + monthName.toUpperCase() + ")");
         header.getStyleClass().addAll("micro-label", "accent-sky");
@@ -330,8 +340,8 @@ public class Dashboard2View extends BorderPane {
         LocalDate now = LocalDate.now();
         for (int i = 11; i >= 0; i--) {
             LocalDate m = now.minusMonths(i);
-            String mKey = m.format(DateTimeFormatter.ofPattern("yyyy-MM"));
-            String mLabel = m.format(DateTimeFormatter.ofPattern("MMM yy"));
+            String mKey = m.format(F_YM);
+            String mLabel = m.format(F_MON_YY);
 
             double mSales = 0;
             double mPayments = 0;
@@ -384,8 +394,8 @@ public class Dashboard2View extends BorderPane {
 
         for (int i = 11; i >= 0; i--) {
             LocalDate m = now.minusMonths(i);
-            String mKey = m.format(DateTimeFormatter.ofPattern("yyyy-MM"));
-            String mLabel = m.format(DateTimeFormatter.ofPattern("MMM yy"));
+            String mKey = m.format(F_YM);
+            String mLabel = m.format(F_MON_YY);
 
             int mQty = 0;
             for (Transaction t : txs) {
@@ -488,8 +498,8 @@ public class Dashboard2View extends BorderPane {
         if ("Month".equals(parcelPeriod)) {
             for (int i = 11; i >= 0; i--) {
                 LocalDate m = now.minusMonths(i);
-                String mKey = m.format(DateTimeFormatter.ofPattern("yyyy-MM"));
-                String label = m.format(DateTimeFormatter.ofPattern("MMM yy"));
+                String mKey = m.format(F_YM);
+                String label = m.format(F_MON_YY);
                 int pCount = txs.stream()
                     .filter(t -> t.getTransactionDate() != null && t.getTransactionDate().startsWith(mKey))
                     .mapToInt(Transaction::getParcels).sum();
@@ -499,7 +509,7 @@ public class Dashboard2View extends BorderPane {
             for (int i = 13; i >= 0; i--) {
                 LocalDate d = now.minusDays(i);
                 String dKey = d.toString();
-                String label = d.format(DateTimeFormatter.ofPattern("dd MMM"));
+                String label = d.format(F_DD_MMM);
                 int pCount = txs.stream()
                     .filter(t -> dKey.equals(t.getTransactionDate()))
                     .mapToInt(Transaction::getParcels).sum();
@@ -517,7 +527,7 @@ public class Dashboard2View extends BorderPane {
         } else { // Week
             for (int i = 7; i >= 0; i--) {
                 LocalDate wStart = now.minusWeeks(i);
-                String label = "Wk " + wStart.format(DateTimeFormatter.ofPattern("dd/MM"));
+                String label = "Wk " + wStart.format(F_DD_MM);
                 series.getData().add(new XYChart.Data<>(label, (int)(totalParcels / 8)));
             }
         }

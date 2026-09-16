@@ -54,6 +54,8 @@ public class IconHelper {
     public static final String ICON_MEDIA_IMAGE = "media-image";
     public static final String ICON_MEDIA_SVG = "media-svg";
     public static final String ICON_CODE = "code";
+    /** Anthropic-style MCP (Model Context Protocol) logo — server stack with connector nodes. */
+    public static final String ICON_MCP = "mcp";
     public static final String ICON_CODE_QR = "code-qr";
     public static final String ICON_CODE_BARCODE = "code-barcode";
     public static final String ICON_BUSINESS = "business";
@@ -237,6 +239,9 @@ public class IconHelper {
     private static String getSvgPath(String name) {
         if (name == null) return null;
         switch (name.toLowerCase()) {
+            case "mcp":
+                // MCP mark: stacked server layers joined by a T connector (readable at 13px).
+                return "M3 3 H21 V6.5 H3 Z M3 8.5 H21 V12 H3 Z M11 12 H13 V16 H18.5 V19 H5.5 V16 H11 Z";
             case "dashboard":
                 return "M3 3h7v7H3V3zm11 0h7v7h-7V3zm0 11h7v7h-7v-7zM3 14h7v7H3v-7z";
             case "dashboard2":

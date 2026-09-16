@@ -1,5 +1,6 @@
 package com.invoicestudio.ui;
 
+import com.invoicestudio.service.AppLog;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -212,6 +213,12 @@ public final class UiTheme {
     // ---------- Date Pickers ----------
 
     private static final DateTimeFormatter DISPLAY_DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    // Fallback parse patterns for resilient date entry (pre-built — ofPattern re-parses per call).
+    private static final DateTimeFormatter[] FALLBACK_DATE_FORMATS = {
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"), DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd"), DateTimeFormatter.ofPattern("d/M/yyyy"),
+            DateTimeFormatter.ofPattern("d-M-yyyy")
+    };
 
     /** Configures a DatePicker with executive styling, standard display format, and resilient parsing. */
     public static DatePicker configureDatePicker(DatePicker picker, String prompt) {
@@ -231,14 +238,16 @@ public final class UiTheme {
                     return null;
                 }
                 String s = string.trim();
-                for (String pattern : new String[]{"dd/MM/yyyy", "dd-MM-yyyy", "yyyy-MM-dd", "d/M/yyyy", "d-M-yyyy"}) {
+                for (DateTimeFormatter fmt : FALLBACK_DATE_FORMATS) {
                     try {
-                        return LocalDate.parse(s, DateTimeFormatter.ofPattern(pattern));
-                    } catch (Exception ignored) {}
+                        return LocalDate.parse(s, fmt);
+                    } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                 }
                 try {
                     return LocalDate.parse(s);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                 return null;
             }
         });

@@ -1,5 +1,6 @@
 package com.invoicestudio.db;
 
+import com.invoicestudio.service.AppLog;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.invoicestudio.model.*;
@@ -70,13 +71,18 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_tx_book ON transactions(book_type)");
 
             // Alter column migrations
-            try { stmt.execute("ALTER TABLE items ADD COLUMN category_id TEXT"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE items ADD COLUMN category_name TEXT"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE items ADD COLUMN category_id TEXT"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE items ADD COLUMN category_name TEXT"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             // v4.1 — variable scope + default value support
-            try { stmt.execute("ALTER TABLE variables ADD COLUMN scope TEXT DEFAULT 'fixed'"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE variables ADD COLUMN default_value TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE variables ADD COLUMN scope TEXT DEFAULT 'fixed'"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE variables ADD COLUMN default_value TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             // v4.6 — barcode scope: possible values (comma separated) for Bulk Label Print quick-picks
-            try { stmt.execute("ALTER TABLE variables ADD COLUMN choices TEXT DEFAULT ''"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE variables ADD COLUMN choices TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
             // v4.6 — Bulk Label Print history (info-only audit of label runs)
             stmt.execute("CREATE TABLE IF NOT EXISTS label_print_history (id TEXT PRIMARY KEY, template_id TEXT, template_name TEXT, printer_name TEXT, label_width REAL, label_height REAL, columns INTEGER, pages INTEGER, labels INTEGER, total_copies INTEGER, summary TEXT, lines_json TEXT, user_id TEXT DEFAULT '', created_at TEXT)");
@@ -84,48 +90,87 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_lph_created ON label_print_history(created_at)");
 
             // v4.2 — user_id multi-user local data partitioning
-            try { stmt.execute("ALTER TABLE bills ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE buyers ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE items ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE templates ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE categories ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE transports ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE transactions ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE settings ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE variables ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE meta ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_bills_user ON bills(user_id)"); } catch (Exception ignored) {}
-            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_buyers_user ON buyers(user_id)"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE bills ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE buyers ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE items ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE templates ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE categories ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE transports ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE transactions ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE settings ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE variables ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE meta ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_bills_user ON bills(user_id)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_buyers_user ON buyers(user_id)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             // v4.3 — Purchase foundation: supplier directory + item purchase/stock groundwork
-            try { stmt.execute("ALTER TABLE suppliers ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE expenses ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE purchase_bills ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE items ADD COLUMN purchase_rate REAL DEFAULT 0"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE items ADD COLUMN current_stock REAL DEFAULT 0"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE items ADD COLUMN opening_stock REAL DEFAULT 0"); } catch (Exception ignored) {}
-            try { stmt.execute("ALTER TABLE items ADD COLUMN reorder_level REAL DEFAULT 0"); } catch (Exception ignored) {}
-            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_suppliers_user ON suppliers(user_id)"); } catch (Exception ignored) {}
-            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)"); } catch (Exception ignored) {}
-            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id)"); } catch (Exception ignored) {}
-            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id)"); } catch (Exception ignored) {}
-            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id)"); } catch (Exception ignored) {}
-            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id)"); } catch (Exception ignored) {}
+            try { stmt.execute("ALTER TABLE suppliers ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE expenses ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE purchase_bills ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE items ADD COLUMN purchase_rate REAL DEFAULT 0"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE items ADD COLUMN current_stock REAL DEFAULT 0"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE items ADD COLUMN opening_stock REAL DEFAULT 0"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE items ADD COLUMN reorder_level REAL DEFAULT 0"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_suppliers_user ON suppliers(user_id)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
             // Purge unauthenticated legacy orphan records created by earlier pre-auth runs
-            try { stmt.execute("DELETE FROM categories WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM items WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM templates WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM settings WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM variables WHERE builtin = 0 AND (user_id = '' OR user_id IS NULL)"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM transports WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM buyers WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM suppliers WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM purchase_bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM stock_ledger WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM expenses WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM transactions WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
-            try { stmt.execute("DELETE FROM label_print_history WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {}
+            try { stmt.execute("DELETE FROM categories WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM items WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM templates WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM settings WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM variables WHERE builtin = 0 AND (user_id = '' OR user_id IS NULL)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM transports WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM buyers WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM suppliers WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM purchase_bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM stock_ledger WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM expenses WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM bills WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM transactions WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("DELETE FROM label_print_history WHERE user_id = '' OR user_id IS NULL"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
             // MCP hardening: categories are auto-created BY NAME by MCP tools, so
             // (user_id, name) must be unique or two concurrent calls could create
@@ -134,19 +179,19 @@ public class DatabaseManager {
             // uniqueness at the DB level as the race backstop.
             try {
                 stmt.execute("DELETE FROM categories WHERE rowid NOT IN (SELECT MIN(rowid) FROM categories GROUP BY user_id, LOWER(name))");
-            } catch (Exception e) { e.printStackTrace(); }
+            } catch (Exception e) { com.invoicestudio.service.AppLog.error(e); }
             try {
                 stmt.execute("UPDATE items SET category_id = (SELECT k.id FROM categories k WHERE k.user_id = items.user_id AND LOWER(k.name) = LOWER(items.category_name)) WHERE category_id IS NOT NULL AND category_id <> '' AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.id = items.category_id AND c.user_id = items.user_id)");
                 stmt.execute("UPDATE items SET category_id = NULL, category_name = NULL WHERE category_id IS NOT NULL AND category_id <> '' AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.id = items.category_id AND c.user_id = items.user_id)");
-            } catch (Exception e) { e.printStackTrace(); }
+            } catch (Exception e) { com.invoicestudio.service.AppLog.error(e); }
             try {
                 stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_user_name ON categories(user_id, name COLLATE NOCASE)");
-            } catch (Exception e) { e.printStackTrace(); }
+            } catch (Exception e) { com.invoicestudio.service.AppLog.error(e); }
 
             // Ensure built-in system variables exist
             seedVariables(conn);
         } catch (SQLException e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -180,7 +225,7 @@ public class DatabaseManager {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 }

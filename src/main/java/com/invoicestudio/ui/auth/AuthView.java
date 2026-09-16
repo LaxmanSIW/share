@@ -1,6 +1,8 @@
 package com.invoicestudio.ui.auth;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.UserSession;
+import com.invoicestudio.service.AppExecutors;
 import com.invoicestudio.service.AuthSessionManager;
 import com.invoicestudio.service.FirebaseAuthService;
 import com.invoicestudio.ui.DataManager;
@@ -180,7 +182,7 @@ public class AuthView extends StackPane {
             bannerBox.setVisible(false);
             bannerBox.setManaged(false);
 
-            Executors.newSingleThreadExecutor().submit(() -> {
+            AppExecutors.io().submit(() -> {
                 try {
                     UserSession session = authService.signInWithEmail(email, password, rememberMe.isSelected());
                     handleSuccessfulLogin(session, rememberMe.isSelected());
@@ -300,7 +302,7 @@ public class AuthView extends StackPane {
             bannerBox.setVisible(false);
             bannerBox.setManaged(false);
 
-            Executors.newSingleThreadExecutor().submit(() -> {
+            AppExecutors.io().submit(() -> {
                 try {
                     UserSession session = authService.signUpWithEmail(email, password, name, rememberMe.isSelected());
                     handleSuccessfulLogin(session, rememberMe.isSelected());
@@ -388,7 +390,7 @@ public class AuthView extends StackPane {
             bannerBox.setVisible(false);
             bannerBox.setManaged(false);
 
-            Executors.newSingleThreadExecutor().submit(() -> {
+            AppExecutors.io().submit(() -> {
                 try {
                     authService.sendPasswordReset(email);
                     lastResetEmail = email;
@@ -516,7 +518,7 @@ public class AuthView extends StackPane {
             // If active session exists, update via idToken
             UserSession current = AuthSessionManager.getActiveSession();
             if (current != null && current.getIdToken() != null) {
-                Executors.newSingleThreadExecutor().submit(() -> {
+                AppExecutors.io().submit(() -> {
                     try {
                         UserSession updated = authService.updatePassword(current.getIdToken(), p1);
                         handleSuccessfulLogin(updated, true);
@@ -578,12 +580,13 @@ public class AuthView extends StackPane {
                 try {
                     DataManager.get().auth().saveSession(session);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    com.invoicestudio.service.AppLog.error(e);
                 }
             } else {
                 try {
                     DataManager.get().auth().clearSession();
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             }
 
             AuthSessionManager.setActiveSession(session);

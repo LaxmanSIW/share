@@ -1,5 +1,6 @@
 package com.invoicestudio.mcp;
 
+import com.invoicestudio.service.AppLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -125,7 +126,8 @@ public final class McpServer {
             runOnFxThread(() -> {
                 try {
                     l.accept(url);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             });
         }
     }

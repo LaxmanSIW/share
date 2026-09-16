@@ -1,8 +1,10 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.Buyer;
 import com.invoicestudio.model.Transaction;
 import com.invoicestudio.ui.DialogHelper;
+import com.invoicestudio.service.AppFormatters;
 import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.Toast;
@@ -49,7 +51,8 @@ public class TransactionsView extends BorderPane {
     private final Label totalPiecesLabel = new Label("0");
     private final Label countBadge = new Label("0 entries");
 
-    private final DecimalFormat currencyFmt = new DecimalFormat("#,##,##0.00");
+    /** Shared cached Indian-grouped money format (skill 2.1). */
+    private final DecimalFormat currencyFmt = AppFormatters.inrFormat();
 
     public TransactionsView(StudioApp app) {
         this.app = app;
@@ -599,7 +602,8 @@ public class TransactionsView extends BorderPane {
         if (isEdit && existing.getDueDate() != null && !existing.getDueDate().isBlank()) {
             try {
                 dueDatePicker.setValue(LocalDate.parse(existing.getDueDate()));
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         }
         grid.add(new Label("Due Date:"), 0, row);
         grid.add(dueDatePicker, 1, row++);
@@ -703,14 +707,16 @@ public class TransactionsView extends BorderPane {
                     try {
                         String qText = qtyField.getText().trim();
                         if (!qText.isEmpty()) qty = Integer.parseInt(qText);
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+            AppLog.debug(ignored); }
                 }
 
                 int parcels = 0;
                 try {
                     String pText = parcelsField.getText().trim();
                     if (!pText.isEmpty()) parcels = Integer.parseInt(pText);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
 
                 String bType = rbCc.isSelected() ? "CC" : "CS";
                 String tType = rbSale.isSelected() ? "sale" : "payment";

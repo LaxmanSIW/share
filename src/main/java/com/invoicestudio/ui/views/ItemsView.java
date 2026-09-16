@@ -252,7 +252,7 @@ public class ItemsView extends VBox {
                 renderAnalytics();
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             Toast.show(this, "Failed to load catalog: " + e.getMessage(), true);
         }
     }
@@ -747,7 +747,7 @@ public class ItemsView extends VBox {
                 dlg.close();
                 reload();
             } catch (Exception ex) {
-                ex.printStackTrace();
+                com.invoicestudio.service.AppLog.error(ex);
                 Toast.show(this, "Failed to save item: " + ex.getMessage(), true);
             }
         });

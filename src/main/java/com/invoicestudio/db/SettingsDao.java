@@ -28,7 +28,7 @@ public class SettingsDao {
                 return !rs.next();
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             return true;
         }
     }
@@ -50,7 +50,7 @@ public class SettingsDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return new Settings();
     }
@@ -82,7 +82,7 @@ public class SettingsDao {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 

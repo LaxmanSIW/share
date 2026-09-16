@@ -1,5 +1,6 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.*;
 import com.invoicestudio.service.CsvService;
 import com.invoicestudio.service.PdfExportService;
@@ -355,12 +356,14 @@ public class HistoryView extends BorderPane {
             if (from != null && b.getDate() != null) {
                 try {
                     if (LocalDate.parse(b.getDate()).isBefore(from)) return false;
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             }
             if (to != null && b.getDate() != null) {
                 try {
                     if (LocalDate.parse(b.getDate()).isAfter(to)) return false;
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             }
             return true;
         });
@@ -585,7 +588,8 @@ public class HistoryView extends BorderPane {
                             refField.getText(),
                             noteField.getText()
                     );
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            AppLog.debug(ignored); }
             }
             return null;
         });

@@ -16,18 +16,6 @@ public final class ShortcutCatalog {
     public static Map<String, String[][]> groups() {
         Map<String, String[][]> groups = new LinkedHashMap<>();
 
-        groups.put("Global (works on every screen)", new String[][]{
-                {"F1", "Toggle shortcuts help popup"},
-                {"Ctrl + N", "New Bill (invoice entry)"},
-                {"Ctrl + P", "Purchases — record a purchase bill"},
-                {"Ctrl + E", "Expenses — new expense voucher"},
-                {"Ctrl + B", "Buyers directory"},
-                {"Ctrl + D", "Dashboard"},
-                {"Ctrl + Shift + L", "Label Designer — opens Template Designer in Barcode Mode"},
-                {"Ctrl + Shift + B", "Bulk Label Print — opens the bulk label printing window"},
-                {"Esc", "Close dialogs / cancel entry (contextual)"}
-        });
-
         groups.put("Billing & Entry Forms", new String[][]{
                 {"Ctrl + S", "Save the bill / purchase / expense being edited"},
                 {"Enter", "Confirm focused dialog (OK)"},
@@ -53,11 +41,22 @@ public final class ShortcutCatalog {
                 {"Grid", "Adapts to zoom: 10 → 5 → 2 → 1 mm cells"}
         });
 
-        groups.put("Template Designer — Edit & Save", new String[][]{
+        groups.put("Template Designer — Tools & Canvas", new String[][]{
+                {"V", "Select & Move tool"},
+                {"H / Space (hold)", "Pan tool (hold Space to pan anytime)"},
+                {"P", "Vector Pen tool (plot points / curves)"},
+                {"Double-Click (Text)", "Inline text editing directly on canvas"},
+                {"Enter (Editing)", "Commit inline text changes"},
+                {"Shift + Enter (Editing)", "Insert newline while editing text"},
+                {"Esc", "Cancel text edit / pen tool / deselect element"},
+                {"Delete / Backspace", "Delete selected element (safe while typing)"},
+                {"Ctrl + Mouse Wheel", "Zoom canvas in / out (30% – 400%)"},
+                {"Ctrl + +  /  Ctrl + -", "Zoom in / Zoom out"},
+                {"Ctrl + 0", "Reset zoom to 100%"},
+                {"Arrow Keys", "Nudge selected element 1 mm (Shift = 5 mm)"},
                 {"Ctrl + S", "Save template"},
                 {"Ctrl + Z / Ctrl + Y", "Undo / Redo (Ctrl+Shift+Z also redoes)"},
                 {"Ctrl + C / Ctrl + V", "Copy / Paste element"},
-                {"Ctrl + D", "Duplicate selected element"},
                 {"Ctrl + G", "Group selected elements"},
                 {"Ctrl + Shift + G", "Ungroup selected elements"}
         });
@@ -74,5 +73,14 @@ public final class ShortcutCatalog {
         });
 
         return groups;
+    }
+
+    /**
+     * Contextual (non-rebindable) sections for the F1 overlay — canvas tools
+     * and dialog-local keys. The rebindable global actions live in
+     * {@link ShortcutManager} and are prepended by the dialog itself.
+     */
+    public static Map<String, String[][]> contextGroups() {
+        return groups();
     }
 }

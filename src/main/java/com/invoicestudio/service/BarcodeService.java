@@ -65,7 +65,7 @@ public class BarcodeService {
             BitMatrix bitMatrix = qrCodeWriter.encode(payload, BarcodeFormat.QR_CODE, size, size, hints);
             return MatrixToImageWriter.toBufferedImage(bitMatrix);
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             return createFallbackImage(size, size, "QR Error");
         }
     }
@@ -161,7 +161,7 @@ public class BarcodeService {
             g.dispose();
             return composite;
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
             return createFallbackImage(width, height, clean);
         }
     }

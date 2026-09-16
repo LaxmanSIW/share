@@ -34,7 +34,7 @@ public class AuthDao {
                 ps.executeUpdate();
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -56,7 +56,7 @@ public class AuthDao {
                 return session;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
         return null;
     }
@@ -71,7 +71,7 @@ public class AuthDao {
             ps.setString(4, userId);
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -84,7 +84,7 @@ public class AuthDao {
             ps.setLong(3, expiresAtMillis);
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 
@@ -93,7 +93,7 @@ public class AuthDao {
              PreparedStatement ps = conn.prepareStatement("DELETE FROM auth_session")) {
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            com.invoicestudio.service.AppLog.error(e);
         }
     }
 }

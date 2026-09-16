@@ -176,6 +176,12 @@ public class RulerVerify extends StudioApp {
             Method m = designer.getClass().getDeclaredMethod("setZoom", double.class);
             m.setAccessible(true);
             m.invoke(designer, z);
+            // Coalesced ruler repaint (skill 6.1 coalesce-then-refine): the
+            // designer defers the ruler rebuild ~150 ms after the last zoom
+            // change; force it now so the checks below see the settled state.
+            Method f = designer.getClass().getDeclaredMethod("flushPendingRulerRepaint");
+            f.setAccessible(true);
+            f.invoke(designer);
         } catch (Throwable t) {
             failures.add("setZoom(" + z + ") failed: " + t);
         }

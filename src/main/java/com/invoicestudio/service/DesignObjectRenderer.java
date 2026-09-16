@@ -1,5 +1,6 @@
 package com.invoicestudio.service;
 
+import com.invoicestudio.service.AppLog;
 import com.invoicestudio.model.ElementType;
 import com.invoicestudio.model.TemplateElement;
 import javafx.geometry.Pos;
@@ -496,7 +497,8 @@ public class DesignObjectRenderer {
         } else {
             try {
                 iv.setImage(new Image(DesignObjectRenderer.class.getResourceAsStream("/icons/Invoicewhitebackground.png")));
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         }
 
         StackPane sp = new StackPane(iv);
@@ -695,7 +697,8 @@ public class DesignObjectRenderer {
             try {
                 double val = Double.parseDouble(tokens[i]);
                 out.add(val * MM_PX);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            AppLog.debug(ignored); }
         }
         if (out.size() < 4) {
             out.clear();
