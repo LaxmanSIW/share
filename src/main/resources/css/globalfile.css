@@ -23,6 +23,12 @@
     -color-border-strong:   #2E3A4E;
     -color-border-focus:    #D9A13B;
 
+    /* Modena built-in focus lookups — the defaults are a cyan ring and a
+       whitish full-box wash that leak through the gold border rules above.
+       Re-point them at the brand accent: focus = subtle gold edge, no wash. */
+    -fx-focus-color:        rgba(217, 161, 59, 0.55);
+    -fx-faint-focus-color:  transparent;
+
     /* --- text --- */
     -color-text:            #F4F4F5;
     -color-text-secondary:  #94A3B8;
@@ -1256,7 +1262,7 @@ Label {
 .table-view .table-row-cell {
     -fx-background-color: transparent;
     -fx-border-color: transparent transparent rgba(35, 43, 56, 0.55) transparent;
-    -fx-padding: 2 0 2 0;
+    -fx-padding: 1 0 1 0;
 }
 
 .table-view .table-row-cell:hover {
@@ -1265,6 +1271,10 @@ Label {
 
 .table-view .table-row-cell:selected {
     -fx-background-color: rgba(217, 161, 59, 0.14);
+    /* Modena re-derives the cell separator color on selected rows
+       (derive(-fx-selection-bar, 20%) = near white). Pin it back to the
+       row line color so the selection stays a clean gold tint. */
+    -fx-table-cell-border-color: rgba(35, 43, 56, 0.55);
 }
 
 .table-view .table-row-cell:selected .label {
@@ -1275,7 +1285,33 @@ Label {
     -fx-text-fill: -color-text;
     -fx-font-size: 12px;
     -fx-alignment: CENTER_LEFT;
-    -fx-padding: 4 8 4 8;
+    -fx-padding: 2 8 2 8;
+}
+
+/* Action buttons inside table cells drive the row height — tighten them
+   only within tables so dialogs/toolbar buttons are unaffected. */
+.table-view .button-sm {
+    -fx-padding: 2 9 2 9;
+}
+
+/* Compact rows for the bulk label print grid — the embedded ComboBoxes'
+   internal list-cell padding (6px) inflates every row; shrink it there,
+   and cage the control in a zero-inset wrapper cell. */
+.bulk-grid .table-cell {
+    -fx-padding: 1 3 1 3;
+}
+.bulk-grid .combo-box .list-cell {
+    -fx-padding: 1 6 1 6;
+}
+.bulk-grid .table-cell > .combo-box,
+.bulk-grid .table-cell > .text-field {
+    -fx-background-insets: 0;
+    -fx-border-insets: 0;
+    -fx-padding: 3 6 3 6;
+    -fx-max-width: Infinity;
+}
+.bulk-grid .combo-box .arrow-button {
+    -fx-padding: 2 4 2 4;
 }
 
 .table-view .placeholder .label {
@@ -1305,10 +1341,18 @@ Label {
     -fx-border-color: -color-border;
     -fx-border-width: 0 1 1 1;
     -fx-cursor: default;
+    /* Compact rows (was 10-12px vertical in code) — CSS is the single
+       source of truth so every list stays consistent. */
+    -fx-padding: 5 16 5 16;
 }
 
 .table-data-row:hover {
     -fx-background-color: #18202C;
+}
+
+/* Row action buttons must not dictate row height. */
+.table-data-row .button-secondary-small {
+    -fx-padding: 2 10 2 10;
 }
 
 .table-cell-title {

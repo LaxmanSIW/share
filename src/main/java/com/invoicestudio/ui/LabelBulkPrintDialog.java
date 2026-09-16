@@ -153,7 +153,7 @@ public class LabelBulkPrintDialog extends Stage {
         Label title = new Label("Print many labels with different values");
         title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: -color-fg;");
         Label sub = new Label("One row = one print line. Type values into the variable columns, set copies, then Print All.\n"
-                + "Enter commits and moves down (the last filled row adds a new one). Use ↑↓←→ to navigate.");
+                + "Enter opens the dropdown — Enter picks the value, ↑↓ browse, Esc closes. Enter in Copies starts the next row’s first cell.");
         sub.setWrapText(true);
         sub.getStyleClass().add("text-muted");
         info.getChildren().addAll(title, sub);
@@ -250,6 +250,7 @@ public class LabelBulkPrintDialog extends Stage {
 
     private void buildTable() {
         table.setEditable(true);
+        table.getStyleClass().add("bulk-grid");
         table.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         table.getSelectionModel().setCellSelectionEnabled(true);
         table.setPlaceholder(new Label("No print lines — press Insert to add one."));
@@ -331,11 +332,32 @@ public class LabelBulkPrintDialog extends Stage {
                 combo.setItems(FXCollections.observableArrayList(filtered));
                 if (!combo.isShowing() && !filtered.isEmpty()) combo.show();
             });
-            // Explicit Enter: commit + move down. Consumed here (capture) so
-            // the editor never also fires the combo action — exactly ONE
-            // commit and ONE navigation per Enter press.
+            // Keyboard model: Enter opens the dropdown (first value
+            // pre-selected); Enter again picks it; ↑/↓ walk the choices.
+            // With the popup closed and a typed/custom value present, Enter
+            // commits and moves down (legacy spreadsheet flow). Consumed at
+            // capture so the editor never also fires the combo action —
+            // exactly ONE commit and ONE navigation per Enter press.
             combo.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+                if (e.getCode() == KeyCode.DOWN && !combo.isShowing()
+                        && !choices.isEmpty()) {
+                    combo.show();
+                    e.consume();
+                    return;
+                }
                 if (e.getCode() == KeyCode.ENTER) {
+                    if (combo.isShowing()) {
+                        // Pick the highlighted choice (defaults to the first).
+                        int idx = combo.getSelectionModel().getSelectedIndex();
+                        if (idx < 0) idx = 0;
+                        List<String> options = combo.getItems();
+                        if (options != null && !options.isEmpty()) {
+                            setting = true;
+                            combo.getEditor().setText(options.get(Math.min(idx, options.size() - 1)));
+                            setting = false;
+                        }
+                        combo.hide();
+                    }
                     writeValue();
                     moveDownFrom(VarCell.this);
                     e.consume();
@@ -481,16 +503,34 @@ public class LabelBulkPrintDialog extends Stage {
         int idx = rows.indexOf(current);
         if (idx < 0 || col == null) return;
         int next = idx + 1;
+        boolean toFirstColumn = false;
         if (next >= rows.size()) {
-            if (!current.hasAnyValue()) return; // empty last row stays put
-            addRow();
+            if (!current.hasAnyValue()) {
+                // Last row is still empty — no new row; park on its first column.
+                next = idx;
+                toFirstColumn = true;
+            } else {
+                addRow();
+                toFirstColumn = true; // a new row always starts at the first column
+            }
+        } else if (isLastColumn(col)) {
+            // Enter in the Copies column: continue on the NEXT row's first
+            // column — never straight down into an empty Copies box.
+            toFirstColumn = true;
         }
         final int target = Math.min(next, rows.size() - 1);
+        final TableColumn<PrintRow, ?> targetCol = toFirstColumn
+                ? table.getColumns().get(0) : col;
         Platform.runLater(() -> {
-            table.getSelectionModel().clearAndSelect(target, col);
-            table.edit(target, col);
+            table.getSelectionModel().clearAndSelect(target, targetCol);
+            table.edit(target, targetCol);
             table.scrollTo(target);
         });
+    }
+
+    private boolean isLastColumn(TableColumn<PrintRow, ?> col) {
+        int n = table.getColumns().size();
+        return n > 0 && table.getColumns().get(n - 1) == col;
     }
 
     private void updateTotals() {

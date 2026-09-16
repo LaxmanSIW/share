@@ -129,7 +129,7 @@ public class LabelHistoryView extends VBox {
             HBox row = new HBox(16);
             row.setAlignment(Pos.CENTER_LEFT);
             row.getStyleClass().add("table-data-row");
-            row.setPadding(new Insets(10, 16, 10, 16));
+            /* padding via .table-data-row CSS */
 
             row.getChildren().add(cell(formatWhen(h.getCreatedAt()), 170));
 

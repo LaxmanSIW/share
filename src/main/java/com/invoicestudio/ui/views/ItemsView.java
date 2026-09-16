@@ -393,7 +393,7 @@ public class ItemsView extends VBox {
             HBox row = new HBox(12);
             row.setAlignment(Pos.CENTER_LEFT);
             row.getStyleClass().add("table-data-row");
-            row.setPadding(new Insets(12, 16, 12, 16));
+            /* padding via .table-data-row CSS */
 
             // Name + HSN
             VBox nameBox = new VBox(3);

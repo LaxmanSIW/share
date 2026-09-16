@@ -64,12 +64,14 @@ public final class ShortcutCatalog {
         groups.put("Barcode Mode & Bulk Label Print", new String[][]{
                 {"Ctrl + Shift + L", "Toggle Barcode Mode on the open template"},
                 {"Ctrl + Shift + B", "Open Bulk Label Print window"},
-                {"Enter", "Commit row value & move down (auto-adds rows)"},
+                {"Enter", "In a cell: open dropdown, pick highlighted value & move down"},
+                {"↓ / ↑", "Open the dropdown / browse its choices"},
+                {"Esc", "Close the dropdown without changing the value"},
                 {"Insert / Alt + N", "Add a new print row"},
                 {"Ctrl + Delete", "Delete the selected print row"},
                 {"Ctrl + Enter", "Print the whole queue now"},
                 {"F4", "Close bulk print window"},
-                {"Tab / Arrows", "Move between row cells"}
+                {"Tab / ← →", "Move between row cells"}
         });
 
         return groups;

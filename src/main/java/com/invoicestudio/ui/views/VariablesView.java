@@ -468,7 +468,7 @@ public class VariablesView extends VBox {
                 HBox rowBox = new HBox(16);
                 rowBox.setAlignment(Pos.CENTER_LEFT);
                 rowBox.getStyleClass().add("table-data-row");
-                rowBox.setPadding(new Insets(10, 16, 10, 16));
+                /* padding via .table-data-row CSS */
 
                 // Column 1: Label
                 Label lbl = new Label(vd.getLabel());
