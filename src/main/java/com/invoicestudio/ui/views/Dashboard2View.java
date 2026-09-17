@@ -53,6 +53,10 @@ public class Dashboard2View extends BorderPane {
     private String parcelPeriod = "Month"; // "Day", "Week", "Month", "Year"
     private String recentType = "Transactions"; // "Transactions", "Bills"
 
+    /** Harness-visible counters: how many section-scoped swaps ran (no page rebuild). */
+    public int recentSwapCount;
+    public int parcelSwapCount;
+
     public Dashboard2View(StudioApp app) {
         this.app = app;
         setPadding(new Insets(20, 24, 20, 24));
@@ -438,19 +442,44 @@ public class Dashboard2View extends BorderPane {
         HBox periodToggle = new HBox(4);
         periodToggle.getStyleClass().add("toggle-group-container");
 
+        List<Button> periodPills = new ArrayList<>();
         String[] options = {"Day", "Week", "Month", "Year"};
         for (String opt : options) {
             Button b = createFilterPill(opt, opt.equals(parcelPeriod));
             b.setOnAction(e -> {
-                parcelPeriod = opt;
-                refresh();
+                if (!opt.equals(parcelPeriod)) {
+                    parcelPeriod = opt;
+                    // Section-scoped swap: only this card's chart body changes —
+                    // the page, scroll position and every other section stay put.
+                    for (Button p : periodPills) p.getStyleClass().remove("active");
+                    b.getStyleClass().add("active");
+                    swapParcelBody(card, txs);
+                }
             });
+            periodPills.add(b);
             periodToggle.getChildren().add(b);
         }
 
         top.getChildren().addAll(titleBox, sp, periodToggle);
         card.getChildren().add(top);
 
+        card.getChildren().add(createParcelBody(txs));
+        return card;
+    }
+
+    /** Replaces only the parcel card's chart body, in place (skill 5.2). */
+    private void swapParcelBody(VBox card, List<Transaction> txs) {
+        parcelSwapCount++;
+        Node body = createParcelBody(txs);
+        if (card.getChildren().size() > 1) {
+            card.getChildren().set(1, body);
+        } else {
+            card.getChildren().add(body);
+        }
+    }
+
+    /** Chart body of the parcel card (callout + bar chart for parcelPeriod). */
+    private HBox createParcelBody(List<Transaction> txs) {
         // Sub layout: Left summary callout + Right bar chart
         HBox chartBox = new HBox(16);
         chartBox.setAlignment(Pos.CENTER_LEFT);
@@ -537,8 +566,7 @@ public class Dashboard2View extends BorderPane {
             attachBarTooltip(d, "Parcel Dispatch", "#F2CA6B", "parcels", "Total Cargo Shipments");
         }
         chartBox.getChildren().addAll(callout, parcelChart);
-        card.getChildren().add(chartBox);
-        return card;
+        return chartBox;
     }
 
     private void attachLineVertex(XYChart.Data<String, Number> data, String seriesName, String colorHex, String detail) {
@@ -834,8 +862,24 @@ public class Dashboard2View extends BorderPane {
         billToggle.getStyleClass().add("btn-filter-pill");
         if ("Bills".equals(recentType)) billToggle.getStyleClass().add("active");
 
-        txToggle.setOnAction(e -> { recentType = "Transactions"; refresh(); });
-        billToggle.setOnAction(e -> { recentType = "Bills"; refresh(); });
+        // Toggle swaps ONLY the table inside this card — the rest of the
+        // dashboard (KPIs, charts, scroll position) is never touched.
+        txToggle.setOnAction(e -> {
+            if (!"Transactions".equals(recentType)) {
+                recentType = "Transactions";
+                swapRecentTable(card, txs, bills);
+                txToggle.getStyleClass().add("active");
+                billToggle.getStyleClass().remove("active");
+            }
+        });
+        billToggle.setOnAction(e -> {
+            if (!"Bills".equals(recentType)) {
+                recentType = "Bills";
+                swapRecentTable(card, txs, bills);
+                billToggle.getStyleClass().add("active");
+                txToggle.getStyleClass().remove("active");
+            }
+        });
         switchBox.getChildren().addAll(txToggle, billToggle);
 
         Region sp = new Region();
@@ -942,5 +986,116 @@ public class Dashboard2View extends BorderPane {
         }
 
         return card;
+    }
+
+    /**
+     * Replaces the table body of the recent-activity card in place — a
+     * section-scoped swap, not a page rebuild, so the scroll position and
+     * every other section stay exactly where they are (skill 5.2: local
+     * invalidation beats whole-scene rebuilds).
+     */
+    private void swapRecentTable(VBox card, List<Transaction> txs, List<Bill> bills) {
+        // The card holds [topBar, table] — replace only index 1.
+        recentSwapCount++;
+        Node body = createRecentBody(txs, bills);
+        if (card.getChildren().size() > 1) {
+            card.getChildren().set(1, body);
+        } else {
+            card.getChildren().add(body);
+        }
+    }
+
+    /** The table body of the recent-activity card (Transactions or Bills). */
+    private Node createRecentBody(List<Transaction> txs, List<Bill> bills) {
+        if ("Transactions".equals(recentType)) {
+            TableView<Transaction> table = new TableView<>();
+            table.setMinHeight(260);
+            table.setPrefHeight(260);
+            table.getStyleClass().add("data-table");
+            table.setPlaceholder(new Label("No recent transactions found."));
+            table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+
+            TableColumn<Transaction, String> cDate = new TableColumn<>("Date");
+            cDate.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getTransactionDate()));
+            cDate.setPrefWidth(95);
+
+            TableColumn<Transaction, String> cBuyer = new TableColumn<>("Buyer");
+            cBuyer.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getBuyerName()));
+            cBuyer.setPrefWidth(180);
+
+            TableColumn<Transaction, String> cBook = new TableColumn<>("Book");
+            cBook.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getBookType()));
+            cBook.setPrefWidth(70);
+
+            TableColumn<Transaction, String> cType = new TableColumn<>("Type");
+            cType.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getTransactionType()));
+            cType.setPrefWidth(85);
+
+            TableColumn<Transaction, Number> cQty = new TableColumn<>("Qty");
+            cQty.setCellValueFactory(d -> new SimpleIntegerProperty(d.getValue().getTotalQuantity()));
+            cQty.setStyle("-fx-alignment: CENTER-RIGHT;");
+            cQty.setPrefWidth(70);
+
+            TableColumn<Transaction, Number> cAmt = new TableColumn<>("Amount");
+            cAmt.setCellValueFactory(d -> new SimpleDoubleProperty(d.getValue().getAmount()));
+            cAmt.setStyle("-fx-alignment: CENTER-RIGHT;");
+            cAmt.setCellFactory(col -> new TableCell<>() {
+                @Override
+                protected void updateItem(Number val, boolean empty) {
+                    super.updateItem(val, empty);
+                    if (empty || val == null) {
+                        setText(null);
+                        setStyle(null);
+                    } else {
+                        Transaction t = getTableRow().getItem();
+                        boolean isSale = t == null || "sale".equalsIgnoreCase(t.getTransactionType());
+                        setText((isSale ? "+ ₹ " : "- ₹ ") + currencyFmt.format(val.doubleValue()));
+                        setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-alignment: CENTER-RIGHT; " +
+                            "-fx-text-fill: " + (isSale ? "#dc2626" : "#16a34a") + ";");
+                    }
+                }
+            });
+
+            table.getColumns().addAll(cDate, cBuyer, cBook, cType, cQty, cAmt);
+            List<Transaction> sortedTxs = txs.stream()
+                .sorted(Comparator.comparing(Transaction::getTransactionDate, Comparator.nullsLast(Comparator.reverseOrder())))
+                .limit(15)
+                .collect(Collectors.toList());
+            table.setItems(FXCollections.observableArrayList(sortedTxs));
+            return table;
+        }
+
+        TableView<Bill> table = new TableView<>();
+        table.setMinHeight(260);
+        table.setPrefHeight(260);
+        table.getStyleClass().add("data-table");
+        table.setPlaceholder(new Label("No recent bills found."));
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+
+        TableColumn<Bill, String> cNo = new TableColumn<>("Bill #");
+        cNo.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getBillNo()));
+        cNo.setPrefWidth(110);
+
+        TableColumn<Bill, String> cDate = new TableColumn<>("Date");
+        cDate.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getDate()));
+        cDate.setPrefWidth(95);
+
+        TableColumn<Bill, String> cBuyer = new TableColumn<>("Buyer");
+        cBuyer.setCellValueFactory(d -> new SimpleStringProperty(
+            d.getValue().getVariables() != null ? d.getValue().getVariables().getOrDefault("buyer_name", "—") : "—"));
+        cBuyer.setPrefWidth(180);
+
+        TableColumn<Bill, String> cAmt = new TableColumn<>("Invoice Total");
+        cAmt.setCellValueFactory(d -> new SimpleStringProperty(
+            d.getValue().getTotals() != null ? "₹ " + currencyFmt.format(d.getValue().getTotals().getGrandTotal()) : "₹ 0.00"));
+        cAmt.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-alignment: CENTER-RIGHT;");
+
+        table.getColumns().addAll(cNo, cDate, cBuyer, cAmt);
+        List<Bill> sortedBills = bills.stream()
+            .sorted(Comparator.comparing(Bill::getDate, Comparator.nullsLast(Comparator.reverseOrder())))
+            .limit(15)
+            .collect(Collectors.toList());
+        table.setItems(FXCollections.observableArrayList(sortedBills));
+        return table;
     }
 }

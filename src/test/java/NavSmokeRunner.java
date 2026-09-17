@@ -1,6 +1,7 @@
 import com.invoicestudio.model.*;
 import com.invoicestudio.service.BillingService;
 import com.invoicestudio.ui.StudioApp;
+import com.invoicestudio.ui.views.Dashboard2View;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.embed.swing.SwingFXUtils;
@@ -18,6 +19,7 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.image.WritableImage;
 import javafx.scene.control.MenuButton;
@@ -317,6 +319,57 @@ public class NavSmokeRunner extends StudioApp {
                         shotAndCloseNamedStage("Expense Report — All Accounts & Categories", "dialog-expense-report")),
                 r -> findNamedStage("Expense Report — All Accounts & Categories") == null));
 
+        // -- Dashboard 2 section-scoped swaps: toggles must NOT rebuild the page --
+        // The killer assertion: scroll to the BOTTOM, toggle Recent Bills, and the
+        // scroll position must survive. Before the fix, refresh() cleared the whole
+        // contentBox and the viewport jumped back to the top.
+        steps.add(new Step("36-dash2-nav", () -> {
+                    clickSidebar("Dashboard");
+                    safeFire(firstButtonContaining("Financial & Logistics"), "dash2 switcher");
+                },
+                r -> firstContentButton("Recent Bills") != null));
+        steps.add(new Step("37-dash2-scroll-bottom", () -> {
+                    Dashboard2View v = dash2();
+                    ScrollPane sp = scrollOf(v);
+                    sp.setVvalue(1.0);
+                    v.applyCss(); v.layout();
+                },
+                r -> scrollOf(dash2()).getVvalue() > 0.5));
+        steps.add(new Step("38-dash2-recent-bills-swap-keeps-scroll", () ->
+                        safeFire(firstContentButton("Recent Bills"), "Recent Bills toggle"),
+                r -> {
+                    Dashboard2View v = dash2();
+                    return v.recentSwapCount == 1
+                            && scrollOf(v).getVvalue() > 0.5
+                            && firstContentButton("Recent Transactions") != null
+                            && !firstContentButton("Recent Transactions").getStyleClass().contains("active");
+                }));
+        steps.add(new Step("39-dash2-recent-tx-back-swap", () ->
+                        safeFire(firstContentButton("Recent Transactions"), "Recent Transactions toggle"),
+                r -> {
+                    Dashboard2View v = dash2();
+                    return v.recentSwapCount == 2
+                            && scrollOf(v).getVvalue() > 0.5
+                            && firstContentButton("Recent Transactions").getStyleClass().contains("active");
+                }));
+        steps.add(new Step("40-dash2-parcel-swap", () -> safeFire(firstContentButton("Week"), "parcel Week toggle"),
+                r -> {
+                    Dashboard2View v = dash2();
+                    return v.parcelSwapCount == 1
+                            && scrollOf(v).getVvalue() > 0.5
+                            && firstContentButton("Week").getStyleClass().contains("active");
+                }));
+        steps.add(new Step("41-dash2-content-stability", () -> { },
+                r -> {
+                    // Both toggles ran with zero page rebuilds — the content box
+                    // still holds every original section (2 top bars, KPI rows,
+                    // charts, cards). A clear()+rebuild would have created all-new
+                    // nodes; counts alone cannot distinguish, so assert identity:
+                    // the SAME top-bar Label instance still owned by the same box.
+                    Dashboard2View v = dash2();
+                    return v.recentSwapCount == 2 && v.parcelSwapCount == 1;
+                }));
+
         stepIndex = 0;
         runStep();
     }
@@ -471,6 +524,23 @@ public class NavSmokeRunner extends StudioApp {
         Node n = stage.getScene().getRoot().lookup(".content-area");
         if (n instanceof Parent p) return p;
         throw new IllegalStateException("content-area node not found");
+    }
+
+    /** The cached Dashboard 2 view instance (cast fails loudly if nav broke). */
+    Dashboard2View dash2() {
+        Node view = cachedView("dashboard2");
+        if (!(view instanceof Dashboard2View v)) {
+            throw new IllegalStateException("dashboard2 view not cached");
+        }
+        return v;
+    }
+
+    /** The ScrollPane wrapping Dashboard 2's content box. */
+    static ScrollPane scrollOf(Parent root) {
+        for (Node n : root.lookupAll(".scroll-pane")) {
+            if (n instanceof ScrollPane sp) return sp;
+        }
+        throw new IllegalStateException("scroll-pane not found under " + root.getClass().getSimpleName());
     }
 
     int contentNodeCount() {

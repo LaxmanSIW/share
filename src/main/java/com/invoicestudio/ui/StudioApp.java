@@ -277,6 +277,11 @@ public class StudioApp extends Application {
         return view;
     }
 
+    /** Test/harness access to a cached view instance (null if not built yet). */
+    public Node cachedView(String id) {
+        return viewCache.get(id);
+    }
+
     /** Warms caches off the FX thread, then re-reads data into the live view with a small pill indicator. */
     private void refreshViewAsync(Runnable refresher) {
         if (refreshInProgress) {
