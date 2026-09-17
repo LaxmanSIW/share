@@ -100,6 +100,9 @@ Tests: `McpServerTest` (protocol/e2e, 20) · `McpEnsureHardeningTest` (both
 branches per tool + race + rollback + category reassignment + buyer transport
 + category CRUD lifecycle, 27) · `McpTransportCrudTest` (update/delete
 transport + reference guard + force, 7) · `McpTemplateDesignTest` (design guide
-completeness, styling round-trip, previews + warnings, thermal geometry, 6).
+completeness, styling round-trip, previews + warnings, thermal geometry, 6) ·
+`McpSurfaceExtensionTest` (surface-parity tools: shortcuts list/rebind/reset
+with call-time validation, batch invoice PDF export, label print state/queue
+guards, expense-account update/delete guardrails, 9).
 
 Related: [[01 Architecture]] · [[02 Database Layer]] · [[03 Service Layer]] · [[07 Branches and Versions]]

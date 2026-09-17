@@ -1,6 +1,0 @@
-{
-  "port" : 7800,
-  "autoStart" : false,
-  "requireToken" : true,
-  "token" : ""
-}

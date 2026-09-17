@@ -20,11 +20,16 @@ import com.invoicestudio.model.Transaction;
 import com.invoicestudio.model.Transport;
 import com.invoicestudio.model.VariableDef;
 import com.invoicestudio.service.BillingService;
+import com.invoicestudio.service.BulkPrintStateStore;
 import com.invoicestudio.service.ExpenseAccountService;
 import com.invoicestudio.service.ExpenseAnalytics;
 import com.invoicestudio.service.FinancialService;
+import com.invoicestudio.service.LabelGeometryService;
+import com.invoicestudio.service.LabelPrintService;
+import com.invoicestudio.model.TemplateElement;
 import com.invoicestudio.service.PurchaseService;
 import com.invoicestudio.ui.DataManager;
+import com.invoicestudio.ui.ShortcutManager;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -353,6 +358,65 @@ public final class McpToolRegistry {
                 obj(), false, false));
 
         // --- System ---
+        // --- Batch invoice export (History → Export PDFs) ---
+        t.add(new ToolDef("export_bills_pdf",
+                "Export one or more invoices to PDF files in a folder — the same engine as History → Export PDFs. Select bills with from/to dates, a query (bill no / buyer) and/or status, or an explicit ids list; exportBatch=true exports every invoice. Uses the first bill-mode template. Returns exported/failed counts, the output folder and per-bill failures.",
+                obj(
+                        "ids", arr("Explicit bill ids to export (optional; overrides from/to/query)"),
+                        "from", str("Date from, YYYY-MM-DD (optional)"),
+                        "to", str("Date to, YYYY-MM-DD (optional)"),
+                        "query", str("Search text matched against bill no and buyer name (optional)"),
+                        "status", str("PAID / UNPAID / CANCELLED (optional)"),
+                        "limit", num("Max bills when selecting by filters (default 500)"),
+                        "exportBatch", bool("true = ignore filters and export every invoice"),
+                        "dir", str("Target folder (default: app data dir /exports/pdf-YYYY-MM-DD)")),
+                false, false));
+
+        // --- Keyboard shortcuts ---
+        t.add(new ToolDef("list_shortcuts",
+                "Every rebindable keyboard shortcut with its group, label, current effective binding and default binding. Read-only.",
+                obj(), false, false));
+        t.add(new ToolDef("rebind_shortcut",
+                "Rebind a keyboard shortcut to a new combination with the app's full validation (collisions, OS-reserved combos, plain-letter rejection, canonical normalization). combo blank = unbind. Requires user confirmation.",
+                obj(
+                        "actionId", str("Shortcut action id from list_shortcuts (required)"),
+                        "combo", str("New combination like Ctrl+Shift+H (blank = unbind)")),
+                true, true));
+        t.add(new ToolDef("reset_shortcut",
+                "Restore the default binding for one shortcut action (resetAll=true restores every default). Requires user confirmation.",
+                obj(
+                        "actionId", str("Action id to reset (ignored when resetAll is true)"),
+                        "resetAll", bool("true = reset every shortcut to its default")),
+                true, true));
+
+        // --- Label (barcode) bulk print ---
+        t.add(new ToolDef("get_label_print_state",
+                "Read the Bulk Label Print session remembered for a template: each row's variable values and copies, plus the last printer used. Use it to re-print the same batch without rebuilding it.",
+                obj("templateId", str("Label-mode template id (required)")), false, false));
+        t.add(new ToolDef("print_labels",
+                "Print a barcode/label queue through the real label engine — the same path as the Bulk Label Print window (TSC/TSPL printers get a native RAW spool). lines = one entry per distinct label: {variableValues: {variableKey: value}, copies: n}. test=true prints a single free test label. Refuses templates not in Barcode Mode.",
+                obj(
+                        "templateId", str("Label-mode template id (required)"),
+                        "lines", arr("Rows: [{variableValues:{key:value,...}, copies:int}, ...]"),
+                        "variableOrder", arr("Ordered variable keys (optional; inferred from the template's element bindings when omitted)"),
+                        "printer", str("Printer name (default: system default)"),
+                        "test", bool("true = one test label, no charge")),
+                false, false));
+
+        // --- Expense account lifecycle (parity with the Accounts dialog) ---
+        t.add(new ToolDef("update_expense_account",
+                "Edit an expense account: rename (propagates to every voucher carrying the old name), set notes, set defaultPaymentMode, or archive/unarchive. Requires user confirmation.",
+                obj(
+                        "id", str("Expense account id"),
+                        "name", str("New name (propagates to all vouchers)"),
+                        "notes", str("Notes"),
+                        "defaultPaymentMode", str("Default payment mode"),
+                        "archived", bool("true = archive (hidden from pickers), false = unarchive")),
+                true, true));
+        t.add(new ToolDef("delete_expense_account",
+                "Permanently delete an expense account — only when no voucher still references its name (use rename/archive for accounts with history). Requires user confirmation.",
+                obj("id", str("Expense account id")), true, true));
+
         t.add(new ToolDef("server_status", "MCP server status, app version, user, pending-operation count.",
                 obj(), false, false));
         t.add(new ToolDef("audit_log", "Recent MCP activity (tool calls, confirmations).",
@@ -569,6 +633,43 @@ public final class McpToolRegistry {
                     () -> renameExpenseAccount(dm, args));
             case "expense_account_report": return expenseAccountReport(dm, args);
 
+            // Expense account lifecycle (Accounts dialog parity)
+            case "update_expense_account": return confirmable("update_expense_account", args,
+                    () -> updateExpenseAccount(dm, args));
+            case "delete_expense_account": return confirmable("delete_expense_account", args,
+                    () -> deleteExpenseAccount(dm, str(args, "id")));
+
+            // Batch invoice export
+            case "export_bills_pdf": return exportBillsPdf(dm, args);
+
+            // Keyboard shortcuts
+            case "list_shortcuts": return shortcutsMap();
+            case "rebind_shortcut": {
+                // Fail fast at call time (like the Shortcuts dialog); the
+                // gated Runnable re-validates before actually binding.
+                String raId = str(args, "actionId");
+                if (ShortcutManager.action(raId) == null) {
+                    throw new IllegalArgumentException("Unknown shortcut actionId: " + raId
+                            + " — call list_shortcuts for valid ids");
+                }
+                ShortcutManager.Validation pre = ShortcutManager.validate(raId, strOr(args, "combo", ""));
+                if (pre != ShortcutManager.Validation.OK) {
+                    throw new IllegalArgumentException(ShortcutManager.validationMessage(pre, strOr(args, "combo", "")));
+                }
+                return confirmable("rebind_shortcut", args, () -> rebindShortcut(args));
+            }
+            case "reset_shortcut": {
+                if (!boolVal(args, "resetAll", false)
+                        && ShortcutManager.action(str(args, "actionId")) == null) {
+                    throw new IllegalArgumentException("Unknown shortcut actionId: " + str(args, "actionId"));
+                }
+                return confirmable("reset_shortcut", args, () -> resetShortcut(args));
+            }
+
+            // Label (barcode) printing
+            case "get_label_print_state": return labelPrintStateMap(dm, str(args, "templateId"));
+            case "print_labels": return printLabels(dm, args);
+
             case "list_transactions": return dm.getAllTransactions().stream()
                     .limit(intVal(args, "limit", 100)).map(McpToolRegistry::transactionMap)
                     .collect(java.util.stream.Collectors.toList());
@@ -704,6 +805,23 @@ public final class McpToolRegistry {
             case "delete_expense": return "Delete expense " + str(args, "id");
             case "rename_expense_account": return "Rename expense account " + str(args, "id")
                     + " → " + str(args, "newName") + " (updates every voucher with the old name)";
+            case "update_expense_account": {
+                List<String> changes = new ArrayList<>();
+                if (args.containsKey("name")) changes.add("name → " + str(args, "name") + " (propagates to all vouchers)");
+                if (args.containsKey("notes")) changes.add("notes → " + str(args, "notes"));
+                if (args.containsKey("defaultPaymentMode")) changes.add("defaultPaymentMode → " + str(args, "defaultPaymentMode"));
+                if (args.containsKey("archived")) changes.add(boolVal(args, "archived", false) ? "ARCHIVE" : "UNARCHIVE");
+                StringBuilder sb = new StringBuilder("Edit expense account ").append(str(args, "id"));
+                if (!changes.isEmpty()) sb.append(": ").append(String.join(", ", changes));
+                return sb.toString();
+            }
+            case "delete_expense_account": return "Permanently delete expense account " + str(args, "id")
+                    + " (only allowed while no voucher still references it)";
+            case "rebind_shortcut": return "Rebind shortcut \"" + shortcutLabel(str(args, "actionId"))
+                    + "\" → " + (strOr(args, "combo", "").isBlank() ? "(unbind)" : str(args, "combo"));
+            case "reset_shortcut": return boolVal(args, "resetAll", false)
+                    ? "Reset EVERY keyboard shortcut to its default binding"
+                    : "Reset shortcut \"" + shortcutLabel(str(args, "actionId")) + "\" to its default binding";
             case "update_bill_status": return "Change invoice " + str(args, "id") + " status → " + str(args, "status");
             default:
                 StringBuilder sb = new StringBuilder("Modify ").append(tool.replace('_', ' '));
@@ -1827,6 +1945,235 @@ public final class McpToolRegistry {
         ItemCategory c = dm.categories().getCategoryById(id.trim());
         if (c == null) throw new IllegalArgumentException("Category not found: " + id);
         return c;
+    }
+
+    // ------------------------------------------------------------------
+    // Batch invoice export (History → Export PDFs parity)
+    // ------------------------------------------------------------------
+
+    private static Map<String, Object> exportBillsPdf(DataManager dm, Map<String, Object> args) {
+        List<Bill> selected = new ArrayList<>();
+        if (args.get("ids") instanceof List<?> ids && !ids.isEmpty()) {
+            for (Object o : ids) selected.add(requireBill(dm, String.valueOf(o)));
+        } else if (boolVal(args, "exportBatch", false)) {
+            selected.addAll(dm.getAllBills());
+        } else {
+            String from = strOr(args, "from", "");
+            String to = strOr(args, "to", "");
+            String query = strOr(args, "query", "");
+            String status = strOr(args, "status", "");
+            int limit = intVal(args, "limit", 500);
+            for (Bill b : dm.getAllBills()) {
+                if (!from.isBlank() && (b.getDate() == null || b.getDate().compareTo(from) < 0)) continue;
+                if (!to.isBlank() && (b.getDate() == null || b.getDate().compareTo(to) > 0)) continue;
+                if (!status.isBlank() && !b.getStatus().name().equalsIgnoreCase(status.trim())) continue;
+                if (!query.isBlank() && !matches(query, b.getBillNo(), b.getBuyerName())) continue;
+                selected.add(b);
+                if (selected.size() >= limit) break;
+            }
+        }
+        if (selected.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "No invoices match the selection (use from/to/query/status, ids, or exportBatch=true)");
+        }
+
+        Template template = dm.templates().getAllTemplates().stream()
+                .filter(t -> !t.isLabelMode()).findFirst().orElse(null);
+        if (template == null) {
+            throw new IllegalStateException("No bill template available to render invoices");
+        }
+
+        java.io.File dir;
+        String dirArg = strOr(args, "dir", "");
+        if (!dirArg.isBlank()) {
+            dir = new java.io.File(dirArg);
+        } else {
+            dir = new java.io.File(new java.io.File(
+                    com.invoicestudio.AppDirs.dataDir().toFile(), "exports"), "pdf-" + LocalDate.now());
+        }
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IllegalStateException("Could not create output folder: " + dir);
+        }
+
+        long t0 = System.nanoTime();
+        BillingService.BatchResult r = BillingService.exportBatchPdf(selected, template, dm.getSettings(), dir, 1);
+        long ms = (System.nanoTime() - t0) / 1_000_000L;
+        return mapOf("ok", r.failed() == 0,
+                "exported", r.ok(), "failed", r.failed(),
+                "failures", r.failures(), "folder", dir.getAbsolutePath(),
+                "template", template.getName(), "ms", ms);
+    }
+
+    // ------------------------------------------------------------------
+    // Keyboard shortcuts (Settings → Shortcuts parity)
+    // ------------------------------------------------------------------
+
+    private static List<Map<String, Object>> shortcutsMap() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (ShortcutManager.ShortcutAction a : ShortcutManager.actions()) {
+            String current = ShortcutManager.comboOf(a.id());
+            out.add(mapOf("actionId", a.id(), "group", a.group(), "label", a.label(),
+                    "binding", current == null ? "" : current,
+                    "defaultBinding", a.defaultCombo(),
+                    "customized", !String.valueOf(a.defaultCombo()).equals(current)));
+        }
+        return out;
+    }
+
+    private static void rebindShortcut(Map<String, Object> args) {
+        String actionId = str(args, "actionId");
+        ShortcutManager.ShortcutAction a = ShortcutManager.action(actionId);
+        if (a == null) {
+            throw new IllegalArgumentException("Unknown shortcut actionId: " + actionId
+                    + " — call list_shortcuts for valid ids");
+        }
+        String combo = strOr(args, "combo", "");
+        ShortcutManager.Validation v = ShortcutManager.validate(actionId, combo);
+        if (v != ShortcutManager.Validation.OK) {
+            throw new IllegalArgumentException(ShortcutManager.validationMessage(v, combo));
+        }
+        ShortcutManager.bind(actionId, combo);
+    }
+
+    private static void resetShortcut(Map<String, Object> args) {
+        if (boolVal(args, "resetAll", false)) {
+            ShortcutManager.resetAll();
+            return;
+        }
+        String actionId = str(args, "actionId");
+        if (ShortcutManager.action(actionId) == null) {
+            throw new IllegalArgumentException("Unknown shortcut actionId: " + actionId);
+        }
+        ShortcutManager.resetToDefault(actionId);
+    }
+
+    private static String shortcutLabel(String actionId) {
+        ShortcutManager.ShortcutAction a = ShortcutManager.action(actionId);
+        return a != null ? a.label() : actionId;
+    }
+
+    // ------------------------------------------------------------------
+    // Label (barcode) bulk print
+    // ------------------------------------------------------------------
+
+    private static Map<String, Object> labelPrintStateMap(DataManager dm, String templateId) {
+        if (templateId == null || templateId.isBlank()) {
+            throw new IllegalArgumentException("templateId is required");
+        }
+        requireTemplate(dm, templateId);
+        BulkPrintStateStore.TemplateState st = BulkPrintStateStore.load(templateId);
+        if (st == null) {
+            return mapOf("templateId", templateId, "remembered", false,
+                    "rows", List.of(), "printer", "");
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (BulkPrintStateStore.Row r : st.rows()) {
+            rows.add(mapOf("values", r.values(), "copies", r.copies()));
+        }
+        return mapOf("templateId", templateId, "remembered", true,
+                "rows", rows, "printer", st.printer() == null ? "" : st.printer());
+    }
+
+    private static Map<String, Object> printLabels(DataManager dm, Map<String, Object> args) {
+        Template t = requireTemplate(dm, str(args, "templateId"));
+        if (!t.isLabelMode()) {
+            throw new IllegalArgumentException("Template '" + t.getName()
+                    + "' is not in Barcode Mode — switch it in the Template Designer first");
+        }
+        boolean test = boolVal(args, "test", false);
+
+        List<String> variableOrder = new ArrayList<>();
+        if (args.get("variableOrder") instanceof List<?> vo) {
+            for (Object o : vo) variableOrder.add(String.valueOf(o));
+        }
+        if (variableOrder.isEmpty() && t.getElements() != null) {
+            for (TemplateElement e : t.getElements()) {
+                String b = e.getBinding();
+                if (b != null && !b.isBlank() && !variableOrder.contains(b.trim())) variableOrder.add(b.trim());
+            }
+        }
+
+        List<LabelGeometryService.PrintLine> lines = new ArrayList<>();
+        if (test) {
+            lines.add(new LabelGeometryService.PrintLine(new java.util.LinkedHashMap<>(), 1));
+        } else {
+            if (!(args.get("lines") instanceof List<?> raw) || raw.isEmpty()) {
+                throw new IllegalArgumentException("lines is required (or pass test=true for one free test label)");
+            }
+            int idx = 0;
+            for (Object o : raw) {
+                if (!(o instanceof Map<?, ?> row)) {
+                    throw new IllegalArgumentException("lines[" + idx + "] must be an object {variableValues, copies}");
+                }
+                Map<String, String> values = new java.util.LinkedHashMap<>();
+                if (row.get("variableValues") instanceof Map<?, ?> vm) {
+                    for (Map.Entry<?, ?> en : vm.entrySet()) {
+                        values.put(String.valueOf(en.getKey()), String.valueOf(en.getValue()));
+                    }
+                }
+                int copies = row.get("copies") instanceof Number n ? n.intValue() : 1;
+                lines.add(new LabelGeometryService.PrintLine(values, copies));
+                idx++;
+            }
+        }
+
+        javafx.print.Printer printer = null;
+        String printerName = strOr(args, "printer", "");
+        if (!printerName.isBlank()) {
+            printer = javafx.print.Printer.getAllPrinters().stream()
+                    .filter(p -> p.getName().equalsIgnoreCase(printerName))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Printer not found: " + printerName));
+        }
+
+        LabelPrintService.PrintResult r;
+        try {
+            r = LabelPrintService.printLabelsQueued(t, dm.getSettings(), lines, variableOrder,
+                    printer, test, null);
+        } catch (Exception | LinkageError e) {
+            return mapOf("ok", false, "error", "Printing failed: " + e.getMessage(),
+                    "pages", 0, "labels", 0);
+        }
+        return mapOf("ok", r.success(), "message", r.message(),
+                "pages", r.pages(), "labels", r.labels());
+    }
+
+    // ------------------------------------------------------------------
+    // Expense account lifecycle (Accounts dialog parity)
+    // ------------------------------------------------------------------
+
+    private static void updateExpenseAccount(DataManager dm, Map<String, Object> args) {
+        String id = str(args, "id");
+        com.invoicestudio.model.ExpenseAccount acc = dm.expenseAccounts().getAccountById(id);
+        if (acc == null) throw new IllegalArgumentException("No expense account with id " + id);
+        if (args.containsKey("name") && !str(args, "name").isBlank()
+                && !str(args, "name").trim().equalsIgnoreCase(acc.getName())) {
+            String newName = str(args, "name").trim();
+            com.invoicestudio.model.ExpenseAccount clash = dm.expenseAccounts().findByName(newName);
+            if (clash != null && !clash.getId().equals(acc.getId())) {
+                throw new IllegalArgumentException("An expense account named '" + newName + "' already exists");
+            }
+            ExpenseAccountService.renameWithPropagation(dm, acc, newName);
+        }
+        if (args.containsKey("notes")) acc.setNotes(str(args, "notes"));
+        if (args.containsKey("defaultPaymentMode")) acc.setDefaultPaymentMode(str(args, "defaultPaymentMode"));
+        if (args.containsKey("archived")) acc.setArchived(boolVal(args, "archived", acc.isArchived()));
+        dm.expenseAccounts().saveAccount(acc);
+        dm.invalidateExpenseAccounts();
+    }
+
+    private static void deleteExpenseAccount(DataManager dm, String id) {
+        com.invoicestudio.model.ExpenseAccount acc = dm.expenseAccounts().getAccountById(id);
+        if (acc == null) throw new IllegalArgumentException("No expense account with id " + id);
+        int inUse = (int) dm.getAllExpenses().stream()
+                .filter(e -> acc.getName().equalsIgnoreCase(e.getPayee()))
+                .count();
+        if (inUse > 0) {
+            throw new IllegalArgumentException("Account '" + acc.getName() + "' still has " + inUse
+                    + " expense voucher(s). Rename the account instead, or reassign those vouchers first.");
+        }
+        dm.expenseAccounts().deleteAccount(id);
+        dm.invalidateExpenseAccounts();
     }
 
     private static boolean matches(String query, String... fields) {

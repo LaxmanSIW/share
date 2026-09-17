@@ -164,7 +164,18 @@ in user's** books — another user's data is invisible and unreachable.
 F1 (shortcut help anywhere), Ctrl+N (new bill), Ctrl+P (new purchase),
 Ctrl+E (new expense), Ctrl+B (buyers), Ctrl+D (dashboard). Inside the
 Template Designer: Ctrl+Z/Y undo/redo, Ctrl+C/V/D copy/paste/duplicate,
-Ctrl+G grid toggle, arrows nudge, Ctrl+0/+/− zoom, Space pan.
+Ctrl+G grid toggle, arrows nudge, Ctrl+0/+/− zoom, Space pan. Every shortcut
+is user-rebindable in Settings → Shortcuts (with collision + reserved-combo
+validation), and AI assistants can read or rebind them over MCP
+(`list_shortcuts`, `rebind_shortcut`, `reset_shortcut`).
+
+## Bulk invoice & label output
+
+History → **Export PDFs** renders every invoice matching the current filters
+in one background pass (also exposed to AI as `export_bills_pdf`). The Bulk
+Label Print window remembers each template's last queue — rows, copies and
+printer — so the next session starts where you left off (readable over MCP
+via `get_label_print_state` / `print_labels`).
 
 ## Settings
 

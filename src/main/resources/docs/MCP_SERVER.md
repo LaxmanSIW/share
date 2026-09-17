@@ -306,6 +306,13 @@ Every create path funnels through `com.invoicestudio.mcp.McpEnsure`:
 | `create_purchase` | supplier (id→name), each line item | same as bill | supplier+items rolled back | `autoCreated` |
 | `record_expense` | none by design | duplicates allowed | — | `head` |
 | `pay_purchase` | purchase must exist (hard error) | n/a | — | `paid`, `remaining`, `fullySettled` |
+| `create_expense_account` | — (leaf; unique name) | by name (case-insensitive) | — | `created` |
+| `update_expense_account` | id must exist; rename cascades to every voucher | n/a | — | summary lists each change (rename/archive/notes/paymentMode) |
+| `delete_expense_account` | refuses while vouchers still reference the name | n/a | — | error names the voucher count (use rename/archive instead) |
+| `export_bills_pdf` | needs ≥1 matching bill and a bill-mode template | n/a (writes files) | — | `exported`, `failed`, `failures`, `folder`, `ms` |
+| `print_labels` | template must be in Barcode Mode; printer must exist | n/a (spools) | — | `ok`, `pages`, `labels`; `test: true` = one free label |
+| `rebind_shortcut` | actionId must exist; combo validated at call time | blank combo = unbind | — | validation errors fire before queuing |
+| `reset_shortcut` | actionId must exist (unless `resetAll: true`) | idempotent | — | resetAll summary spells out EVERY-shortcut scope |
 
 Update/delete tools: queue a `PendingOperations` op (confirmation-gated) and
 re-validate existence at execution time. Exception to "unchanged":
@@ -317,6 +324,33 @@ Transport parity: `update_transport` (name/phone/vehicleNumber) and
 `delete_transport` (reference-guarded — refuses while buyers still use it as
 their default; `force: true` clears those assignments then deletes, nothing
 left dangling). See Flow 8.
+
+## Surface parity — new UI capabilities, exposed as tools
+
+Every capability added to the UI since the last surface update is exposed
+with the same safety model:
+
+- **Keyboard shortcuts** — `list_shortcuts` (every action with its effective
+  + default binding and a `customized` flag), `rebind_shortcut` and
+  `reset_shortcut`. Both mutators run the Shortcuts dialog's full validation
+  (collision, OS-reserved, plain-letter rejection, canonical normalization)
+  at **call time**, then queue for confirmation — invalid input never queues.
+- **Batch invoice export** — `export_bills_pdf` is History → Export PDFs:
+  select by explicit `ids`, `from`/`to` dates, `query`, `status`, or
+  `exportBatch: true` for the whole ledger; renders through the app's real
+  PDF engine into a chosen (or default dated) folder and reports
+  exported/failed/failures/ms.
+- **Label (barcode) printing** — `get_label_print_state` reads the Bulk Print
+  dialog's remembered queue (rows, copies, printer) so a previous session's
+  batch can be re-printed as-is; `print_labels` drives the real label engine
+  (native TSPL/RAW spool on TSC printers) with
+  `lines: [{variableValues, copies}]`, `variableOrder` inferred from element
+  bindings when omitted, and `test: true` for one free test label.
+- **Expense-account lifecycle** — `update_expense_account`
+  (rename-with-propagation to vouchers, notes, defaultPaymentMode,
+  archive/unarchive) and `delete_expense_account` (refuses while vouchers
+  still reference the name, pointing at rename/archive instead), completing
+  the Accounts-dialog parity of the expense tools.
 
 ## Template design tools — full vocabulary exposure + sight
 
