@@ -5,6 +5,7 @@ import com.invoicestudio.model.LabelConfig;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.Template;
 import com.invoicestudio.model.VariableDef;
+import com.invoicestudio.service.BulkPrintStateStore;
 import com.invoicestudio.service.LabelGeometryService;
 import com.invoicestudio.service.LabelPrintService;
 import com.invoicestudio.service.LabelRenderUtil;
@@ -20,6 +21,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.print.Printer;
 import javafx.scene.Scene;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCombination;
@@ -96,6 +98,10 @@ public class LabelBulkPrintDialog extends Stage {
     private final ObservableList<PrintRow> rows = FXCollections.observableArrayList();
     private final Label totalLbl = new Label("0 labels");
     private final ComboBox<Printer> printerBox = new ComboBox<>();
+    /** Copies header control — overrides every row's copies in one action. */
+    private Spinner<Integer> fillAllSpinner;
+    /** Guards applyFillAll while the spinner value is set programmatically. */
+    private boolean fillSyncing = false;
 
     // ── live preview state ──
     private final StackPane previewHolder = new StackPane();
@@ -153,7 +159,8 @@ public class LabelBulkPrintDialog extends Stage {
         Label title = new Label("Print many labels with different values");
         title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: -color-fg;");
         Label sub = new Label("One row = one print line. Type values into the variable columns, set copies, then Print All.\n"
-                + "Enter opens the dropdown — Enter picks the value, ↑↓ browse, Esc closes. Enter in Copies starts the next row’s first cell.");
+                + "Enter opens the dropdown — Enter picks the value, ↑↓ browse, Esc closes. Enter in Copies starts the next row’s first cell.\n"
+                + "The Copies header spinner sets ALL rows at once — and your last session is remembered for next time.");
         sub.setWrapText(true);
         sub.getStyleClass().add("text-muted");
         info.getChildren().addAll(title, sub);
@@ -234,10 +241,17 @@ public class LabelBulkPrintDialog extends Stage {
         bottom.getChildren().addAll(rowActions, rowPrint);
         root.setBottom(bottom);
 
+        // Last session comes back (rows/printer/spinner) — called here so the
+        // printer list is populated and the spinner exists before restoring.
+        restoreLastState();
+
         Scene scene = new Scene(root, 760, 540);
         com.invoicestudio.ui.DialogHelper.styleScene(scene);
         setScene(scene);
         installKeyboardShortcuts(scene);
+        // Remember this session (rows + printer) for the next bulk print of
+        // this template — whether the user prints, tests or just closes.
+        setOnHidden(e -> persistState());
         Platform.runLater(() -> {
             if (!rows.isEmpty() && table.getColumns().size() > 0) {
                 table.getSelectionModel().select(0, table.getColumns().get(0));
@@ -272,9 +286,10 @@ public class LabelBulkPrintDialog extends Stage {
         }
 
         TableColumn<PrintRow, Number> copiesCol = new TableColumn<>("Copies");
-        copiesCol.setMinWidth(90);
+        copiesCol.setMinWidth(150);
         copiesCol.setCellValueFactory(param -> param.getValue().copies);
         copiesCol.setCellFactory(tc -> new CopiesCell());
+        copiesCol.setGraphic(buildFillAllCopies());
         table.getColumns().add(copiesCol);
 
         // Structural changes: refresh totals AND the preview's source row.
@@ -282,6 +297,51 @@ public class LabelBulkPrintDialog extends Stage {
             updateTotals();
             attachPreviewRow();
         });
+    }
+
+    // ─── Fill-all Copies (header spinner) ─────────────────────────────────
+
+    /**
+     * The Copies column header control: an editable spinner with
+     * increment/decrement buttons. Typing a number (Enter or focus loss) or
+     * clicking ± overrides EVERY row's copies; rows stay individually
+     * editable afterwards, and new rows inherit the current fill value.
+     */
+    private Node buildFillAllCopies() {
+        Spinner<Integer> sp = new Spinner<>(1, 9999, 1);
+        this.fillAllSpinner = sp;
+        sp.setEditable(true);
+        sp.getStyleClass().add("bulk-fill-spinner");
+        sp.setPrefWidth(96);
+        sp.setMaxWidth(96);
+        sp.setTooltip(new Tooltip(
+                "Set ALL rows’ copies at once — type a number and press Enter, or use ±. "
+                        + "Individual cells stay editable afterwards; new rows inherit this value."));
+        // Typed values must commit — on Enter AND on focus loss (same rule
+        // as the grid cells); commitValue() parses the editor text into the
+        // value factory and ignores non-numeric junk.
+        sp.focusedProperty().addListener((obs, o, n) -> { if (!n) sp.commitValue(); });
+        sp.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() == KeyCode.ENTER) {
+                sp.commitValue();
+                e.consume();
+            }
+        });
+        // Buttons, arrows and committed typing all funnel through here.
+        sp.valueProperty().addListener((obs, o, n) -> {
+            if (n != null && !fillSyncing) applyFillAll(n);
+        });
+        return sp;
+    }
+
+    /** Overrides every existing row's copies with v. */
+    private void applyFillAll(int v) {
+        int val = Math.max(1, v);
+        boolean changed = false;
+        for (PrintRow r : rows) {
+            if (r.copies.get() != val) { r.copies.set(val); changed = true; }
+        }
+        if (changed) updateTotals();
     }
 
     /** Editable combo cell: quick-pick from possible values + free typing. */
@@ -459,13 +519,101 @@ public class LabelBulkPrintDialog extends Stage {
         }
     }
 
+    // ─── Last-session memory (per template) ───────────────────────────────
+
+    /**
+     * Restores the previous session's rows (values + copies) and printer so a
+     * repeat print run starts exactly where the last one ended. No trailing
+     * empty row is auto-added — a blank line looks like it will print (it is
+     * skipped by the spooler, but the user should never have to delete it);
+     * Enter on the last row or + Add Row appends one on demand. Silently
+     * skips restore when nothing is stored, the shape changed, or it fails.
+     */
+    private void restoreLastState() {
+        try {
+            BulkPrintStateStore.TemplateState st = BulkPrintStateStore.load(template.getId());
+            if (st == null || st.rows().isEmpty()) return;
+            List<BulkPrintStateStore.Row> remembered = st.rows();
+            // Sanity: every remembered key must still be a column of this grid.
+            List<String> keys = variableOrder();
+            for (BulkPrintStateStore.Row r : remembered) {
+                for (String k : r.values().keySet()) {
+                    if (!keys.contains(k)) return; // template variables changed → start fresh
+                }
+            }
+            rows.clear();
+            for (BulkPrintStateStore.Row r : remembered) {
+                PrintRow row = new PrintRow();
+                for (Map.Entry<String, String> en : r.values().entrySet()) {
+                    if (en.getValue() != null && !en.getValue().isBlank()) row.prop(en.getKey()).set(en.getValue());
+                }
+                row.copies.set(Math.max(1, r.copies()));
+                rows.add(row);
+            }
+            // Sync the fill-all spinner when every row agrees (the common
+            // "all same copies" case); otherwise leave it untouched.
+            if (!rows.isEmpty()) {
+                int first = rows.get(0).copies.get();
+                boolean uniform = rows.stream().allMatch(r -> r.copies.get() == first);
+                if (uniform && fillAllSpinner != null) {
+                    fillSyncing = true;
+                    fillAllSpinner.getValueFactory().setValue(first);
+                    fillSyncing = false;
+                }
+            }
+            if (st.printer() != null && !st.printer().isBlank()) {
+                for (Printer p : printerBox.getItems()) {
+                    if (p.getName() != null && p.getName().equals(st.printer())) {
+                        printerBox.setValue(p);
+                        break;
+                    }
+                }
+            }
+            // No trailing empty row — the grid ends on the last REAL line.
+            // Enter / + Add Row creates a fresh row the moment it's needed.
+            updateTotals();
+            refreshPreview();
+        } catch (Throwable t) {
+            AppLog.debug(t); // restore must never block opening the dialog
+        }
+    }
+
+    /** Snapshot of the current rows + printer, written on dialog close. */
+    private void persistState() {
+        try {
+            List<BulkPrintStateStore.Row> out = new ArrayList<>();
+            for (PrintRow r : rows) {
+                if (!r.hasAnyValue()) continue; // an empty tail row is not a session
+                Map<String, String> vals = new LinkedHashMap<>();
+                for (String k : variableOrder()) {
+                    String v = r.get(k);
+                    if (v != null && !v.isBlank()) vals.put(k, v);
+                }
+                out.add(new BulkPrintStateStore.Row(vals, r.getCopies()));
+            }
+            if (out.isEmpty()) return; // nothing meaningful typed — keep the previous memory
+            Printer p = printerBox.getValue();
+            BulkPrintStateStore.save(template.getId(),
+                    new BulkPrintStateStore.TemplateState(out, p != null ? p.getName() : ""));
+        } catch (Throwable t) {
+            AppLog.debug(t);
+        }
+    }
+
     // ─── Row helpers ──────────────────────────────────────────────────────
 
     private void addRow() {
+        PrintRow row = new PrintRow();
         // Cells start EMPTY — no silent pre-fill of the first possible value
         // (a pre-filled value could quietly end up on printed barcodes).
         // The combo's prompt text shows the possible values instead.
-        rows.add(new PrintRow());
+        // Copies inherit the fill-all header value, so a "10 copies" session
+        // never silently resets to 1 on new rows.
+        if (fillAllSpinner != null && !fillSyncing) {
+            Integer v = fillAllSpinner.getValue();
+            if (v != null && v > 1) row.copies.set(v);
+        }
+        rows.add(row);
     }
 
     private void focusLastRow() {

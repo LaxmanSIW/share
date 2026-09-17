@@ -1,0 +1,16 @@
+{
+  "tpl_bdv_label" : {
+    "rows" : [ {
+      "values" : {
+        "size" : "28"
+      },
+      "copies" : 3
+    }, {
+      "values" : {
+        "size" : "XL"
+      },
+      "copies" : 10
+    } ],
+    "printer" : "Microsoft Print to PDF"
+  }
+}

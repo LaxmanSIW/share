@@ -29,6 +29,14 @@
     -fx-focus-color:        rgba(217, 161, 59, 0.55);
     -fx-faint-focus-color:  transparent;
 
+    /* Modena built-in SELECTION lookups — the defaults are bright azure
+       (#039ED3-ish) that Modena's long derived selectors paint on selected
+       table cells / list cells / table rows, outranking app rules. Every
+       selection surface in the app must be the gold family instead. */
+    -fx-selection-bar:          rgba(217, 161, 59, 0.20);
+    -fx-selection-bar-non-focused: rgba(217, 161, 59, 0.12);
+    -fx-accent:                 #D9A13B;
+
     /* --- text --- */
     -color-text:            #F4F4F5;
     -color-text-secondary:  #94A3B8;
@@ -1277,6 +1285,14 @@ Label {
     -fx-table-cell-border-color: rgba(35, 43, 56, 0.55);
 }
 
+/* Cell-selection mode (bulk print grid): Modena paints the selected CELL
+   itself with -fx-selection-bar (bright azure). The gold row tint above is
+   the selection look — the cell bar must be transparent. */
+.table-view .table-cell:selected {
+    -fx-background-color: transparent;
+    -fx-table-cell-border-color: transparent;
+}
+
 .table-view .table-row-cell:selected .label {
     -fx-text-fill: -color-text;
 }
@@ -1310,9 +1326,26 @@ Label {
     -fx-padding: 3 6 3 6;
     -fx-max-width: Infinity;
 }
+/* The combo SHELL must add no vertical padding — its embedded editor
+   already carries the inset; shell padding is the row-height driver. */
+.bulk-grid .table-cell > .combo-box {
+    -fx-padding: 0 4 0 0;
+}
+/* Editable combos embed a TextField editor which keeps the app-wide
+   7px vertical text-field padding — the single biggest row-height
+   driver in this grid. Compact it too. */
+.bulk-grid .combo-box .text-field,
+.bulk-grid .combo-box > .list-cell {
+    -fx-padding: 1 6 1 6;
+}
 .bulk-grid .combo-box .arrow-button {
     -fx-padding: 2 4 2 4;
 }
+
+/* Copies header fill-all spinner: styled by the app-wide .spinner rules on
+   purpose — it must look exactly like every other increment/decrement in
+   the app (PrintPreview copies, Settings digits). Verified by pixel scan:
+   slate arrows (#94A3B8) on #1A2433 buttons, 24px header band. */
 
 .table-view .placeholder .label {
     -fx-text-fill: -color-text-tertiary;
