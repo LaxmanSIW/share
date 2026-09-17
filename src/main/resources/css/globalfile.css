@@ -145,12 +145,14 @@ Label {
     -fx-border-color: -color-border;
     -fx-border-radius: 10;
     -fx-padding: 16;
-    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.28), 10, 0, 0, 3);
+    /* Perf: gaussian blurs are re-composited every scroll frame under software
+       rendering — a crisp 1px border reads the same and costs ~nothing. */
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.28), 2, 0, 0, 1);
 }
 
 .card:hover {
     -fx-border-color: -color-border-strong;
-    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.42), 16, 0, 0, 5);
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.30), 3, 0, 0, 2);
 }
 
 /* Compact template cards (gallery grids) */
@@ -238,12 +240,13 @@ Label {
     -fx-border-color: -color-border;
     -fx-border-radius: 10;
     -fx-padding: 14 16 14 16;
-    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.25), 8, 0, 0, 3);
+    /* Perf: see .card — minimal blur, offset-only shadow. */
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.25), 2, 0, 0, 1);
 }
 
 .kpi-card:hover {
     -fx-border-color: rgba(217, 161, 59, 0.55);
-    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.45), 18, 0, 0, 6);
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.30), 3, 0, 0, 2);
 }
 
 .kpi-value {
@@ -2988,7 +2991,8 @@ Label {
     -fx-background-color: #D9A13B;
     -fx-text-fill: #0F172A;
     -fx-font-weight: bold;
-    -fx-effect: dropshadow(gaussian, rgba(217, 161, 59, 0.35), 6, 0, 0, 1);
+    /* Perf: gold glow replaced by a flat underline bar (zero composite cost). */
+    -fx-effect: dropshadow(gaussian, rgba(217, 161, 59, 0.45), 0, 0, 0, 2);
 }
 
 .btn-filter-pill.active:hover, .button.btn-filter-pill.active:hover {

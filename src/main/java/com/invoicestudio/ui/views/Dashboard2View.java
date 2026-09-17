@@ -7,6 +7,12 @@ import com.invoicestudio.service.AppFormatters;
 import com.invoicestudio.ui.IconHelper;
 import com.invoicestudio.ui.StudioApp;
 import com.invoicestudio.ui.UiTheme;
+import javafx.animation.Animation;
+import javafx.animation.Interpolator;
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
+import javafx.animation.Timeline;
+import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -70,8 +76,59 @@ public class Dashboard2View extends BorderPane {
         scroll.setFitToHeight(true);
         scroll.getStyleClass().add("scroll-pane");
         setCenter(scroll);
+        installSmoothScrolling(scroll);
 
         refresh();
+    }
+
+    /**
+     * Wheel → smooth animated scrolling (the default jumps a notch per tick,
+     * which reads as "not smooth" even when the scene graph is cheap).
+     * Each wheel tick starts a short animated glide toward the target; ticks
+     * arriving mid-glide extend the target instead of queueing animations,
+     * so flick-scrolling stays responsive and never accumulates lag.
+     *
+     * <p>Scroll events on embedded TableViews are left to their own bars so
+     * horizontal wheel scrolling over the recent-activity tables keeps working.</p>
+     */
+    private void installSmoothScrolling(ScrollPane scroll) {
+        final double STEP = 320;   // pixels per wheel notch
+        final double MILLIS_PER_PX = 1.1; // glide duration scales with distance
+        final DoubleProperty target = new SimpleDoubleProperty(-1);
+        final Timeline glide = new Timeline();
+        glide.setCycleCount(1);
+
+        scroll.addEventFilter(javafx.scene.input.ScrollEvent.SCROLL, ev -> {
+            if (ev.isControlDown() || ev.isShiftDown()) return; // zoom/strip shortcuts reserved
+            if (ev.getDeltaX() != 0 && ev.getDeltaY() == 0) return; // horizontal → let it be
+            Node hit = ev.getTarget() instanceof Node n ? n : null;
+            while (hit != null && hit != scroll) {
+                if (hit instanceof TableView || hit instanceof ListView || hit instanceof TreeView) {
+                    return; // over a scrollable table: let it handle its own scrolling
+                }
+                hit = hit.getParent();
+            }
+            ev.consume();
+            double content = scroll.getContent().getBoundsInParent().getHeight();
+            double viewport = scroll.getViewportBounds().getHeight();
+            double range = Math.max(1, content - viewport);
+            // Units: one wheel "notch" ≈ 40 delta units ≈ STEP pixels.
+            double notches = ev.getDeltaY() / 40.0;
+            double vDelta = -notches * (STEP / range);
+            double base = target.get() < 0 ? scroll.getVvalue() : target.get();
+            double next = Math.max(0, Math.min(1, base + vDelta));
+            target.set(next);
+            glide.getKeyFrames().setAll(
+                    new KeyFrame(Duration.ZERO, new KeyValue(scroll.vvalueProperty(), scroll.getVvalue())),
+                    new KeyFrame(Duration.millis(Math.max(90, Math.min(380,
+                            Math.abs(next - scroll.getVvalue()) * range * MILLIS_PER_PX))),
+                            new KeyValue(scroll.vvalueProperty(), next, Interpolator.EASE_OUT)));
+            glide.playFromStart();
+        });
+        // A user drag of the scrollbar thumb must re-anchor the glide target.
+        scroll.vvalueProperty().addListener((obs, oldV, newV) -> {
+            if (glide.getStatus() != Animation.Status.RUNNING) target.set(-1);
+        });
     }
 
     public void refresh() {
@@ -333,6 +390,10 @@ public class Dashboard2View extends BorderPane {
         lineChart.setPrefHeight(390);
         lineChart.setMinHeight(340);
         lineChart.setAnimated(false);
+        // Scroll perf: render the chart to a texture once instead of
+        // re-rasterizing its subtree on every scroll frame.
+        lineChart.setCache(true);
+        lineChart.setCacheHint(javafx.scene.CacheHint.SPEED);
         lineChart.setCreateSymbols(true);
         VBox.setVgrow(lineChart, Priority.ALWAYS);
 
@@ -388,6 +449,8 @@ public class Dashboard2View extends BorderPane {
         barChart.setPrefHeight(390);
         barChart.setMinHeight(340);
         barChart.setAnimated(false);
+        barChart.setCache(true);
+        barChart.setCacheHint(javafx.scene.CacheHint.SPEED);
         barChart.setLegendVisible(false);
         barChart.setCategoryGap(24);
         barChart.setBarGap(6);
@@ -515,6 +578,8 @@ public class Dashboard2View extends BorderPane {
         parcelChart.setMinHeight(300);
         parcelChart.setLegendVisible(false);
         parcelChart.setAnimated(false);
+        parcelChart.setCache(true);
+        parcelChart.setCacheHint(javafx.scene.CacheHint.SPEED);
         parcelChart.setCategoryGap(20);
         parcelChart.setBarGap(6);
         HBox.setHgrow(parcelChart, Priority.ALWAYS);

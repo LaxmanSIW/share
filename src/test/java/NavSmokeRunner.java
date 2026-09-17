@@ -369,6 +369,22 @@ public class NavSmokeRunner extends StudioApp {
                     Dashboard2View v = dash2();
                     return v.recentSwapCount == 2 && v.parcelSwapCount == 1;
                 }));
+        // Smooth-scroll glide: a real wheel event must consume + animate the
+        // viewport a bounded distance (not a notch jump, not a full jump).
+        steps.add(new Step("42-dash2-wheel-glide", () -> Platform.runLater(() ->
+                        javafx.event.Event.fireEvent(scrollOf(dash2()),
+                                new javafx.scene.input.ScrollEvent(
+                                        javafx.scene.input.ScrollEvent.SCROLL,
+                                        0, 0, 0, 0,
+                                        false, false, false, false, false, false,
+                                        0, 40, 0, 40,
+                                        javafx.scene.input.ScrollEvent.HorizontalTextScrollUnits.NONE, 0,
+                                        javafx.scene.input.ScrollEvent.VerticalTextScrollUnits.NONE, 0,
+                                        0, null))),
+                r -> {
+                    double v = scrollOf(dash2()).getVvalue();
+                    return v < 0.95 && v > 0.4;
+                }));
 
         stepIndex = 0;
         runStep();
