@@ -373,8 +373,8 @@ public class PurchasesView extends BorderPane {
 
         TextField amountF = new TextField(String.format("%.2f", due));
         amountF.setPromptText("Amount");
-        ComboBox<String> modeBox = new ComboBox<>(FXCollections.observableArrayList("Cash", "Bank / NEFT", "Cheque", "UPI"));
-        modeBox.setValue("Bank / NEFT");
+        ComboBox<String> modeBox = new ComboBox<>(FXCollections.observableArrayList("Cash", "Bank Transfer", "Cheque", "UPI"));
+        modeBox.setValue("Bank Transfer");
         TextField refF = new TextField();
         refF.setPromptText("Reference / Cheque No / UTR");
         DatePicker datePick = UiTheme.datePicker("Payment Date");

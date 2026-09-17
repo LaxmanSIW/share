@@ -20,6 +20,8 @@ import com.invoicestudio.model.Transaction;
 import com.invoicestudio.model.Transport;
 import com.invoicestudio.model.VariableDef;
 import com.invoicestudio.service.BillingService;
+import com.invoicestudio.service.ExpenseAccountService;
+import com.invoicestudio.service.ExpenseAnalytics;
 import com.invoicestudio.service.FinancialService;
 import com.invoicestudio.service.PurchaseService;
 import com.invoicestudio.ui.DataManager;
@@ -319,6 +321,22 @@ public final class McpToolRegistry {
                         "payee", str("Paid to")), true, false));
         t.add(new ToolDef("delete_expense", "Delete an expense voucher. Requires user confirmation.",
                 obj("id", str("Expense id")), true, true));
+
+        // --- Expense accounts (payee registry) ---
+        t.add(new ToolDef("list_expense_accounts", "List expense accounts (payee registry) with per-account usage rollups. Read-only.",
+                obj("includeArchived", bool("Include archived accounts (default false)")), false, false));
+        t.add(new ToolDef("create_expense_account", "Create an expense account (payee). Silently no-ops (returns existing) when the name already exists — safe to call repeatedly.",
+                obj("name", str("Account name (unique, case-insensitive)"),
+                        "notes", str("Optional notes"),
+                        "defaultPaymentMode", str("Optional default payment mode")), true, false));
+        t.add(new ToolDef("rename_expense_account", "Rename an expense account and propagate the new name to every expense voucher carrying the old one. Requires user confirmation.",
+                obj("id", str("Account id (from list_expense_accounts)"),
+                        "newName", str("New account name")), true, true));
+        t.add(new ToolDef("expense_account_report", "Expense analytics for an account or category (or the whole register): totals, monthly trend, per-category and per-account breakdowns. Read-only.",
+                obj("account", str("Account (payee) name — omit for all accounts"),
+                        "category", str("Category head — omit for all categories"),
+                        "from", str("ISO date (inclusive)"),
+                        "to", str("ISO date (inclusive)")), false, false));
         t.add(new ToolDef("list_transactions", "List CC-book ledger transactions (sales & payments synced from invoices).",
                 obj("limit", num("Max rows (default 100)")), false, false));
 
@@ -543,6 +561,14 @@ public final class McpToolRegistry {
                     .collect(java.util.stream.Collectors.toList());
             case "record_expense": return recordExpense(dm, args);
             case "delete_expense": return confirmable("delete_expense", args, () -> dm.deleteExpense(str(args, "id")));
+
+            // Expense accounts
+            case "list_expense_accounts": return expenseAccountsMap(dm, boolVal(args, "includeArchived", false));
+            case "create_expense_account": return createExpenseAccount(dm, args);
+            case "rename_expense_account": return confirmable("rename_expense_account", args,
+                    () -> renameExpenseAccount(dm, args));
+            case "expense_account_report": return expenseAccountReport(dm, args);
+
             case "list_transactions": return dm.getAllTransactions().stream()
                     .limit(intVal(args, "limit", 100)).map(McpToolRegistry::transactionMap)
                     .collect(java.util.stream.Collectors.toList());
@@ -676,6 +702,8 @@ public final class McpToolRegistry {
                 return sb.toString();
             }
             case "delete_expense": return "Delete expense " + str(args, "id");
+            case "rename_expense_account": return "Rename expense account " + str(args, "id")
+                    + " → " + str(args, "newName") + " (updates every voucher with the old name)";
             case "update_bill_status": return "Change invoice " + str(args, "id") + " status → " + str(args, "status");
             default:
                 StringBuilder sb = new StringBuilder("Modify ").append(tool.replace('_', ' '));
@@ -1621,6 +1649,85 @@ public final class McpToolRegistry {
         dm.saveExpense(e);
         return mapOf("ok", true, "id", e.getId(),
                 "head", Expense.isDirect(e.getCategory()) ? "DIRECT (Trading A/c)" : "INDIRECT (P&L)");
+    }
+
+    // ------------------------------------------------------------------
+    // Expense accounts
+    // ------------------------------------------------------------------
+
+    private static List<Map<String, Object>> expenseAccountsMap(DataManager dm, boolean includeArchived) {
+        Map<String, DataManager.AccountUsage> usage = dm.expenseAccountUsage();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (com.invoicestudio.model.ExpenseAccount a : dm.getAllExpenseAccounts()) {
+            if (a.isArchived() && !includeArchived) continue;
+            DataManager.AccountUsage u = usage.get(a.getName().toLowerCase());
+            Map<String, Object> m = mapOf("id", a.getId(), "name", a.getName(),
+                    "archived", a.isArchived(),
+                    "vouchers", u != null ? u.vouchers : 0,
+                    "totalSpent", u != null ? Math.round(u.total * 100.0) / 100.0 : 0.0,
+                    "lastUsed", u != null && !u.lastDate.isEmpty() ? u.lastDate : null);
+            out.add(m);
+        }
+        out.sort((x, y) -> Integer.compare((int) y.get("vouchers"), (int) x.get("vouchers")));
+        return out;
+    }
+
+    private static Map<String, Object> createExpenseAccount(DataManager dm, Map<String, Object> args) {
+        String name = str(args, "name");
+        if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
+        com.invoicestudio.model.ExpenseAccount existing = dm.expenseAccounts().findByName(name.trim());
+        if (existing != null) {
+            return mapOf("ok", true, "id", existing.getId(), "name", existing.getName(), "created", false);
+        }
+        com.invoicestudio.model.ExpenseAccount acc = new com.invoicestudio.model.ExpenseAccount(
+                ExpenseAccountService.newId(), name.trim());
+        acc.setNotes(strOr(args, "notes", ""));
+        acc.setDefaultPaymentMode(strOr(args, "defaultPaymentMode", ""));
+        dm.expenseAccounts().saveAccount(acc);
+        dm.invalidateExpenseAccounts();
+        return mapOf("ok", true, "id", acc.getId(), "name", acc.getName(), "created", true);
+    }
+
+    private static Map<String, Object> renameExpenseAccount(DataManager dm, Map<String, Object> args) {
+        String id = str(args, "id");
+        String newName = str(args, "newName");
+        if (newName == null || newName.isBlank()) throw new IllegalArgumentException("newName is required");
+        com.invoicestudio.model.ExpenseAccount acc = dm.expenseAccounts().getAccountById(id);
+        if (acc == null) throw new IllegalArgumentException("No expense account with id " + id);
+        com.invoicestudio.model.ExpenseAccount clash = dm.expenseAccounts().findByName(newName.trim());
+        if (clash != null && !clash.getId().equals(acc.getId())) {
+            throw new IllegalArgumentException("An expense account named '" + newName.trim() + "' already exists");
+        }
+        int updated = ExpenseAccountService.renameWithPropagation(dm, acc, newName);
+        return mapOf("ok", true, "id", acc.getId(), "name", acc.getName(), "vouchersUpdated", updated);
+        // invalidate is done inside renameWithPropagation
+    }
+
+    private static Map<String, Object> expenseAccountReport(DataManager dm, Map<String, Object> args) {
+        String account = strOr(args, "account", "");
+        String category = strOr(args, "category", "");
+        String from = strOr(args, "from", "");
+        String to = strOr(args, "to", "");
+        ExpenseAnalytics.Report r = ExpenseAnalytics.build(dm.getAllExpenses(),
+                !account.isBlank() ? "Account" : (!category.isBlank() ? "Category" : "All"),
+                !account.isBlank() ? account : category,
+                account, category, from, to);
+        List<Map<String, Object>> months = new ArrayList<>();
+        for (ExpenseAnalytics.Bucket b : r.byMonth()) months.add(bucketMap(b));
+        List<Map<String, Object>> cats = new ArrayList<>();
+        for (ExpenseAnalytics.Bucket b : r.byCategory()) cats.add(bucketMap(b));
+        List<Map<String, Object>> accs = new ArrayList<>();
+        for (ExpenseAnalytics.Bucket b : r.byAccount()) accs.add(bucketMap(b));
+        return mapOf("dimension", r.dimension(), "filter", r.filterName(),
+                "from", r.from(), "to", r.to(),
+                "total", Math.round(r.total() * 100.0) / 100.0,
+                "vouchers", r.voucherCount(), "average", Math.round(r.average() * 100.0) / 100.0,
+                "byMonth", months, "byCategory", cats, "byAccount", accs);
+    }
+
+    private static Map<String, Object> bucketMap(ExpenseAnalytics.Bucket b) {
+        return mapOf("key", b.key(), "vouchers", b.vouchers(),
+                "total", Math.round(b.total() * 100.0) / 100.0);
     }
 
     // ------------------------------------------------------------------

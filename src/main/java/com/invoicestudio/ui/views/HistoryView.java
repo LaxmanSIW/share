@@ -90,7 +90,11 @@ public class HistoryView extends BorderPane {
         newBillBtn.setTooltip(new Tooltip("Create New Invoice or Bill"));
         newBillBtn.setOnAction(e -> app.showCreateBill(null, null));
 
-        bar1.getChildren().addAll(title, sp, exportCsvBtn, newBillBtn);
+        Button exportPdfsBtn = UiTheme.smallBtn("Export PDFs");
+        exportPdfsBtn.setTooltip(new Tooltip("Render every invoice matching the current filters to PDF (one file per bill)"));
+        exportPdfsBtn.setOnAction(e -> exportFilteredPdfs());
+
+        bar1.getChildren().addAll(title, sp, exportCsvBtn, exportPdfsBtn, newBillBtn);
 
         // Filter Controls row
         HBox filters = new HBox(12);
@@ -670,5 +674,49 @@ public class HistoryView extends BorderPane {
                 Toast.show(app.getRootPane(), "Export Failed", ex.getMessage(), true);
             }
         }
+    }
+
+    /**
+     * Month-end bulk export: render every invoice matching the CURRENT filters
+     * (search/status/date) to its own PDF, in a folder the user picks. Renders
+     * on the background executor — the UI stays responsive and shows progress.
+     */
+    private void exportFilteredPdfs() {
+        if (filteredBills == null || filteredBills.isEmpty()) {
+            Toast.show(app.getRootPane(), "Nothing to Export", "No invoices match the current filters.", true);
+            return;
+        }
+        javafx.stage.DirectoryChooser dc = new javafx.stage.DirectoryChooser();
+        dc.setTitle("Pick folder for the " + filteredBills.size() + " filtered invoice PDFs");
+        File dir = dc.showDialog(app.getPrimaryStage());
+        if (dir == null) return;
+
+        List<Bill> batch = new ArrayList<>(filteredBills);
+        var templateOpt = app.getData().templates().getAllTemplates().stream()
+                .filter(t -> "bill".equals(t.getMode())).findFirst();
+        if (templateOpt.isEmpty()) {
+            Toast.show(app.getRootPane(), "No Template", "Create an invoice template first.", true);
+            return;
+        }
+        var template = templateOpt.get();
+        var settings = app.getData().getSettings();
+
+        Toast.show(app.getRootPane(), "Exporting...", "Rendering " + batch.size() + " invoices to PDF...", false);
+        long t0 = System.nanoTime();
+        app.getDbExecutor().execute(() -> {
+            var result = com.invoicestudio.service.BillingService.exportBatchPdf(batch, template, settings, dir, 1);
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            javafx.application.Platform.runLater(() -> {
+                if (result.failed() == 0) {
+                    Toast.show(app.getRootPane(), "Bulk Export Complete",
+                            result.ok() + " invoices → " + dir.getName() + " in " + (ms / 1000) + "s", false);
+                } else {
+                    Toast.show(app.getRootPane(), "Bulk Export Finished With Errors",
+                            result.ok() + " ok, " + result.failed() + " failed: "
+                                    + String.join(", ", result.failures().stream().limit(3).toList())
+                                    + (result.failures().size() > 3 ? "…" : ""), true);
+                }
+            });
+        });
     }
 }

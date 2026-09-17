@@ -925,6 +925,36 @@ public class CreateBillView extends BorderPane {
         // Immediate responsive toast
         Toast.show(app.getRootPane(), "Saving...", "Writing bill " + bill.getBillNo() + "...", false);
 
+        // Credit-limit guardrail: warn when this credit sale pushes the buyer past
+        // their limit (explicitly cancelled = "Save Anyway"). PAID bills are exempt.
+        if (bill.getStatus() == BillStatus.UNPAID) {
+            Buyer known = buyerCombo.getValue();
+            if (known == null) known = app.getData().buyers().findByName(buyerName);
+            if (known != null && known.getCreditLimit() > 0) {
+                double currentDue = BillingService.buyerOutstanding(app.getData().getAllBills(), known.getName());
+                double alreadyPaid = editingBill != null && editingBill.getPayments() != null
+                        ? editingBill.getPayments().stream().mapToDouble(com.invoicestudio.model.BillPayment::getAmount).sum() : 0;
+                double thisDue = Math.max(0, bill.getTotals().getGrandTotal() - alreadyPaid);
+                double newBuyer = editingBill != null && editingBill.getBuyerName() != null
+                        && editingBill.getBuyerName().equalsIgnoreCase(known.getName())
+                        ? Math.max(0, currentDue - thisDue) : currentDue;
+                double afterThis = currentDue + thisDue;
+                if (afterThis > known.getCreditLimit()) {
+                    Alert warn = new Alert(Alert.AlertType.WARNING,
+                            known.getName() + " already owes ₹" + String.format("%,.0f", currentDue)
+                                    + ".\nThis bill adds ₹" + String.format("%,.0f", thisDue)
+                                    + " → total ₹" + String.format("%,.0f", afterThis)
+                                    + " exceeds the credit limit of ₹" + String.format("%,.0f", known.getCreditLimit()) + ".",
+                            ButtonType.OK, new ButtonType("Save Anyway", ButtonBar.ButtonData.LEFT));
+                    warn.setHeaderText("Credit Limit Exceeded");
+                    warn.setTitle("Credit Limit Exceeded");
+                    DialogHelper.styleDialog(warn);
+                    java.util.Optional<ButtonType> resp = warn.showAndWait();
+                    if (resp.isEmpty() || resp.get().getButtonData() == ButtonBar.ButtonData.CANCEL_CLOSE) return;
+                }
+            }
+        }
+
         // Perform database operations in background thread
         app.getDbExecutor().execute(() -> {
             try {

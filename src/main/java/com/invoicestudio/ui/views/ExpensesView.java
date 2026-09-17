@@ -26,6 +26,10 @@ import java.util.UUID;
  * Quick expense entry with chart-of-accounts category, payment mode and
  * reference. KPI cards split Direct (trading account) vs Indirect (P&L)
  * heads so the Financials view can consume the same data.
+ *
+ * Accounts: "Paid To" is an account-picker combo backed by the
+ * ExpenseAccounts registry — saving an unknown name offers to register it;
+ * toolbar buttons open the manager and the report dialog.
  */
 public class ExpensesView extends BorderPane {
 
@@ -35,6 +39,8 @@ public class ExpensesView extends BorderPane {
     private FilteredList<Expense> filteredExpenses;
     private final TextField searchField = new TextField();
     private final ComboBox<String> typeFilter = new ComboBox<>();
+    private final ComboBox<String> accountFilter = new ComboBox<>();
+    private final ComboBox<String> categoryFilter = new ComboBox<>();
     private final Label resultCountLbl = new Label("0 expenses");
 
     private final Label statTotal = UiTheme.kpiValue("₹0.00");
@@ -58,6 +64,7 @@ public class ExpensesView extends BorderPane {
         List<Expense> expenses = app.getData().getAllExpenses();
         filteredExpenses = new FilteredList<>(FXCollections.observableArrayList(expenses), e -> true);
         table.setItems(filteredExpenses);
+        refreshFilterOptions();
         applyFilter();
         updateSummaryStats(expenses);
     }
@@ -79,11 +86,19 @@ public class ExpensesView extends BorderPane {
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
+        Button accountsBtn = UiTheme.smallBtn("Accounts");
+        accountsBtn.setTooltip(new Tooltip("Manage expense accounts (payees) — view, edit, rename, archive, report"));
+        accountsBtn.setOnAction(e -> showAccountsManager());
+
+        Button reportBtn = UiTheme.smallBtn("Reports");
+        reportBtn.setTooltip(new Tooltip("Expense overview report with charts"));
+        reportBtn.setOnAction(e -> showReport(null, null));
+
         Button addBtn = UiTheme.goldBtn("+ New Expense");
         addBtn.setTooltip(new Tooltip("Record an expense voucher"));
         addBtn.setOnAction(e -> showExpenseDialog(null));
 
-        bar1.getChildren().addAll(titleBox, sp, addBtn);
+        bar1.getChildren().addAll(titleBox, sp, accountsBtn, reportBtn, addBtn);
 
         HBox statsGrid = new HBox(16);
         statsGrid.getChildren().addAll(
@@ -105,10 +120,18 @@ public class ExpensesView extends BorderPane {
         typeFilter.setValue("All Types");
         typeFilter.setOnAction(e -> applyFilter());
 
+        accountFilter.setPromptText("All Accounts");
+        accountFilter.setOnAction(e -> applyFilter());
+
+        categoryFilter.setPromptText("All Categories");
+        categoryFilter.setOnAction(e -> applyFilter());
+
         Button clearBtn = UiTheme.smallBtn("Clear");
         clearBtn.setOnAction(e -> {
             searchField.clear();
             typeFilter.setValue("All Types");
+            accountFilter.setValue(null);
+            categoryFilter.setValue(null);
             applyFilter();
         });
 
@@ -116,7 +139,7 @@ public class ExpensesView extends BorderPane {
         HBox.setHgrow(filterSp, Priority.ALWAYS);
         resultCountLbl.getStyleClass().add("result-count");
 
-        filterRow.getChildren().addAll(searchField, typeFilter, clearBtn, filterSp, resultCountLbl);
+        filterRow.getChildren().addAll(searchField, typeFilter, accountFilter, categoryFilter, clearBtn, filterSp, resultCountLbl);
 
         box.getChildren().addAll(bar1, statsGrid, filterRow);
         return box;
@@ -229,9 +252,16 @@ public class ExpensesView extends BorderPane {
         if (filteredExpenses == null) return;
         String q = searchField.getText() != null ? searchField.getText().trim().toLowerCase() : "";
         String type = typeFilter.getValue();
+        String account = accountFilter.getValue();
+        String category = categoryFilter.getValue();
         filteredExpenses.setPredicate(e -> {
             if ("Direct".equals(type) && !Expense.isDirect(e.getCategory())) return false;
             if ("Indirect".equals(type) && Expense.isDirect(e.getCategory())) return false;
+            // "All Accounts" / "All Categories" (and legacy blank) mean no filtering
+            if (account != null && !account.isBlank() && !account.startsWith("All ")
+                    && !account.equalsIgnoreCase(e.getPayee() == null ? "" : e.getPayee().trim())) return false;
+            if (category != null && !category.isBlank() && !category.startsWith("All ")
+                    && !category.equalsIgnoreCase(e.getCategory())) return false;
             if (q.isEmpty()) return true;
             return (e.getCategory() != null && e.getCategory().toLowerCase().contains(q))
                     || (e.getDescription() != null && e.getDescription().toLowerCase().contains(q))
@@ -239,6 +269,36 @@ public class ExpensesView extends BorderPane {
                     || (e.getReference() != null && e.getReference().toLowerCase().contains(q));
         });
         resultCountLbl.setText("Showing " + filteredExpenses.size() + " of " + filteredExpenses.getSource().size() + " expenses");
+    }
+
+    /** Refresh the account/category filter options from the registries. */
+    private void refreshFilterOptions() {
+        String keepAccount = accountFilter.getValue();
+        java.util.List<String> accounts = new java.util.ArrayList<>();
+        accounts.add("All Accounts");
+        for (com.invoicestudio.model.ExpenseAccount a : app.getData().getAllExpenseAccounts()) {
+            if (!a.isArchived()) accounts.add(a.getName());
+        }
+        accountFilter.setItems(FXCollections.observableArrayList(accounts));
+        accountFilter.setValue(keepAccount != null && accounts.contains(keepAccount) ? keepAccount : "All Accounts");
+
+        String keepCat = categoryFilter.getValue();
+        java.util.LinkedHashSet<String> cats = new java.util.LinkedHashSet<>();
+        cats.add("All Categories");
+        for (Expense e : filteredExpenses != null ? filteredExpenses.getSource() : java.util.List.<Expense>of()) {
+            if (e.getCategory() != null && !e.getCategory().isBlank()) cats.add(e.getCategory());
+        }
+        categoryFilter.setItems(FXCollections.observableArrayList(cats));
+        categoryFilter.setValue(keepCat != null && cats.contains(keepCat) ? keepCat : "All Categories");
+    }
+
+    private void showAccountsManager() {
+        new com.invoicestudio.ui.ExpenseAccountsDialog(this, app).show();
+    }
+
+    private void showReport(String dimension, String name) {
+        new com.invoicestudio.ui.ExpenseReportDialog(app,
+                dimension != null ? dimension : "All", name).show();
     }
 
     // ------------------------------------------------------------------
@@ -272,14 +332,23 @@ public class ExpensesView extends BorderPane {
                 ? String.valueOf(existing.getAmount()) : "");
         amountF.setPromptText("0.00");
 
-        ComboBox<String> modeBox = new ComboBox<>(FXCollections.observableArrayList("Cash", "Bank / NEFT", "Cheque", "UPI"));
+        ComboBox<String> modeBox = new ComboBox<>(FXCollections.observableArrayList("Cash", "Bank Transfer", "Cheque", "UPI"));
         modeBox.setValue(existing != null && !existing.getPaymentMode().isBlank() ? existing.getPaymentMode() : "Cash");
 
         TextField refF = new TextField(existing != null ? existing.getReference() : "");
         refF.setPromptText("Cheque No / UTR (optional)");
 
-        TextField payeeF = new TextField(existing != null ? existing.getPayee() : "");
-        payeeF.setPromptText("Paid to (optional)");
+        // Account picker — editable combo backed by the registry, type-to-filter
+        ComboBox<String> payeeF = new ComboBox<>();
+        java.util.List<String> accountNames = new java.util.ArrayList<>();
+        for (com.invoicestudio.model.ExpenseAccount a : app.getData().getAllExpenseAccounts()) {
+            if (!a.isArchived()) accountNames.add(a.getName());
+        }
+        payeeF.setItems(FXCollections.observableArrayList(accountNames));
+        payeeF.setEditable(true);
+        payeeF.setPromptText("Paid to (pick account or type a new name)");
+        payeeF.setValue(existing != null ? existing.getPayee() : "");
+        payeeF.setMaxWidth(Double.MAX_VALUE);
 
         g.add(new Label("Date:*"), 0, 0); g.add(datePick, 1, 0);
         g.add(new Label("Category:*"), 0, 1); g.add(catBox, 1, 1);
@@ -287,7 +356,7 @@ public class ExpensesView extends BorderPane {
         g.add(new Label("Amount (₹):*"), 0, 3); g.add(amountF, 1, 3);
         g.add(new Label("Payment Mode:"), 0, 4); g.add(modeBox, 1, 4);
         g.add(new Label("Reference:"), 0, 5); g.add(refF, 1, 5);
-        g.add(new Label("Paid To:"), 0, 6); g.add(payeeF, 1, 6);
+        g.add(new Label("Account:"), 0, 6); g.add(payeeF, 1, 6);
 
         dlg.getDialogPane().setContent(g);
         dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
@@ -321,16 +390,47 @@ public class ExpensesView extends BorderPane {
             e.setAmount(amount);
             e.setPaymentMode(modeBox.getValue() != null ? modeBox.getValue() : "Cash");
             e.setReference(refF.getText() == null ? "" : refF.getText().trim());
-            e.setPayee(payeeF.getText() == null ? "" : payeeF.getText().trim());
+            String payee = payeeF.getEditor() != null && payeeF.getEditor().getText() != null
+                    ? payeeF.getEditor().getText().trim() : "";
+            e.setPayee(payee);
             return e;
         });
 
         dlg.showAndWait().ifPresent(e -> {
-            app.getData().saveExpense(e);
-            refresh();
-            Toast.show(app.getRootPane(), existing != null ? "Expense Updated" : "Expense Saved",
-                    String.format("%s%.2f — %s", app.getData().getSettings().getCurrency(), e.getAmount(), e.getCategory()), false);
+            saveWithAccountCheck(e, existing != null);
         });
+    }
+
+    /**
+     * Save the voucher; when its payee is not a registered account, ask the
+     * user first — "this account is not added, are you confirming?" — with
+     * Add / Skip / Cancel options (their exact flow).
+     */
+    private void saveWithAccountCheck(Expense e, boolean isEdit) {
+        String payee = e.getPayee();
+        if (!payee.isBlank()) {
+            com.invoicestudio.model.ExpenseAccount known =
+                    app.getData().expenseAccounts().findByName(payee);
+            if (known == null) {
+                Alert ask = new Alert(Alert.AlertType.CONFIRMATION,
+                        "Account '" + payee + "' is not added to your expense accounts.\n\n"
+                                + "Add it now? (You can also save without registering it.)",
+                        ButtonType.YES, new ButtonType("Save without account", ButtonBar.ButtonData.NO),
+                        ButtonType.CANCEL);
+                ask.setHeaderText("New Expense Account");
+                ask.setTitle("Account Not Registered");
+                DialogHelper.styleDialog(ask);
+                java.util.Optional<ButtonType> res = ask.showAndWait();
+                if (res.isEmpty() || res.get() == ButtonType.CANCEL) return;
+                if (res.get() == ButtonType.YES) {
+                    com.invoicestudio.service.ExpenseAccountService.findOrCreate(app.getData(), payee);
+                }
+            }
+        }
+        app.getData().saveExpense(e);
+        refresh();
+        Toast.show(app.getRootPane(), isEdit ? "Expense Updated" : "Expense Saved",
+                String.format("%s%.2f — %s", app.getData().getSettings().getCurrency(), e.getAmount(), e.getCategory()), false);
     }
 
     private void confirmDelete(Expense e) {

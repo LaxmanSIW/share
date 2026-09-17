@@ -14,7 +14,9 @@ import com.invoicestudio.ui.UiTheme;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -168,7 +170,7 @@ public class CreatePurchaseView extends VBox {
         paidCb.getStyleClass().add("check-box");
         paidCb.selectedProperty().addListener((obs, o, v) -> paymentModeBox.setDisable(!v));
 
-        paymentModeBox.setItems(javafx.collections.FXCollections.observableArrayList("Cash", "Bank / NEFT", "Cheque", "UPI"));
+        paymentModeBox.setItems(javafx.collections.FXCollections.observableArrayList("Cash", "Bank Transfer", "Cheque", "UPI"));
         paymentModeBox.setValue("Cash");
         paymentModeBox.setPrefWidth(160);
         paymentModeBox.setDisable(true);
@@ -387,6 +389,46 @@ public class CreatePurchaseView extends VBox {
         if (date.isBlank()) {
             Toast.show(app.getRootPane(), "Validation Error", "Bill date is required.", true);
             return;
+        }
+
+        // Books hygiene: the same supplier bill number recorded twice is almost
+        // certainly a double entry — confirm before allowing it.
+        String supBillNo = supplierBillNoF.getText() == null ? "" : supplierBillNoF.getText().trim();
+        if (!supBillNo.isBlank()) {
+            for (com.invoicestudio.model.PurchaseBill other : app.getData().getAllPurchases()) {
+                if (editing != null && other.getId().equals(editing.getId())) continue;
+                if (supBillNo.equalsIgnoreCase(other.getSupplierBillNo() == null ? "" : other.getSupplierBillNo())
+                        && other.getSupplierId() != null && other.getSupplierId().equals(supplier.getId())) {
+                    Alert warn = new Alert(Alert.AlertType.CONFIRMATION,
+                            "Supplier bill no \"" + supBillNo + "\" was already recorded from " + other.getSupplierName()
+                                    + " on " + other.getDate() + ".\nRecord it again anyway?",
+                            ButtonType.YES, ButtonType.CANCEL);
+                    warn.setHeaderText("Possible Duplicate Purchase");
+                    com.invoicestudio.ui.DialogHelper.styleDialog(warn);
+                    if (warn.showAndWait().filter(b -> b == ButtonType.YES).isEmpty()) return;
+                    break;
+                }
+            }
+        }
+
+        // Margin nudge: any line priced at/below the catalog purchase rate needs a look.
+        java.util.List<String> lowMargin = new java.util.ArrayList<>();
+        for (BillItem it : items) {
+            if (it.getId() == null || it.getId().isBlank()) continue;
+            com.invoicestudio.model.ItemRecord cat = app.getData().items().getItemById(it.getId());
+            if (cat != null && cat.getPurchaseRate() > 0 && it.getRate() > 0 && it.getRate() < cat.getPurchaseRate()) {
+                lowMargin.add(it.getDesc() + " (₹" + String.format("%.0f", it.getRate()) + " < usual ₹"
+                        + String.format("%.0f", cat.getPurchaseRate()) + ")");
+            }
+        }
+        if (!lowMargin.isEmpty()) {
+            Alert warn = new Alert(Alert.AlertType.CONFIRMATION,
+                    "These lines are priced below the item's usual purchase rate:\n  • "
+                            + String.join("\n  • ", lowMargin) + "\n\nSave anyway?",
+                    ButtonType.YES, ButtonType.CANCEL);
+            warn.setHeaderText("Below Usual Purchase Rate");
+            com.invoicestudio.ui.DialogHelper.styleDialog(warn);
+            if (warn.showAndWait().filter(b -> b == ButtonType.YES).isEmpty()) return;
         }
 
         boolean interState = isInterStateSelected();

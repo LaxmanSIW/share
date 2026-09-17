@@ -57,6 +57,8 @@ public class DatabaseManager {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_stock_voucher ON stock_ledger(voucher_id)");
             // v4.4 — Expense accounting (direct & indirect heads)
             stmt.execute("CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, date TEXT, category TEXT, amount REAL, payment_mode TEXT, json_data TEXT, created_at TEXT, updated_at TEXT)");
+            // v4.5 — Expense accounts: payee registry backing the expense register combo
+            stmt.execute("CREATE TABLE IF NOT EXISTS expense_accounts (id TEXT PRIMARY KEY, name TEXT, archived INTEGER DEFAULT 0, json_data TEXT, created_at TEXT, updated_at TEXT)");
             stmt.execute("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, name TEXT, hsn TEXT, unit TEXT, rate REAL, gst REAL, created_at TEXT, updated_at TEXT)");
             stmt.execute("CREATE TABLE IF NOT EXISTS variables (key TEXT PRIMARY KEY, label TEXT, type TEXT, builtin INTEGER)");
             stmt.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, val TEXT)");
@@ -134,6 +136,10 @@ public class DatabaseManager {
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)"); } catch (Exception ignored) {
             AppLog.debug(ignored); }
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id)"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("ALTER TABLE expense_accounts ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception ignored) {
+            AppLog.debug(ignored); }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_expense_accounts_user ON expense_accounts(user_id)"); } catch (Exception ignored) {
             AppLog.debug(ignored); }
             try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id)"); } catch (Exception ignored) {
             AppLog.debug(ignored); }

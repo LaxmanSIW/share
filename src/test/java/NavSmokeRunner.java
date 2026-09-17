@@ -301,6 +301,22 @@ public class NavSmokeRunner extends StudioApp {
                         safeFire(firstContentButton("Current Month"), "current-month"),
                 r -> revenueDeltaSubLabel() != null));
 
+        // -- Expense accounts & reports: registry manager + charted report --
+        steps.add(new Step("31-expenses-nav", () -> clickSidebar("Expenses"),
+                r -> firstContentButton("Accounts") != null && firstContentButton("Reports") != null));
+        steps.add(new Step("32-expense-accounts-dialog-open", () ->
+                        safeFire(firstContentButton("Accounts"), "Accounts"),
+                r -> findNamedStage("Expense Accounts") != null));
+        steps.add(new Step("33-expense-accounts-dialog-close", () -> Platform.runLater(() ->
+                        shotAndCloseNamedStage("Expense Accounts", "dialog-expense-accounts")),
+                r -> findNamedStage("Expense Accounts") == null));
+        steps.add(new Step("34-expense-report-overview-open", () ->
+                        safeFire(firstContentButton("Reports"), "Reports"),
+                r -> findNamedStage("Expense Report — All Accounts & Categories") != null));
+        steps.add(new Step("35-expense-report-overview-close", () -> Platform.runLater(() ->
+                        shotAndCloseNamedStage("Expense Report — All Accounts & Categories", "dialog-expense-report")),
+                r -> findNamedStage("Expense Report — All Accounts & Categories") == null));
+
         stepIndex = 0;
         runStep();
     }

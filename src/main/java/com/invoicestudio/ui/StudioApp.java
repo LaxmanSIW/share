@@ -169,6 +169,9 @@ public class StudioApp extends Application {
                         });
                         showDashboardInternal();
                         checkRecurringSweepAsync();
+                        // One-time: seed the expense-account registry from
+                        // existing voucher payees (no-op after first run).
+                        com.invoicestudio.service.ExpenseAccountService.backfillFromHistoryAsync(null);
                         // Pre-load every cached collection in the background so
                         // the first navigation to each view paints instantly.
                         data.warmCachesAsync(dbExecutor, () -> Platform.runLater(() ->

@@ -22,6 +22,13 @@ public final class ShortcutCatalog {
                 {"Tab / Shift + Tab", "Move between fields in entry forms"}
         });
 
+        groups.put("Expense Accounts & Reports", new String[][]{
+                {"Accounts button", "Open the expense-account manager (view / edit / rename / archive)"},
+                {"Report button", "Account & category reports with charts — pick any account/category"},
+                {"Payee combo", "Type to filter existing accounts; unknown names offer to be saved"},
+                {"Filter combos", "Account / Category dropdowns filter the register instantly"}
+        });
+
         groups.put("Template Designer — Tools", new String[][]{
                 {"V", "Select & Move tool"},
                 {"H / Space (hold)", "Pan tool (hold Space to pan anytime)"},

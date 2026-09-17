@@ -50,6 +50,7 @@ public final class DataManager {
     private final PurchaseBillDao purchaseBillDao;
     private final StockLedgerDao stockLedgerDao;
     private final ExpenseDao expenseDao;
+    private final com.invoicestudio.db.ExpenseAccountDao expenseAccountDao;
 
     /** Cache invalidated on any bill write. Guarded by the monitor of this list. */
     private List<Bill> billsCache;
@@ -57,6 +58,7 @@ public final class DataManager {
     private List<com.invoicestudio.model.ItemCategory> categoriesCache;
     private List<com.invoicestudio.model.Transaction> transactionsCache;
     private List<com.invoicestudio.model.PurchaseBill> purchasesCache;
+    private List<com.invoicestudio.model.ExpenseAccount> expenseAccountsCache;
     private Settings settingsCache;
 
     private final CopyOnWriteArrayList<Consumer<List<Bill>>> billsListeners = new CopyOnWriteArrayList<>();
@@ -77,6 +79,7 @@ public final class DataManager {
         this.purchaseBillDao = new PurchaseBillDao(db);
         this.stockLedgerDao = new StockLedgerDao(db);
         this.expenseDao = new ExpenseDao(db);
+        this.expenseAccountDao = new com.invoicestudio.db.ExpenseAccountDao(db);
 
         com.invoicestudio.service.AuthSessionManager.addSessionChangeListener(session -> onUserSwitched());
     }
@@ -123,6 +126,7 @@ public final class DataManager {
                 getAllBuyers();
                 getAllPurchases();
                 getAllExpenses();
+                getAllExpenseAccounts();
                 getAllCategories();
                 getAllTransports();
             } catch (Exception e) {
@@ -144,6 +148,7 @@ public final class DataManager {
         getAllBuyers();
         getAllPurchases();
         getAllExpenses();
+        getAllExpenseAccounts();
         getAllCategories();
         getAllTransports();
     }
@@ -163,6 +168,7 @@ public final class DataManager {
     public PurchaseBillDao purchases() { return purchaseBillDao; }
     public StockLedgerDao stockLedger() { return stockLedgerDao; }
     public ExpenseDao expenses() { return expenseDao; }
+    public com.invoicestudio.db.ExpenseAccountDao expenseAccounts() { return expenseAccountDao; }
 
     public void onUserSwitched() {
         synchronized (this) {
@@ -171,6 +177,7 @@ public final class DataManager {
             categoriesCache = null;
             transactionsCache = null;
             purchasesCache = null;
+            expenseAccountsCache = null;
             settingsCache = null;
         }
         bumpEpoch();
@@ -535,6 +542,50 @@ public final class DataManager {
 
     public void deleteExpense(String id) {
         expenseDao.deleteExpense(id);
+    }
+
+    // ---------- Expense accounts (payee registry; cached) ----------
+
+    public List<com.invoicestudio.model.ExpenseAccount> getAllExpenseAccounts() {
+        synchronized (this) {
+            if (expenseAccountsCache == null) {
+                expenseAccountsCache = expenseAccountDao.getAllAccounts();
+            }
+            return expenseAccountsCache;
+        }
+    }
+
+    public void invalidateExpenseAccounts() {
+        synchronized (this) {
+            expenseAccountsCache = null;
+        }
+        bumpEpoch();
+    }
+
+    /**
+     * One O(n) pass over cached expenses — usage stats per account name
+     * (case-insensitive): voucher count, total amount, last-used date.
+     */
+    public java.util.Map<String, AccountUsage> expenseAccountUsage() {
+        java.util.Map<String, AccountUsage> usage = new java.util.HashMap<>();
+        for (com.invoicestudio.model.Expense e : getAllExpenses()) {
+            String payee = e.getPayee();
+            if (payee == null || payee.isBlank()) continue;
+            AccountUsage u = usage.computeIfAbsent(payee.trim().toLowerCase(),
+                    k -> new AccountUsage());
+            u.vouchers++;
+            u.total += e.getAmount();
+            String d = e.getDate() != null ? e.getDate() : "";
+            if (d.compareTo(u.lastDate) > 0) u.lastDate = d; // yyyy-MM-dd sorts lexicographically
+        }
+        return usage;
+    }
+
+    /** Usage rollup for one account name (mutable for the single-pass loop). */
+    public static class AccountUsage {
+        public int vouchers;
+        public double total;
+        public String lastDate = "";
     }
 
     /**

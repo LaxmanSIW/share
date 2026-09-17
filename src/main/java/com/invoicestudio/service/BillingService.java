@@ -11,6 +11,55 @@ import java.util.UUID;
 
 public class BillingService {
 
+    /** Result of a batch PDF export (per-bill outcomes for the UI/report). */
+    public record BatchResult(int ok, int failed, List<String> failures) {
+        public static BatchResult empty() { return new BatchResult(0, 0, new ArrayList<>()); }
+    }
+
+    /**
+     * Export every bill in {@code bills} to its own PDF in {@code dir}
+     * (file name = bill number). Off-FX-safe: no JavaFX here.
+     */
+    public static BatchResult exportBatchPdf(List<Bill> bills, com.invoicestudio.model.Template template,
+                                             Settings settings, java.io.File dir, int copies) {
+        int ok = 0, failed = 0;
+        List<String> failures = new ArrayList<>();
+        if (!dir.exists()) dir.mkdirs();
+        for (Bill b : bills) {
+            try {
+                java.io.File dest = new java.io.File(dir, b.getBillNo() + ".pdf");
+                com.invoicestudio.service.PdfExportService.exportBillPdf(b, template, settings, dest, copies);
+                if (dest.exists() && dest.length() > 0) ok++;
+                else { failed++; failures.add(b.getBillNo() + " (empty output)"); }
+            } catch (Exception e) {
+                failed++;
+                failures.add(b.getBillNo() + " (" + e.getMessage() + ")");
+            }
+        }
+        return new BatchResult(ok, failed, failures);
+    }
+
+    /**
+     * Buyer's current outstanding: sum of (grand total − payments) across UNPAID
+     * bills (CANCELLED excluded). O(n) over the caller's bill list — no extra reads.
+     */
+    public static double buyerOutstanding(List<Bill> allBills, String buyerName) {
+        if (buyerName == null || buyerName.isBlank()) return 0;
+        double due = 0;
+        String target = buyerName.trim().toLowerCase();
+        for (Bill b : allBills) {
+            if (b.getStatus() != com.invoicestudio.model.BillStatus.UNPAID) continue;
+            String name = b.getBuyerName();
+            if (name == null || !name.trim().toLowerCase().equals(target)) continue;
+            double grand = b.getTotals() != null ? b.getTotals().getGrandTotal() : 0;
+            double paid = b.getPayments() != null
+                    ? b.getPayments().stream().mapToDouble(com.invoicestudio.model.BillPayment::getAmount).sum()
+                    : 0;
+            due += Math.max(0, grand - paid);
+        }
+        return due;
+    }
+
     public static double round2(double val) {
         return Math.round(val * 100.0) / 100.0;
     }
