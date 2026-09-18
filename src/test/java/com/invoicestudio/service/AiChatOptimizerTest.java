@@ -52,17 +52,36 @@ class AiChatOptimizerTest {
     }
 
     @Test
-    void configuredHistoryWindowIsRespected() throws Exception {
+    void configuredHistoryWindowIsRespected() {
         ChatbotConfig cfg = new ChatbotConfig();
         cfg.setHistoryMessages(6);
-        var method = AiChatClient.class.getDeclaredMethod("trimHistory", List.class, ChatbotConfig.class);
-        method.setAccessible(true);
         List<AiChatClient.ChatTurn> turns = new java.util.ArrayList<>();
         for (int i = 0; i < 20; i++) turns.add(AiChatClient.ChatTurn.user("msg" + i));
-        @SuppressWarnings("unchecked")
-        List<AiChatClient.ChatTurn> trimmed =
-                (List<AiChatClient.ChatTurn>) method.invoke(new AiChatClient(), turns, cfg);
-        assertEquals(6, trimmed.size());
-        assertEquals("msg14", trimmed.get(0).text(), "keeps the TAIL of the conversation");
+        List<AiChatClient.ChatTurn> prepared = AiChatClient.prepareTurns(turns, cfg);
+        // 6 turns kept from prior history plus the 20th user turn
+        assertEquals(7, prepared.size());
+        assertEquals("msg13", prepared.get(0).text(), "keeps the tail of prior history");
+        assertEquals("msg19", prepared.get(prepared.size() - 1).text(), "retains current turn");
+    }
+
+    @Test
+    void confirmationContextRecognizesAffirmativeAndAssistantPrompts() {
+        // Confirmation words
+        assertTrue(AiChatClient.isConfirmationContext(List.of(AiChatClient.ChatTurn.user("yes")), "yes"));
+        assertTrue(AiChatClient.isConfirmationContext(List.of(AiChatClient.ChatTurn.user("sure")), "sure"));
+        assertTrue(AiChatClient.isConfirmationContext(List.of(AiChatClient.ChatTurn.user("ok")), "ok"));
+        assertTrue(AiChatClient.isConfirmationContext(List.of(AiChatClient.ChatTurn.user("approve")), "approve"));
+        assertTrue(AiChatClient.isConfirmationContext(List.of(AiChatClient.ChatTurn.user("proceed")), "proceed"));
+
+        // Prior assistant asking for approval
+        List<AiChatClient.ChatTurn> historyWithQuestion = List.of(
+                AiChatClient.ChatTurn.user("delete bill 10"),
+                AiChatClient.ChatTurn.assistant("Queued deletion for invoice 10 (operationId: op_123). Please confirm.")
+        );
+        assertTrue(AiChatClient.isConfirmationContext(historyWithQuestion, "do it"));
+        assertTrue(AiChatClient.isConfirmationContext(historyWithQuestion, "yes please"));
+
+        // Regular new questions without confirmation context
+        assertFalse(AiChatClient.isConfirmationContext(List.of(), "what is our profit this month?"));
     }
 }

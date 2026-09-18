@@ -246,6 +246,37 @@ A listener that recomputes a label on every keystroke of a search field is fine;
 
 ---
 
+## 11. Chatbot UI, Rich Results Rendering & Observability
+
+Desktop AI assistants (embedded chatbots) present unique JavaFX rendering and threading challenges:
+
+### 11.1 Native Node Composition vs WebView
+Never embed a full `javafx.scene.web.WebView`/`WebEngine` inside chat bubbles just to render Markdown or HTML:
+- **Memory & footprint**: Each `WebView` spins up a WebKit rendering context (~30–50 MB RAM per instance). In a long conversation with 30+ bubbles, memory balloons to hundreds of megabytes and risks GPU context exhaustion.
+- **Startup latency & jank**: Initializing WebKit blocks the FX thread for hundreds of milliseconds.
+- **Correct approach (Native Composition)**:
+  - Parse Markdown text into native JavaFX nodes: `TextFlow` for paragraphs with inline `Text` nodes (`FontWeight.BOLD`, monospace inline code).
+  - Format tabular data (`| Col 1 | Col 2 |`) as a styled JavaFX `GridPane` wrapped in a horizontal `ScrollPane` (`ScrollBarPolicy.AS_NEEDED`).
+  - Native nodes cost virtually zero memory, participate directly in the JavaFX CSS styling tree, wrap text naturally, and lay out in a single pulse.
+
+### 11.2 Tabular Data Formatting in Chat Bubbles
+- AI models should be explicitly prompted in system instructions to output tabular business records (bills, items, stock, transactions) in GitHub-Flavored Markdown tables (`| ... |`).
+- Table layout rules:
+  - Header row: distinctive background (`#192333`), bold text (`#F1F5F9`), subtle divider.
+  - Alternating row fills (`transparent` / `rgba(255,255,255,0.02)`) improve readability.
+  - Numbers and currency values (e.g. `₹1,250.00`, percentages) should be auto-detected and aligned to `Pos.CENTER_RIGHT`; textual descriptions stay `Pos.CENTER_LEFT`.
+  - Outer container: rounded border card with subtle overflow boundaries.
+
+### 11.3 Real-Time Background Observability (CLI Execution Logs)
+- Users need visibility into asynchronous AI pipeline steps: routing decisions, tool shortlisting, provider round-trips, local MCP tool execution times, and confirmation gates.
+- **Threading pattern**:
+  - Buffer log entries in a thread-safe synchronized collection (`CopyOnWriteArrayList` or synchronized list) bounded to a maximum size (e.g. 500 entries) to prevent unbounded memory growth.
+  - Hop background logging calls from worker threads (`AppExecutors.io()`) to the FX thread using `Platform.runLater` to deliver live updates to listening UI dialogs.
+  - CLI dialog: use monospace font (`Consolas`), colored category badges (`[ROUTER]`, `[TOOL-CALL]`, `[MCP-EXEC]`, `[SUCCESS]`), and auto-scrolling to tail.
+  - **Lifecycle hygiene**: Always detach listeners on `Stage.setOnHidden()` and clear transient background logs when the chat panel or session is closed.
+
+---
+
 ## Applied-log (this repo)
 
 | Date | Scope | What was done | Verification |

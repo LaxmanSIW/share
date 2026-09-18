@@ -214,6 +214,9 @@ public class StudioApp extends Application {
     public void setChatbotConfig(com.invoicestudio.service.ChatbotConfig cfg) {
         this.chatbotCfg = cfg;
         refreshChatbotIcon();
+        if (chatbotPanel != null) {
+            chatbotPanel.refreshConfig();
+        }
     }
 
     /** Adds the floating round chat icon (bottom-right), honoring the

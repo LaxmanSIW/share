@@ -88,6 +88,9 @@ public final class AiChatClient {
         List<ChatTurn> turns = new ArrayList<>(history);
         turns.add(new ChatTurn("user", userText == null ? "" : userText, attachment));
 
+        ChatbotLogManager.info("User prompt received: \"" + shorten(userText, 80) + "\"",
+                attachment != null ? "Image attached (" + attachment.mimeType() + ", " + attachment.data().length + " bytes)" : null);
+
         // ── Token & request optimization pipeline ────────────────────
         // Each tool schema costs input tokens on EVERY request, and tool
         // rounds multiply requests. So:
@@ -99,21 +102,39 @@ public final class AiChatClient {
         //   3. If the model calls a tool outside the shortlist, escalate ONCE
         //      to the full catalogue (correctness net, rare).
         java.util.Set<String> allowed = null;
+        boolean confirmCtx = isConfirmationContext(turns, userText);
+        if (confirmCtx) {
+            ChatbotLogManager.info("Confirmation context detected", "Ensuring confirm_operation is available");
+        }
         if (cfg.isSmartRouting() && attachment == null) {
             String first = userText == null ? "" : userText.trim();
-            boolean pureChat = CHAT_ONLY.matcher(first).matches()
-                    && turns.stream().noneMatch(t -> "call".equals(t.role()) || "tool".equals(t.role()));
+            boolean pureChat = !confirmCtx && turns.size() <= 1 && CHAT_ONLY.matcher(first).matches();
             if (pureChat) {
+                ChatbotLogManager.router("Smalltalk detected -> schema-free dispatch (0 tools)", first);
                 ProviderResponse resp = dispatch(cfg, turns, java.util.Set.of());
+                ChatbotLogManager.success("Completed via pure conversational shortcut", resp.text());
                 return new ChatResult(resp.text(), List.of());
             }
-            ToolRoute route = routeTools(cfg, first);
-            if (route != null && !route.needTools()) {
+            ChatbotLogManager.router("Evaluating tools via smart router...", first);
+            ToolRoute route = routeTools(cfg, turns, first, confirmCtx);
+            if (route != null && !route.needTools() && !confirmCtx) {
                 // Router already answered the question conversationally —
                 // no second request, no schemas, no tool rounds.
+                ChatbotLogManager.router("Direct conversational answer from router", route.note());
+                ChatbotLogManager.success("Completed via smart router direct answer", route.note());
                 return new ChatResult(route.note(), List.of());
             }
-            if (route != null) allowed = new java.util.HashSet<>(route.tools());
+            if (route != null && !route.tools().isEmpty()) {
+                allowed = new java.util.HashSet<>(route.tools());
+                ChatbotLogManager.router("Shortlisted tools: " + allowed, null);
+            } else {
+                ChatbotLogManager.router("Router requested full catalogue or failed open", null);
+            }
+            if (confirmCtx) {
+                if (allowed != null) {
+                    allowed.add("confirm_operation");
+                }
+            }
         }
 
         List<String> trace = new ArrayList<>();
@@ -123,13 +144,20 @@ public final class AiChatClient {
         String originalModel = cfg.getModel();
         while (true) {
             if (round > MAX_TOOL_ROUNDS) {
+                ChatbotLogManager.warn("Safety limit reached: " + MAX_TOOL_ROUNDS + " tool rounds", null);
                 return new ChatResult("(stopped after " + MAX_TOOL_ROUNDS
                         + " tool rounds — ask me to continue)", trace);
             }
             ProviderResponse resp;
             try {
+                String activeModel = cfg.getModel().isBlank() ? defaultModel(cfg.getProvider()) : cfg.getModel();
+                ChatbotLogManager.dispatch("Round " + (round + 1) + " -> " + cfg.getProvider()
+                        + " (" + activeModel + ")",
+                        "Turns in payload: " + turns.size() + ", Allowed tools: "
+                        + (allowed == null ? "ALL (" + McpToolRegistry.tools().size() + ")" : allowed.toString()));
                 resp = dispatch(cfg, turns, allowed);
             } catch (IllegalStateException ex) {
+                ChatbotLogManager.error("Provider call failed: " + ex.getMessage(), null);
                 String msg = String.valueOf(ex.getMessage());
                 if (msg.contains("Daily free-tier limit")
                         && ChatbotConfig.GEMINI.equals(cfg.getProvider())) {
@@ -156,6 +184,8 @@ public final class AiChatClient {
                 if (originalModel != null && !cfg.getModel().equals(originalModel)) {
                     cfg.setModel(originalModel); // failover is per-send only
                 }
+                ChatbotLogManager.success("Completed in " + round + " tool round(s)",
+                        trace.isEmpty() ? "Direct response" : "Tools executed: " + String.join(" -> ", trace));
                 return new ChatResult(resp.text(), trace);
             }
             // Router under-selected? (model called a tool that wasn't
@@ -166,6 +196,7 @@ public final class AiChatClient {
                 if (resp.toolCalls().stream().anyMatch(tc -> !currentAllowed.contains(tc.name()))) {
                     escalated = true;
                     allowed = null;
+                    ChatbotLogManager.warn("Model requested tool outside shortlist -> escalating to full catalogue", null);
                     continue;
                 }
             }
@@ -177,6 +208,7 @@ public final class AiChatClient {
             // turn is INVALID on all three and breaks round 2.
             ArrayNode callsJson = M.createArrayNode();
             for (ToolCall tc : resp.toolCalls()) {
+                ChatbotLogManager.tool("Model requested tool: " + tc.name(), "Args: " + tc.argumentsJson());
                 ObjectNode cj = callsJson.addObject();
                 cj.put("name", tc.name());
                 cj.put("args", tc.argumentsJson());
@@ -193,12 +225,16 @@ public final class AiChatClient {
             for (ToolCall tc : resp.toolCalls()) {
                 trace.add(tc.name() + "(" + shorten(tc.argumentsJson()) + ")");
                 String out;
+                long t0 = System.currentTimeMillis();
                 try {
                     Object res = McpToolRegistry.call(tc.name(), parseArgs(tc.argumentsJson()));
                     out = M.writeValueAsString(res);
                 } catch (Exception e) {
                     out = M.writeValueAsString(Map.of("error", String.valueOf(e.getMessage())));
                 }
+                long elapsed = System.currentTimeMillis() - t0;
+                ChatbotLogManager.mcp("MCP " + tc.name() + " executed in " + elapsed + "ms",
+                        "Result: " + shorten(out, 120));
                 if (out.length() > MAX_RESULT_CHARS) {
                     out = M.writeValueAsString(out.substring(0, MAX_RESULT_CHARS)
                             + " …(truncated — narrow your query, e.g. add a limit)");
@@ -215,9 +251,41 @@ public final class AiChatClient {
 
     /** Pure smalltalk — answered with zero tool schemas (zero-cost skip). */
     private static final java.util.regex.Pattern CHAT_ONLY = java.util.regex.Pattern.compile(
-            "(?is)^\\s*(hi+|hello+|hey+|yo|thanks?|thank\\s*you|thx|ty|ok(ay)?|great|nice|cool|wow|"
+            "(?is)^\\s*(hi+|hello+|hey+|yo|thanks?|thank\\s*you|thx|ty|great|nice|cool|wow|"
             + "good\\s*(morning|afternoon|evening|night)|bye+|goodbye|see\\s*ya|"
             + "who\\s+are\\s+you\\??|how\\s+are\\s+you\\??|what\\s+can\\s+you\\s+do\\??|help)\\s*[!.?]*\\s*$");
+
+    /** Confirmation responses when an operation or prompt requires user approval or answer. */
+    private static final java.util.regex.Pattern CONFIRMATION_WORDS = java.util.regex.Pattern.compile(
+            "(?is)^\\s*(y|yes|yeah|yep|sure|ok(ay)?|confirm(ed)?|approve(d)?|proceed|go\\s*ahead|do\\s*it|please\\s*do|"
+            + "yes\\s*(please|do|confirm|proceed|approve)|reject|deny|cancel|no)\\s*[!.?]*\\s*$");
+
+    /**
+     * Determines whether the current request is an affirmative or response to an
+     * assistant confirmation request, or whether operations are pending approval.
+     */
+    static boolean isConfirmationContext(List<ChatTurn> turns, String userText) {
+        if (turns == null || turns.isEmpty()) return false;
+        String trimmed = userText == null ? "" : userText.trim();
+        if (CONFIRMATION_WORDS.matcher(trimmed).matches()) {
+            return true;
+        }
+        if (!com.invoicestudio.mcp.PendingOperations.pending().isEmpty()) {
+            return true;
+        }
+        for (int i = turns.size() - 1; i >= 0; i--) {
+            ChatTurn t = turns.get(i);
+            if ("assistant".equals(t.role())) {
+                String txt = t.text() == null ? "" : t.text().toLowerCase();
+                if (txt.contains("confirm") || txt.contains("approve") || txt.contains("operationid")
+                        || txt.contains("proceed") || txt.contains("pending") || txt.contains("waiting for")) {
+                    return true;
+                }
+                break;
+            }
+        }
+        return false;
+    }
 
     /** Tool results larger than this are truncated before re-sending. */
     private static final int MAX_RESULT_CHARS = 4000;
@@ -228,10 +296,12 @@ public final class AiChatClient {
     /**
      * Router pass: one lean request (no tool schemas — names only) that
      * either answers conversationally (CHAT) or shortlists the tools the
-     * question needs (ROUTE). Returns null to fail OPEN (full catalogue)
-     * on any router error — optimization must never cost correctness.
+     * question needs (ROUTE). Supplies the immediately preceding assistant
+     * turn so context/confirmation requests are never misclassified as small talk.
+     * Returns null to fail OPEN (full catalogue) on any router error —
+     * optimization must never cost correctness.
      */
-    private ToolRoute routeTools(ChatbotConfig cfg, String userText) {
+    private ToolRoute routeTools(ChatbotConfig cfg, List<ChatTurn> turns, String userText, boolean confirmCtx) {
         try {
             StringBuilder names = new StringBuilder();
             for (McpToolRegistry.ToolDef t : McpToolRegistry.tools()) {
@@ -240,12 +310,23 @@ public final class AiChatClient {
             }
             String sys = "You are the request router of an InvoiceStudio billing app assistant. "
                     + "Available tools: " + names + ". \n"
-                    + "Decide if the user's LATEST message needs live business data via tools.\n"
+                    + "Decide if the user's LATEST message needs live business data via tools or is confirming/approving an operation.\n"
                     + "Reply with EXACTLY one line and nothing else:\n"
-                    + "- If data is needed: ROUTE: tool1, tool2 (fewest matching names from the list)\n"
+                    + "- If user is confirming, approving, or rejecting an operation: ROUTE: confirm_operation\n"
+                    + "- If business data or actions are needed: ROUTE: tool1, tool2 (fewest matching names from the list)\n"
                     + "- Questions about how to use InvoiceStudio itself: ROUTE: get_app_guide\n"
                     + "- Otherwise (small talk, greetings, general knowledge): CHAT: <answer the user briefly>";
-            String out = rawCompletion(cfg, sys, userText);
+
+            String query;
+            if (turns != null && turns.size() >= 2) {
+                // Supply the immediately preceding assistant turn so the router has the conversation context
+                ChatTurn prev = turns.get(turns.size() - 2);
+                query = "Previous assistant message: " + shorten(prev.text(), 240) + "\nUser reply: " + userText;
+            } else {
+                query = userText;
+            }
+
+            String out = rawCompletion(cfg, sys, query);
             if (out == null) return null;
             return parseRouteDecision(out, cfg);
         } catch (Exception e) {
@@ -290,10 +371,8 @@ public final class AiChatClient {
     }
 
     private String rawGemini(ChatbotConfig cfg, String system, String userText) throws Exception {
-        // The router runs on a separate LITE model — free tier quotas are per
-        // model per day, so routing must not eat the main model's request cap
-        // (and lite ≈ tiny latency/cost).
-        String model = "gemini-3.1-flash-lite";
+        // The router runs on a lean Flash model.
+        String model = cfg.getModel().isBlank() ? "gemini-flash-latest" : cfg.getModel();
         String url = (cfg.getEndpoint().isBlank()
                 ? "https://generativelanguage.googleapis.com/v1beta/models/" : cfg.getEndpoint())
                 + model + ":generateContent?key=" + cfg.getApiKey();
@@ -411,10 +490,12 @@ public final class AiChatClient {
                 if (p.hasNonNull("text")) text.append(p.get("text").asText());
                 JsonNode fc = p.path("functionCall");
                 if (fc.isObject()) {
+                    String id = fc.hasNonNull("id") ? fc.path("id").asText()
+                            : (p.hasNonNull("id") ? p.path("id").asText() : "");
                     // thoughtSignature lives on the PART, beside functionCall —
                     // not inside it (live-verified 400 without it).
                     calls.add(new ToolCall(fc.path("name").asText(),
-                            M.writeValueAsString(fc.path("args")), "",
+                            M.writeValueAsString(fc.path("args")), id,
                             p.path("thoughtSignature").asText("")));
                 }
             }
@@ -430,26 +511,40 @@ public final class AiChatClient {
 
     private ArrayNode geminiContents(ChatbotConfig cfg, List<ChatTurn> turns) throws Exception {
         ArrayNode contents = M.createArrayNode();
-        for (ChatTurn t : trimHistory(turns, cfg)) {
-            // Gemini roles are only "user" and "model"; tool results ride as
-            // role "user" parts. Function-call turns replay as role "model".
+        List<ChatTurn> prepared = prepareTurns(turns, cfg);
+
+        // Gemini strictly requires:
+        // 1. The first turn MUST have role "user".
+        // 2. Alternating turns between user and model (consecutive turns of same role merged).
+        // 3. Every functionCall turn (model) must be followed by a functionResponse turn (user).
+        String lastRole = null;
+        ObjectNode currentContent = null;
+        ArrayNode currentParts = null;
+
+        for (ChatTurn t : prepared) {
             String role = switch (t.role()) {
                 case "assistant", "call" -> "model";
                 default -> "user";
             };
-            ObjectNode c = contents.addObject();
-            c.put("role", role);
-            ArrayNode parts = c.putArray("parts");
+
+            if (currentContent == null || !role.equals(lastRole)) {
+                currentContent = contents.addObject();
+                currentContent.put("role", role);
+                currentParts = currentContent.putArray("parts");
+                lastRole = role;
+            }
+
             if ("call".equals(t.role())) {
                 JsonNode cs = M.readTree(t.text());
                 for (JsonNode c2 : cs) {
-                    ObjectNode fc = parts.addObject();
+                    ObjectNode fc = currentParts.addObject();
                     JsonNode args = M.readTree(c2.path("args").asText("{}"));
-                    // Gemini 3 requires the model's thoughtSignature to round-
-                    // trip on replayed functionCall parts (live-verified 400).
                     ObjectNode call = M.createObjectNode()
                             .put("name", c2.path("name").asText())
                             .set("args", args);
+                    if (c2.hasNonNull("id") && !c2.path("id").asText().isBlank()) {
+                        call.put("id", c2.path("id").asText());
+                    }
                     fc.set("functionCall", call);
                     String tSig = c2.path("tSig").asText("");
                     if (!tSig.isBlank()) fc.put("thoughtSignature", tSig);
@@ -457,20 +552,26 @@ public final class AiChatClient {
             } else if ("tool".equals(t.role())) {
                 JsonNode rs = M.readTree(t.text());
                 for (JsonNode r : rs) {
-                    ObjectNode fr = parts.addObject();
-                    fr.set("functionResponse", M.createObjectNode()
-                            .put("name", r.path("name").asText())
-                            .set("response", M.createObjectNode().set("result", M.readTree(r.path("result").asText()))));
+                    ObjectNode fr = currentParts.addObject();
+                    ObjectNode frObj = M.createObjectNode()
+                            .put("name", r.path("name").asText());
+                    if (r.hasNonNull("id") && !r.path("id").asText().isBlank()) {
+                        frObj.put("id", r.path("id").asText());
+                    }
+                    frObj.set("response", M.createObjectNode().set("result", M.readTree(r.path("result").asText())));
+                    fr.set("functionResponse", frObj);
                 }
             } else {
                 if (t.image() != null) {
-                    ObjectNode id = parts.addObject();
+                    ObjectNode id = currentParts.addObject();
                     id.set("inline_data", M.createObjectNode()
                             .put("mime_type", t.image().mimeType())
                             .put("data", java.util.Base64.getEncoder().encodeToString(t.image().data())));
                 }
                 if (t.text() != null && !t.text().isEmpty()) {
-                    parts.addObject().put("text", t.text());
+                    currentParts.addObject().put("text", t.text());
+                } else if (t.image() != null) {
+                    currentParts.addObject().put("text", "Please analyze this image.");
                 }
             }
         }
@@ -524,7 +625,7 @@ public final class AiChatClient {
         body.put("model", model);
         ArrayNode msgs = body.putArray("messages");
         msgs.add(M.createObjectNode().put("role", "system").put("content", systemPrompt()));
-        for (ChatTurn t : trimHistory(turns, cfg)) {
+        for (ChatTurn t : prepareTurns(turns, cfg)) {
             switch (t.role()) {
                 case "call" -> {
                     // Assistant turn WITH tool_calls — a separate contentless
@@ -613,7 +714,7 @@ public final class AiChatClient {
         sysItem.put("type", "text").put("text", systemPrompt());
         body.set("system", sysBlock.get("content"));
         ArrayNode msgs = body.putArray("messages");
-        for (ChatTurn t : trimHistory(turns, cfg)) {
+        for (ChatTurn t : prepareTurns(turns, cfg)) {
             switch (t.role()) {
                 case "user" -> {
                     ObjectNode m = msgs.addObject();
@@ -754,18 +855,62 @@ public final class AiChatClient {
         return "Provider error (HTTP " + status + "): " + detail + hint;
     }
 
-    /** Keeps at most {@code historyMessages} turns (plus the live user turn).
-     *  Uses the CONFIGURED window (was hardcoded — the Settings slider had no
-     *  effect on requests). */
-    private List<ChatTurn> trimHistory(List<ChatTurn> turns, ChatbotConfig cfg) {
+    /**
+     * Prepares the conversation turns for API transmission.
+     * Trims older prior history to the configured message window while keeping
+     * the entire CURRENT interaction (the latest user turn and all in-flight tool
+     * calls and responses) completely intact.
+     * Ensures the conversation always begins with a user turn and contains
+     * no orphaned call/tool turns at the edges.
+     */
+    static List<ChatTurn> prepareTurns(List<ChatTurn> turns, ChatbotConfig cfg) {
+        if (turns == null || turns.isEmpty()) return List.of();
+
+        // Find the index of the latest user turn (the start of the current request)
+        int currentTurnIndex = -1;
+        for (int i = turns.size() - 1; i >= 0; i--) {
+            if ("user".equals(turns.get(i).role())) {
+                currentTurnIndex = i;
+                break;
+            }
+        }
+
+        if (currentTurnIndex < 0) {
+            // Fallback: sanitize turns so it starts with user
+            List<ChatTurn> out = new ArrayList<>(turns);
+            while (!out.isEmpty() && !"user".equals(out.get(0).role())) out.remove(0);
+            return out;
+        }
+
+        List<ChatTurn> priorHistory = new ArrayList<>(turns.subList(0, currentTurnIndex));
+        List<ChatTurn> currentTurn = new ArrayList<>(turns.subList(currentTurnIndex, turns.size()));
+
         int keep = cfg.getHistoryMessages();
-        List<ChatTurn> out = turns.size() <= keep
-                ? new ArrayList<>(turns) : new ArrayList<>(turns.subList(turns.size() - keep, turns.size()));
-        // Sanitize window edges: a tool RESULT without its preceding call, or
-        // a trailing call without its result, is invalid on every provider.
-        while (!out.isEmpty() && "tool".equals(out.get(0).role())) out.remove(0);
-        while (!out.isEmpty() && "call".equals(out.get(out.size() - 1).role())) out.remove(out.size() - 1);
-        return out;
+        if (priorHistory.size() > keep) {
+            priorHistory = new ArrayList<>(priorHistory.subList(priorHistory.size() - keep, priorHistory.size()));
+        }
+
+        // Prior history must begin with a user turn (never assistant, call or tool)
+        while (!priorHistory.isEmpty() && !"user".equals(priorHistory.get(0).role())) {
+            priorHistory.remove(0);
+        }
+        // Prior history must not end with an incomplete call turn
+        while (!priorHistory.isEmpty() && "call".equals(priorHistory.get(priorHistory.size() - 1).role())) {
+            priorHistory.remove(priorHistory.size() - 1);
+        }
+
+        List<ChatTurn> combined = new ArrayList<>(priorHistory);
+        combined.addAll(currentTurn);
+
+        // Final safety sanitization: must start with user, must not end with dangling call
+        while (!combined.isEmpty() && !"user".equals(combined.get(0).role())) {
+            combined.remove(0);
+        }
+        while (!combined.isEmpty() && "call".equals(combined.get(combined.size() - 1).role())) {
+            combined.remove(combined.size() - 1);
+        }
+
+        return combined;
     }
 
     private ObjectNode sysInstruction() throws Exception {
@@ -786,10 +931,16 @@ public final class AiChatClient {
                 expenses, financials, thermal label printing on a TSC TA210, and a bill/label template designer). \
                 You have direct tool access to the app's data through its MCP tools — use them to answer \
                 questions with REAL data instead of guessing. Read tools (list_*, get_*, *_report) are safe \
-                to call freely; mutating tools may return requiresConfirmation — tell the user to approve the \
-                operation in Settings → MCP Server (or that you will wait for their approval). Answer in the \
-                user's language, be concise, and format numbers as plain text (no markdown tables — the chat \
-                pane renders plain text).""";
+                to call freely; mutating tools may return requiresConfirmation with an operationId — explain the \
+                action and operationId to the user and ask for their confirmation. When the user confirms \
+                (e.g. says yes, confirm, approve, proceed, ok), immediately call the confirm_operation tool \
+                with the operationId and approve=true to execute the action. If the user cancels or rejects, \
+                call confirm_operation with approve=false. \
+                When presenting tabular data, lists of records, metrics, or comparisons (e.g. buyers, stock, \
+                items, bills, purchases, expenses, profitability, reports), ALWAYS format them in clean GitHub-Flavored \
+                Markdown tables (| Column 1 | Column 2 | ...) with clear headers and aligned figures (e.g. ₹1,250.00). \
+                Use Markdown bold (**...**), bullet points, and section headers (###) to make answers structured, \
+                refined, and easily readable. Answer in the user's language and be concise.""";
     }
 
     private Map<String, Object> parseArgs(String json) {
@@ -803,8 +954,12 @@ public final class AiChatClient {
     }
 
     private String shorten(String s) {
+        return shorten(s, 60);
+    }
+
+    private String shorten(String s, int maxChars) {
         if (s == null) return "";
         String flat = s.replaceAll("\\s+", " ");
-        return flat.length() > 60 ? flat.substring(0, 60) + "…" : flat;
+        return flat.length() > maxChars ? flat.substring(0, maxChars) + "…" : flat;
     }
 }

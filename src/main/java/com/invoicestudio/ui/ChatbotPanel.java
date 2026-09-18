@@ -69,6 +69,12 @@ public class ChatbotPanel extends VBox {
     private static final String SVG_EXPAND = "M6.41 6 5 7.41 9.58 12 5 16.59 6.41 18l6-6z M13 6l-1.41 1.41L16.17 12l-4.58 4.59L13 18l6-6z";
     private static final String SVG_PERSON =
             "M12 12c2.2 0 4-1.8 4-4s-1.8-4-4-4-4 1.8-4 4 1.8 4 4 4zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z";
+    private static final String SVG_COPY =
+            "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z";
+    private static final String SVG_CHECK =
+            "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
+    private static final String SVG_TERMINAL =
+            "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.58-2.59L7.5 9l4 4-4 4z";
 
     private final StudioApp app;
     private final ChatbotConfig cfg;
@@ -85,6 +91,7 @@ public class ChatbotPanel extends VBox {
     private final HBox attachRow = new HBox(8);
     private final VBox chipsRow = new VBox(6);
     private boolean expanded = false;
+    private com.invoicestudio.ui.chat.ChatbotLogDialog logDialog;
 
     public ChatbotPanel(StudioApp app, ChatbotConfig cfg, Runnable closeAction) {
         this.app = app;
@@ -99,6 +106,7 @@ public class ChatbotPanel extends VBox {
 
         providerLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #97A3B6;");
         refreshProviderLabel();
+        ChatbotConfig.addChangeListener(c -> Platform.runLater(this::refreshConfig));
 
         messages.setPadding(new Insets(6, 4, 6, 2));
         scroll.setFitToWidth(true);
@@ -133,6 +141,32 @@ public class ChatbotPanel extends VBox {
         return b;
     }
 
+    private Button copyButton(String text) {
+        Button b = new Button();
+        b.getStyleClass().add("button-icon-subtle");
+        b.setGraphic(svg(SVG_COPY, 12, "#7C8AA0"));
+        b.setTooltip(new Tooltip("Copy"));
+        b.setMinSize(22, 22);
+        b.setPrefSize(22, 22);
+        b.setMaxSize(22, 22);
+        b.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 0;");
+        b.setOnAction(e -> {
+            javafx.scene.input.Clipboard cb = javafx.scene.input.Clipboard.getSystemClipboard();
+            javafx.scene.input.ClipboardContent cc = new javafx.scene.input.ClipboardContent();
+            cc.putString(text == null ? "" : text);
+            cb.setContent(cc);
+            b.setGraphic(svg(SVG_CHECK, 12, GOLD));
+            b.setTooltip(new Tooltip("Copied!"));
+            javafx.animation.PauseTransition pt = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(1.5));
+            pt.setOnFinished(ev -> {
+                b.setGraphic(svg(SVG_COPY, 12, "#7C8AA0"));
+                b.setTooltip(new Tooltip("Copy"));
+            });
+            pt.play();
+        });
+        return b;
+    }
+
     /** Round avatar: gold sparkle for the AI, slate person for the user. */
     private StackPane avatar(boolean ai, double d) {
         StackPane c = new StackPane(ai
@@ -163,6 +197,9 @@ public class ChatbotPanel extends VBox {
         titleBox.setAlignment(Pos.CENTER_LEFT);
         ((HBox) titleBox.getChildren().get(1)).setAlignment(Pos.CENTER_LEFT);
 
+        Button logBtn = iconBtn("chat-logs", SVG_TERMINAL, "View background execution logs");
+        logBtn.setOnAction(e -> showLogDialog());
+
         Button expandBtn = iconBtn("chat-expand", SVG_EXPAND,
                 expanded ? "Collapse panel" : "Expand panel");
         expandBtn.setOnAction(e -> {
@@ -171,23 +208,35 @@ public class ChatbotPanel extends VBox {
             double w = expanded ? Math.max(760, app.getRootPane().getWidth() - 120) : 460;
             setPrefWidth(w);
             setMaxWidth(w);
+            updateInputHeight(input.getText());
         });
 
         Button clearBtn = iconBtn("chat-clear", SVG_TRASH, "Clear conversation");
         clearBtn.setOnAction(e -> {
             history.clear();
             messages.getChildren().clear();
+            com.invoicestudio.service.ChatbotLogManager.clear();
             greeting();
         });
 
         Button closeBtn = iconBtn("chat-close", SVG_CLOSE, "Close chat");
-        closeBtn.setOnAction(e -> closeAction.run());
+        closeBtn.setOnAction(e -> {
+            com.invoicestudio.service.ChatbotLogManager.clear();
+            closeAction.run();
+        });
 
         Region spring = new Region();
         HBox.setHgrow(spring, Priority.ALWAYS);
-        HBox head = new HBox(10, avatar(true, 30), titleBox, spring, expandBtn, clearBtn, closeBtn);
+        HBox head = new HBox(8, avatar(true, 30), titleBox, spring, logBtn, expandBtn, clearBtn, closeBtn);
         head.setAlignment(Pos.CENTER_LEFT);
         return head;
+    }
+
+    private void showLogDialog() {
+        if (logDialog == null) {
+            logDialog = new com.invoicestudio.ui.chat.ChatbotLogDialog(app.getPrimaryStage());
+        }
+        logDialog.show();
     }
 
     private Node buildInputArea() {
@@ -195,18 +244,25 @@ public class ChatbotPanel extends VBox {
         input.setPromptText("Ask about your business…");
         input.setWrapText(true);
         input.setPrefRowCount(1);
+        input.setMinHeight(36);
+        input.setMaxHeight(92);
+        input.setPrefHeight(36);
         input.setStyle("-fx-background-color: transparent; -fx-text-fill: #E6EAF0;"
                 + "-fx-prompt-text-fill: #5b6779; -fx-border-color: transparent;"
                 + "-fx-padding: 6 2 6 10; -fx-font-size: 13px;");
         HBox.setHgrow(input, Priority.ALWAYS);
         input.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
-            if (e.getCode() == KeyCode.ENTER && !e.isShiftDown()) {
-                e.consume();
-                send();
+            if (e.getCode() == KeyCode.ENTER) {
+                if (e.isShiftDown()) {
+                    e.consume();
+                    input.replaceSelection("\n");
+                } else {
+                    e.consume();
+                    send();
+                }
             }
         });
-        input.textProperty().addListener((o, a, t) ->
-                input.setPrefRowCount(Math.max(1, Math.min(4, (t == null ? 0 : t.split("\n", -1).length)))));
+        input.textProperty().addListener((o, a, t) -> updateInputHeight(t));
 
         Button attachBtn = iconBtn("chat-attach", SVG_PAPERCLIP, "Attach an image (bill, label, screenshot…)");
         attachBtn.setOnAction(e -> pickImage());
@@ -222,7 +278,8 @@ public class ChatbotPanel extends VBox {
         sendBtn.setOnAction(e -> send());
 
         HBox pill = new HBox(6, input, attachBtn, sendBtn);
-        pill.setAlignment(Pos.BOTTOM_RIGHT);
+        pill.setAlignment(Pos.CENTER_RIGHT);
+        pill.setMinHeight(Region.USE_PREF_SIZE);
         pill.setStyle("-fx-background-color: #0F1520; -fx-border-color: #273245;"
                 + "-fx-background-radius: 14; -fx-border-radius: 14; -fx-border-width: 1;"
                 + "-fx-padding: 5 6 5 4;");
@@ -240,7 +297,49 @@ public class ChatbotPanel extends VBox {
         return footer;
     }
 
-    private void refreshProviderLabel() {
+    private void updateInputHeight(String text) {
+        if (text == null || text.isEmpty()) {
+            applyInputHeight(1);
+            return;
+        }
+        int lines = 1;
+        int charsInLine = 0;
+        int maxChars = expanded ? 72 : 36;
+        int len = text.length();
+        for (int i = 0; i < len; i++) {
+            char c = text.charAt(i);
+            if (c == '\n') {
+                lines++;
+                charsInLine = 0;
+            } else {
+                charsInLine++;
+                if (charsInLine >= maxChars) {
+                    lines++;
+                    charsInLine = 0;
+                }
+            }
+            if (lines >= 3) {
+                lines = 3;
+                break;
+            }
+        }
+        applyInputHeight(lines);
+    }
+
+    private void applyInputHeight(int lines) {
+        double h = lines == 1 ? 36.0 : (lines == 2 ? 64.0 : 92.0);
+        if (input.getPrefHeight() != h) {
+            input.setPrefRowCount(lines);
+            input.setMinHeight(h);
+            input.setPrefHeight(h);
+        }
+    }
+
+    public void refreshConfig() {
+        refreshProviderLabel();
+    }
+
+    public void refreshProviderLabel() {
         providerLbl.setText(AiChatClient.providerLabel(cfg.getProvider()));
         modelChip.setText(currentModelLabel());
     }
@@ -412,26 +511,33 @@ public class ChatbotPanel extends VBox {
         }
 
         // Echo the user's message (with attachment thumbnail) into the chat.
-        VBox box = new VBox(4);
+        VBox box = new VBox(2);
         if (!text.isEmpty()) {
             Label l = new Label(text);
             l.setWrapText(true);
             l.setStyle(USER_BUBBLE);
             l.setMaxWidth(expanded ? 620 : 340);
-            box.getChildren().add(l);
+
+            Button copyBtn = copyButton(text);
+            HBox actionRow = new HBox(copyBtn);
+            actionRow.setAlignment(Pos.CENTER_RIGHT);
+            actionRow.setPadding(new Insets(1, 4, 0, 0));
+
+            box.getChildren().addAll(l, actionRow);
         }
         if (pendingImage != null) {
             ImageView img = new ImageView(new Image(new ByteArrayInputStream(pendingImage.data())));
             img.setFitWidth(200);
             img.setPreserveRatio(true);
             img.setStyle("-fx-background-radius: 10;");
-            box.getChildren().add(img);
+            box.getChildren().add(0, img);
         }
         HBox userRow = new HBox(8, box, avatar(false, 26));
         userRow.setAlignment(Pos.TOP_RIGHT);
         messages.getChildren().add(userRow);
 
         input.clear();
+        updateInputHeight("");
         pendingImage = null;
         renderPendingImage();
         scrollToBottom();
@@ -489,15 +595,24 @@ public class ChatbotPanel extends VBox {
     }
 
     private void addAiBubble(String text, javafx.scene.image.Image img) {
-        HBox row = new HBox(8, avatar(true, 26));
+        VBox box = new VBox(2);
+        boolean isError = text != null && (text.startsWith("Provider error") || text.startsWith("HTTP")
+                || text.toLowerCase().contains("error") || text.toLowerCase().contains("api key"));
+
+        Node contentNode = com.invoicestudio.ui.chat.ChatMarkdownRenderer.render(text, isError);
+        VBox bubble = new VBox(contentNode);
+        bubble.setStyle(isError ? ERROR_BUBBLE : AI_BUBBLE);
+        bubble.setMaxWidth(expanded ? 620 : 340);
+
+        Button copyBtn = copyButton(text);
+        HBox actionRow = new HBox(copyBtn);
+        actionRow.setAlignment(Pos.CENTER_LEFT);
+        actionRow.setPadding(new Insets(1, 0, 0, 4));
+
+        box.getChildren().addAll(bubble, actionRow);
+
+        HBox row = new HBox(8, avatar(true, 26), box);
         row.setAlignment(Pos.TOP_LEFT);
-        Label l = new Label(text);
-        l.setWrapText(true);
-        l.setStyle(text.startsWith("Provider error") || text.startsWith("HTTP")
-                || text.toLowerCase().contains("error") || text.toLowerCase().contains("api key")
-                ? ERROR_BUBBLE : AI_BUBBLE);
-        l.setMaxWidth(expanded ? 620 : 340);
-        row.getChildren().add(l);
         messages.getChildren().add(row);
         scrollToBottom();
     }

@@ -61,6 +61,7 @@ public class ChatbotSettingsPanel extends VBox {
                 behaviourCard(),
                 statusCard());
         loadFromConfig();
+        ChatbotConfig.addChangeListener(c -> javafx.application.Platform.runLater(this::loadFromConfig));
     }
 
     // ── Cards ─────────────────────────────────────────────────────────

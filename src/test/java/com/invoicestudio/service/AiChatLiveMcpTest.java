@@ -42,6 +42,12 @@ class AiChatLiveMcpTest {
         Assumptions.assumeTrue(apiKey != null && !apiKey.isBlank(),
                 "No Gemini API key configured — live test skipped");
 
+        try {
+            javafx.application.Platform.startup(() -> {});
+        } catch (IllegalStateException ignored) {
+            // Toolkit already initialized
+        }
+
         tmpDb = Files.createTempFile("aichat-live", ".db");
         Files.deleteIfExists(tmpDb);
         DatabaseManager.initCustom("jdbc:sqlite:" + tmpDb.toAbsolutePath());
@@ -126,7 +132,8 @@ class AiChatLiveMcpTest {
         ChatbotConfig cfg = new ChatbotConfig();
         cfg.setProvider(ChatbotConfig.GEMINI);
         cfg.setApiKey(apiKey);
-        cfg.setModel(System.getProperty("live.gemini.model", "gemini-3.7-flash"));
+        cfg.setModel(System.getProperty("live.gemini.model", "gemini-3.5-flash-lite"));
+        cfg.setHistoryMessages(4); // Test the exact small-history condition that previously crashed
 
         AiChatClient client = new AiChatClient();
         // Two distinct facts → at least two tool calls across rounds; the
@@ -141,6 +148,104 @@ class AiChatLiveMcpTest {
         assertFalse(r.text().isBlank(), "second-round answer must not be blank");
         assertTrue(r.text().contains("7") && r.text().contains("50"),
                 "answer must contain both seeded quantities, got: " + r.text());
+    }
+
+    @Test
+    @Order(3)
+    void attachmentWorksWithGemini() throws Exception {
+        ChatbotConfig cfg = new ChatbotConfig();
+        cfg.setProvider(ChatbotConfig.GEMINI);
+        cfg.setApiKey(apiKey);
+        cfg.setModel(System.getProperty("live.gemini.model", "gemini-3.5-flash-lite"));
+
+        // Create a 20x20 red PNG image in memory
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(20, 20, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        g.setColor(java.awt.Color.RED);
+        g.fillRect(0, 0, 20, 20);
+        g.dispose();
+
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", baos);
+        AiChatClient.ImagePart part = new AiChatClient.ImagePart("image/png", baos.toByteArray());
+
+        AiChatClient client = new AiChatClient();
+        AiChatClient.ChatResult r = client.send(cfg, List.of(), "What primary color is this image? Reply with the color name.", part);
+
+        System.out.println("[ATTACH_TEST] answer = " + r.text());
+        assertFalse(r.text().isBlank(), "Model should return a description of the image");
+        assertTrue(r.text().toLowerCase().contains("red"), "Answer should identify the red image, got: " + r.text());
+    }
+
+    @Test
+    @Order(4)
+    void confirmationFlowExecutesConfirmOperationOnYes() throws Exception {
+        ChatbotConfig cfg = new ChatbotConfig();
+        cfg.setProvider(ChatbotConfig.GEMINI);
+        cfg.setApiKey(apiKey);
+        cfg.setModel(System.getProperty("live.gemini.model", "gemini-3.5-flash-lite"));
+        cfg.setHistoryMessages(4);
+
+        java.util.concurrent.atomic.AtomicBoolean approved = new java.util.concurrent.atomic.AtomicBoolean(false);
+        String opId = com.invoicestudio.mcp.PendingOperations.queue(
+                "delete_item",
+                "Delete item Probe Cotton Shirt",
+                "Testing confirmation approval",
+                java.util.Map.of("id", "2"),
+                () -> approved.set(true)
+        );
+
+        List<AiChatClient.ChatTurn> history = List.of(
+                AiChatClient.ChatTurn.user("delete item 2"),
+                AiChatClient.ChatTurn.assistant("I have queued the deletion of item 2 (operationId: " + opId
+                        + "). Are you sure you want to proceed? Reply yes to confirm.")
+        );
+
+        AiChatClient client = new AiChatClient();
+        AiChatClient.ChatResult r = client.send(cfg, history, "yes", null);
+
+        System.out.println("[CONFIRM_TEST] toolTrace = " + r.toolTrace());
+        System.out.println("[CONFIRM_TEST] answer    = " + r.text());
+
+        assertFalse(r.text().toLowerCase().contains("how can i assist")
+                || r.text().toLowerCase().contains("how can i help you today"),
+                "Confirmation must not be treated as generic small talk: " + r.text());
+
+        assertTrue(approved.get() || r.toolTrace().stream().anyMatch(t -> t.contains("confirm_operation")),
+                "Should have approved pending operation " + opId + ", trace: " + r.toolTrace());
+    }
+
+    @Test
+    @Order(5)
+    void liveQueryFormatsTabularDataAndLogsExecutionSteps() throws Exception {
+        ChatbotLogManager.clear();
+
+        ChatbotConfig cfg = new ChatbotConfig();
+        cfg.setProvider(ChatbotConfig.GEMINI);
+        cfg.setApiKey(apiKey);
+        cfg.setModel(System.getProperty("live.gemini.model", "gemini-3.5-flash-lite"));
+
+        AiChatClient client = new AiChatClient();
+        AiChatClient.ChatResult r = client.send(cfg, List.of(),
+                "Show an inventory summary table for all items with their stock quantities and purchase rates.",
+                null);
+
+        System.out.println("[TABLE_TEST] answer = \n" + r.text());
+        System.out.println("[TABLE_TEST] trace  = " + r.toolTrace());
+
+        // Check that ChatbotLogManager recorded the steps
+        List<ChatbotLogManager.LogEntry> logs = ChatbotLogManager.getEntries();
+        assertTrue(logs.stream().anyMatch(l -> "ROUTER".equals(l.tag()) || "DISPATCH".equals(l.tag())),
+                "Logs should capture router or dispatch");
+        assertTrue(logs.stream().anyMatch(l -> "MCP-EXEC".equals(l.tag()) || "TOOL-CALL".equals(l.tag()) || "SUCCESS".equals(l.tag())),
+                "Logs should capture tool execution or success");
+
+        // Assert that the text contains a Markdown table
+        assertTrue(r.text().contains("|"), "Response should contain markdown table syntax: " + r.text());
+
+        // Test that ChatMarkdownRenderer parses this live response into a Node
+        javafx.scene.Node rendered = com.invoicestudio.ui.chat.ChatMarkdownRenderer.render(r.text(), false);
+        assertNotNull(rendered);
     }
 
     @SuppressWarnings("unchecked")

@@ -46,6 +46,29 @@ public final class ChatbotConfig {
      *  all, so chat-only messages never carry the full tool schemas. */
     private boolean smartRouting = true;
 
+    private static final java.util.List<java.util.function.Consumer<ChatbotConfig>> LISTENERS =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public static void addChangeListener(java.util.function.Consumer<ChatbotConfig> listener) {
+        if (listener != null && !LISTENERS.contains(listener)) {
+            LISTENERS.add(listener);
+        }
+    }
+
+    public static void removeChangeListener(java.util.function.Consumer<ChatbotConfig> listener) {
+        LISTENERS.remove(listener);
+    }
+
+    public void notifyChanged() {
+        for (java.util.function.Consumer<ChatbotConfig> l : LISTENERS) {
+            try {
+                l.accept(this);
+            } catch (Exception e) {
+                AppLog.debug(e);
+            }
+        }
+    }
+
     public static ChatbotConfig load() {
         try {
             File f = file();
@@ -66,6 +89,7 @@ public final class ChatbotConfig {
         } catch (Exception ignored) {
             AppLog.debug(ignored);
         }
+        notifyChanged();
     }
 
     private static File file() {
