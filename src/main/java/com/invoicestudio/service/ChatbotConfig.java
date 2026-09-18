@@ -29,6 +29,8 @@ public final class ChatbotConfig {
     public static final String OLLAMA = "ollama";
     public static final String MISTRAL = "mistral";
     public static final String DEEPSEEK = "deepseek";
+    /** Z.ai GLM — OpenAI-compatible endpoint, free flash tier by default. */
+    public static final String GLM = "glm";
     public static final String CUSTOM = "custom";
 
     /** Show the floating round chat icon on the main shell. */

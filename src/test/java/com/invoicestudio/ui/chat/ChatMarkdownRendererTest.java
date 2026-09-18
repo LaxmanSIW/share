@@ -109,7 +109,11 @@ class ChatMarkdownRendererTest {
                 if ("15 pieces".equals(t.getText()) && t.getFont().getStyle().contains("Bold")) {
                     foundBold = true;
                 }
-                if (t.getText().contains("Probe Jeans") && t.getFont().getName().contains("Consolas")) {
+                // Inline code is rendered at 12.0pt (normal/bold are 13.0pt).
+                // Do NOT assert the resolved family name: Font.font("Consolas")
+                // resolves to a platform fallback (e.g. DejaVu on Linux) —
+                // only the SIZE and the padded text are portable guarantees.
+                if (t.getText().contains("Probe Jeans") && t.getFont().getSize() == 12.0) {
                     foundCode = true;
                 }
             }

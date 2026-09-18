@@ -1079,6 +1079,117 @@ public final class KnowledgeSeed {
                 "InvoiceStudio AI Core"
         ));
 
+        // Chapter 13 — Speed & Cost Optimization Pass (what was done to improve,
+        // and how the assistant is optimized further)
+        list.add(new KnowledgeArticle(
+                "art_ai_13_speed_optimization",
+                "AI Chatbot / 08. Speed & Cost Optimization",
+                "What Was Done to Improve — and How It Is Optimized Further",
+                "The full speed & cost optimization pass: zero-schema small talk, MCP-off fast path, failover that never burns tool rounds, light-model-first defaults, the Z.ai GLM provider, and a dedicated chat executor.",
+                """
+                This chapter documents the latest optimization pass end to end — **what was changed, why it \
+                makes the chatbot faster and cheaper, and what to tune next**. Every item below is live in the \
+                current build and covered by unit tests.
+
+                ---
+
+                ### 1. The problems, diagnosed
+
+                | Symptom you saw | Root cause found |
+                | :--- | :--- |
+                | Chat went silent / "stuck" with the dots forever | ALL chat requests ran on the app's single-threaded IO executor. One slow provider call (120 s HTTP timeout + retry ladder) wedged every later message behind it. |
+                | Small talk felt slow and burned quota | A filter bug made the "schema-free" small-talk path actually carry the FULL ~60-tool schema catalogue on every greeting. |
+                | With MCP off there was no reply at all | Tool schemas were still sent with the MCP server stopped; the model could ask for tools that could never run. |
+                | After a quota failover the next request was huge and slow | The model switch replayed every accumulated tool-call + tool-result payload into the NEW model as input tokens. |
+                | Chapters went missing in the Knowledge Hub | The hub preferred a stale local copy forever and the shipped JSON resource lagged behind the seed. |
+
+                ---
+
+                ### 2. What was done to improve
+
+                #### 2.1 Dedicated chat executor — never wedged again
+                Chat/provider requests now run on their own 3-worker pool (`AppExecutors.chat()`), separate from \
+                file/network IO. A slow or hung provider response can no longer block the rest of the app, and the \
+                settings "Test connection" probe runs independently. The busy-dots state always resolves — success \
+                or a friendly error bubble.
+
+                #### 2.2 Zero-schema fast paths (the small-talk fix is big)
+                Tool-schema filtering previously treated an EMPTY tool set as "no restriction", so the \
+                zero-schema paths carried the full catalogue anyway. The filter now means exactly:
+                - `allowed == null` → full catalogue (fail-open / escalation),
+                - `allowed == []` (empty) → **zero tool schemas**,
+                - `allowed == {names}` → shortlist only.
+
+                Greetings like *"hi"*, *"thanks"*, *"good morning"* now dispatch one tiny request with **no tool \
+                schemas at all** — the cheapest request the provider can serve.
+
+                #### 2.3 MCP-off fast path — always a reply, with guidance
+                When Settings → MCP Server is stopped, the assistant detects it before dispatching and:
+                - sends **zero tool schemas** (nothing can hang on a tool that cannot run),
+                - swaps in a system note that instructs the model: *if the user asks for live business data, \
+                tell them to start the MCP server in **Settings → MCP Server***,
+                - answers general conversation normally.
+
+                So with MCP off you always get an instant, useful reply — including the exact "please start MCP \
+                by going to Settings → MCP Server" guidance — instead of silence. If the server dies mid-conversation, \
+                every tool error fed back to the model carries the same hint, so the model relays it.
+
+                #### 2.4 Failover that never burns a tool round
+                Tool rounds are counted **only after a real tool result** comes back. A daily-quota model switch \
+                (`continue` before any tool ran) and a router-escalation re-ask are **FREE** — they never consume \
+                the Max-tool-rounds budget. A unit test locks this contract.
+
+                #### 2.5 Failover drops the MCP payload replay
+                On a quota failover, `AiChatClient.trimForFailover()` rebuilds the payload for the new model from:
+                - the tail of prior **text** turns (the last correct responses), plus
+                - the current interaction from your original prompt onward.
+
+                Every in-flight `call`/`tool` payload pair is dropped — the new model re-plans the work from your \
+                prompt instead of paying for the previous model's tool dump. The shortlist resets to the full \
+                catalogue so the fresh model has every option.
+
+                #### 2.6 Light-by-default model policy
+                - Default chat model: **`gemini-flash-lite-latest`** (Google's stable light alias — immune to \
+                per-version retirements). Heavier models remain one pick away in Settings or the header menu.
+                - The **router pass always runs on the light model**, never on your chosen (possibly paid/scarce) model.
+                - The **failover ladder leads with light models** (`flash-lite` → `flash` → versioned flashes) — \
+                when a bucket empties we step DOWN to the lightest tier with quota left, never up.
+
+                #### 2.7 Z.ai GLM provider — full feature parity
+                New provider **Z.ai GLM** (OpenAI-compatible endpoint `api.z.ai/api/paas/v4`) with the same \
+                treatment as Gemini: default model **`glm-4.5-flash`** (free tier), smart routing, native function \
+                calling, confirmations, and image attachments. Pick it in Settings → Chatbot → Provider.
+
+                #### 2.8 Knowledge Hub merge-on-load
+                The hub now **merges shipped articles into the local library by id** — your local edits stay, and \
+                every newly seeded chapter (including *"07. Tool-Call Limit & Quota Failover"*, which older \
+                installs never received) appears automatically after an update.
+
+                ---
+
+                ### 3. How it is optimized further (effect + next steps)
+
+                | Optimization | Typical effect |
+                | :--- | :--- |
+                | Small talk zero-schema | ~7–10K input tokens saved **per greeting**; replies in a round trip. |
+                | Router on light model | Router latency ≈ sub-second; zero burn of your main model's daily quota. |
+                | Shortlisted schemas | Data questions carry ~1K of schema tokens instead of the full ~7–10K. |
+                | Failover payload trim | Post-failover request shrinks from (history + all tool payloads) to (history + prompt). |
+                | MCP-off fast path | Instant replies with MCP off; no wasted tool rounds, no hang. |
+                | Light default model | The largest free daily quota tier is consumed first — expensive requests only when you opt in. |
+
+                **Tuning knobs in Settings → Chatbot**
+                - *Max tool rounds* (1–20, default 6): keep 4–6 for daily use; raise only for long multi-step jobs.
+                - *History window* (4–80, default 12 on new installs): smaller = faster + cheaper per request.
+                - *Smart tool routing*: keep ON — it is the single biggest token saver.
+
+                **Future roadmap**: parallel tool execution inside a round, response caching for repeated reports, \
+                per-message model hints ("answer fast" vs "think hard"), and streaming partial replies into the bubble.
+                """,
+                now,
+                "InvoiceStudio AI Core"
+        ));
+
         return list;
     }
 }

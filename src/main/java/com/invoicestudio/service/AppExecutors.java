@@ -21,6 +21,23 @@ public final class AppExecutors {
     /** Network / file I/O: single thread, serialized, so parallel logins can't race. */
     private static final ExecutorService IO = single("invoicestudio-io");
 
+    /**
+     * Chat/AI requests: small dedicated pool. AI calls legitimately run for
+     * many seconds (smart-router pass + tool rounds + provider retries), so
+     * they must NEVER share the serialized IO thread — one slow provider
+     * response used to wedge every later message behind it (the chat
+     * showed the busy dots forever and "got stuck"). 3 workers keep the
+     * chat panel, the settings "Test connection" probe and a bulk flow
+     * independent of each other and of file/network IO.
+     */
+    private static final ExecutorService CHAT = Executors.newFixedThreadPool(
+            3,
+            r -> {
+                Thread t = new Thread(r, "invoicestudio-chat");
+                t.setDaemon(true);
+                return t;
+            });
+
     /** CPU-bound work (rendering, image, export prep) that must not touch the DB. */
     private static final ExecutorService CPU = Executors.newFixedThreadPool(
             Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
@@ -36,6 +53,11 @@ public final class AppExecutors {
 
     public static ExecutorService io() {
         return IO;
+    }
+
+    /** Dedicated pool for chat/AI provider requests (never blocked by file IO). */
+    public static ExecutorService chat() {
+        return CHAT;
     }
 
     public static ExecutorService cpu() {
@@ -63,6 +85,7 @@ public final class AppExecutors {
     public static void shutdownAll() {
         if (SHUTDOWN.compareAndSet(false, true)) {
             IO.shutdownNow();
+            CHAT.shutdownNow();
             CPU.shutdownNow();
         }
     }

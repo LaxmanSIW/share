@@ -94,12 +94,19 @@ public final class ModelCatalog {
                 m.path("description").asText(""), m.path("inputTokenLimit").asLong(0));
     }
 
-    /** Ordered failover candidates for the assistant (fast flash models first). */
+    /**
+     * Ordered failover candidates for the assistant (fast flash models first).
+     * LIGHT models lead the ladder: when the daily bucket of the primary
+     * model empties, we drop to the lightest tier with remaining quota —
+     * never UP to a scarcer/pro model. All candidates are flash-family
+     * models that keep full function-calling support.
+     */
     public static List<String> failoverCandidates() {
         return List.of(
-                "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.7-flash",
-                "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash",
-                "gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite");
+                "gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash",
+                "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash",
+                "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash-lite",
+                "gemini-3.1-flash-lite");
     }
 
     /** Next untried candidate after {@code current} (never returns current). */

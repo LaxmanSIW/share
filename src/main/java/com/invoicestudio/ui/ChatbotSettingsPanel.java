@@ -38,14 +38,14 @@ public class ChatbotSettingsPanel extends VBox {
 
     private final ComboBox<String> providerCb = new ComboBox<>(
             javafx.collections.FXCollections.observableArrayList(
-                    ChatbotConfig.GEMINI, ChatbotConfig.OPENAI, ChatbotConfig.ANTHROPIC,
+                    ChatbotConfig.GEMINI, ChatbotConfig.GLM, ChatbotConfig.OPENAI, ChatbotConfig.ANTHROPIC,
                     ChatbotConfig.OPENROUTER, ChatbotConfig.GROQ, ChatbotConfig.OLLAMA,
                     ChatbotConfig.MISTRAL, ChatbotConfig.DEEPSEEK, ChatbotConfig.CUSTOM));
     private final TextField modelField = new TextField();
     private final javafx.scene.control.Button browseBtn = new javafx.scene.control.Button("Browse…");
     private final PasswordField keyField = new PasswordField();
     private final TextField endpointField = new TextField();
-    private final Spinner<Integer> historySpin = new Spinner<>(4, 80, 30, 2);
+    private final Spinner<Integer> historySpin = new Spinner<>(4, 80, 12, 2);
     private final CheckBox showIconCb = new CheckBox("Show the floating chat icon (bottom-right)");
     private final CheckBox smartRouteCb = new CheckBox("Smart tool routing (recommended — fewer tokens & requests)");
     private final Spinner<Integer> maxToolSpin = new Spinner<>(1, 20, 6, 1);
@@ -73,8 +73,9 @@ public class ChatbotSettingsPanel extends VBox {
         title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #F2F4F8;");
         Label desc = new Label("A built-in assistant that chats with your live business data. It uses the same "
                 + "tool access as the MCP server (read tools run directly; destructive operations always ask for "
-                + "your approval in Settings → MCP Server). Bring your own API key — Gemini, OpenAI or "
-                + "Claude-compatible endpoints are supported.");
+                + "your approval in Settings → MCP Server). Bring your own API key — Gemini, Z.ai GLM, OpenAI or "
+                + "Claude-compatible endpoints are supported. A light, fast model is used by default so free "+
+                "quotas last; pick a heavier model only when you need it.");
         desc.setWrapText(true);
         desc.setStyle("-fx-font-size: 12px; -fx-text-fill: #97A3B6;");
         VBox box = new VBox(6, title, desc);
@@ -118,7 +119,8 @@ public class ChatbotSettingsPanel extends VBox {
         styleField(endpointField);
 
         Label keyNote = new Label("The key never leaves this computer except to call your chosen provider directly. "
-                + "Get a Gemini key free at aistudio.google.com/apikey.");
+                + "Get a Gemini key free at aistudio.google.com/apikey, or a Z.ai GLM key at z.ai — its flash "
+                + "tier is free.");
         keyNote.setWrapText(true);
         keyNote.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0;");
 
@@ -160,7 +162,9 @@ public class ChatbotSettingsPanel extends VBox {
         routeNote.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0;");
         Label toolNote = new Label(
                 "Maximum model\u2194tool round-trips per single request. Lower = cheaper / faster; raise for complex "
-                + "multi-step tasks. The assistant will tell you if it hits this limit and ask you to continue.");
+                + "multi-step tasks. Round-trips spent only on switching models after a daily-quota failover or "
+                + "re-planning after a router escalation are FREE — they never consume this budget. The assistant "
+                + "will tell you if it hits this limit and ask you to continue.");
         toolNote.setWrapText(true);
         toolNote.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0;");
         VBox box = new VBox(8, head, showIconCb, smartRouteCb, routeNote,
@@ -255,7 +259,7 @@ public class ChatbotSettingsPanel extends VBox {
             status.setStyle("-fx-font-size: 12px; -fx-text-fill: #dc2626;");
             status.setText("Failed: " + (ex == null ? "unknown error" : ex.getMessage()));
         }));
-        AppExecutors.io().execute(task);
+        AppExecutors.chat().execute(task);
     }
 
     // ── Small builders ────────────────────────────────────────────────

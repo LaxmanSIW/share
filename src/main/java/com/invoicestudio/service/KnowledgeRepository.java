@@ -70,6 +70,18 @@ public final class KnowledgeRepository {
                         new TypeReference<List<KnowledgeArticle>>() {});
                 if (loaded != null && !loaded.isEmpty()) {
                     articles.addAll(loaded);
+                    // ── Merge shipped updates into the local library ──────────
+                    // The local copy wins for articles the user already has
+                    // (their edits must never be clobbered), but articles that
+                    // ship NEW with an app update (e.g. newly seeded chapters)
+                    // must reach existing installs too — a plain "local wins"
+                    // rule froze every install on the article list it first
+                    // saved, which is exactly why shipped chapters went
+                    // missing ("chapter not showing" reports).
+                    boolean merged = mergeShippedArticles(loadShippedArticles());
+                    if (merged) {
+                        saveToLocalStorage();
+                    }
                     return;
                 }
             } catch (Exception ex) {
@@ -112,6 +124,53 @@ public final class KnowledgeRepository {
         // 4. Seed default documentation
         articles.addAll(createDefaultArticles());
         saveToFile();
+    }
+
+    /**
+     * Loads the bundled article list for merge-on-load: dev source first
+     * (dev workspaces), then the classpath resource shipped in the jar.
+     * Returns an empty list when neither is readable — merging then no-ops
+     * and the local library loads untouched.
+     */
+    private List<KnowledgeArticle> loadShippedArticles() {
+        List<KnowledgeArticle> shipped = new ArrayList<>();
+        if (persistToDevSource && Files.exists(SOURCE_DEV_PATH)) {
+            try {
+                shipped.addAll(MAPPER.readValue(SOURCE_DEV_PATH.toFile(),
+                        new TypeReference<List<KnowledgeArticle>>() {}));
+            } catch (Exception ex) {
+                AppLog.debug(ex);
+            }
+        }
+        if (shipped.isEmpty()) {
+            try (InputStream in = KnowledgeRepository.class.getResourceAsStream(CLASSPATH_RESOURCE)) {
+                if (in != null) {
+                    shipped.addAll(MAPPER.readValue(in, new TypeReference<List<KnowledgeArticle>>() {}));
+                }
+            } catch (Exception ex) {
+                AppLog.debug(ex);
+            }
+        }
+        return shipped;
+    }
+
+    /**
+     * Adds every shipped article whose id is missing locally.
+     *
+     * @return true when at least one article was added (caller should persist)
+     */
+    private boolean mergeShippedArticles(List<KnowledgeArticle> shipped) {
+        if (shipped == null || shipped.isEmpty()) return false;
+        Set<String> known = new HashSet<>();
+        for (KnowledgeArticle a : articles) known.add(a.id());
+        boolean added = false;
+        for (KnowledgeArticle b : shipped) {
+            if (b != null && b.id() != null && known.add(b.id())) {
+                articles.add(b);
+                added = true;
+            }
+        }
+        return added;
     }
 
     public synchronized void saveArticle(KnowledgeArticle article) {

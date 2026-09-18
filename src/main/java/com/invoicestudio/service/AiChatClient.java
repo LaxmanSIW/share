@@ -106,6 +106,23 @@ public final class AiChatClient {
         //      those schemas (~7K → ~1K input tokens typically).
         //   3. If the model calls a tool outside the shortlist, escalate ONCE
         //      to the full catalogue (correctness net, rare).
+
+        // ── MCP-off fast path ─────────────────────────────────────────
+        // When the MCP server is stopped the assistant has no business-data
+        // tools at all. Sending schemas anyway made the model ask for tools
+        // that could never run (or hang on the old single-thread executor).
+        // Instead: dispatch with ZERO schemas and a system note that tells
+        // the model to point the user at Settings → MCP Server — the chat
+        // always replies, instantly, with actionable guidance.
+        boolean mcpOff = !com.invoicestudio.mcp.McpServer.isRunning();
+        if (mcpOff) {
+            ChatbotLogManager.warn("MCP server is OFF — replying without business-data tools",
+                    "If the user asks for live data the model will direct them to Settings → MCP Server");
+            ProviderResponse resp = dispatch(cfg, turns, java.util.Set.of(), true);
+            ChatbotLogManager.success("Completed (MCP off — conversational reply)", resp.text());
+            return new ChatResult(resp.text(), List.of());
+        }
+
         java.util.Set<String> allowed = null;
         boolean confirmCtx = isConfirmationContext(turns, userText);
         if (confirmCtx) {
@@ -116,7 +133,7 @@ public final class AiChatClient {
             boolean pureChat = !confirmCtx && turns.size() <= 1 && CHAT_ONLY.matcher(first).matches();
             if (pureChat) {
                 ChatbotLogManager.router("Smalltalk detected -> schema-free dispatch (0 tools)", first);
-                ProviderResponse resp = dispatch(cfg, turns, java.util.Set.of());
+                ProviderResponse resp = dispatch(cfg, turns, java.util.Set.of(), false);
                 ChatbotLogManager.success("Completed via pure conversational shortcut", resp.text());
                 return new ChatResult(resp.text(), List.of());
             }
@@ -160,7 +177,7 @@ public final class AiChatClient {
                         + " (" + activeModel + ")",
                         "Turns in payload: " + turns.size() + ", Allowed tools: "
                         + (allowed == null ? "ALL (" + McpToolRegistry.tools().size() + ")" : allowed.toString()));
-                resp = dispatch(cfg, turns, allowed);
+                resp = dispatch(cfg, turns, allowed, false);
             } catch (IllegalStateException ex) {
                 ChatbotLogManager.error("Provider call failed: " + ex.getMessage(), null);
                 String msg = String.valueOf(ex.getMessage());
@@ -183,6 +200,15 @@ public final class AiChatClient {
                         ChatbotLogManager.warn(
                                 "Model " + currentModel + " hit daily quota — trying " + next, null);
                         cfg.setModel(next);
+                        // Failover is FREE: it does not consume a tool round
+                        // (round is only incremented after a real tool result
+                        // comes back). The heavy in-flight MCP payloads are
+                        // dropped too — the new model restarts from the last
+                        // good conversational context + the original prompt,
+                        // instead of replaying every tool call/result pair.
+                        turns = trimForFailover(turns, cfg);
+                        allowed = null;      // new model plans fresh, full catalogue
+                        escalated = false;   // and may escalate once again
                         trace.add("⚠ model " + (originalModel.isBlank() ? "default" : originalModel)
                                 + " hit its daily limit — switched to " + next);
                         continue;
@@ -243,7 +269,12 @@ public final class AiChatClient {
                     Object res = McpToolRegistry.call(tc.name(), parseArgs(tc.argumentsJson()));
                     out = M.writeValueAsString(res);
                 } catch (Exception e) {
-                    out = M.writeValueAsString(Map.of("error", String.valueOf(e.getMessage())));
+                    String err = String.valueOf(e.getMessage());
+                    if (!com.invoicestudio.mcp.McpServer.isRunning()) {
+                        err += " | hint: the MCP server is OFF — tell the user to start it in "
+                                + "Settings → MCP Server, then ask again.";
+                    }
+                    out = M.writeValueAsString(Map.of("error", err));
                 }
                 long elapsed = System.currentTimeMillis() - t0;
                 ChatbotLogManager.mcp("MCP " + tc.name() + " executed in " + elapsed + "ms",
@@ -384,8 +415,11 @@ public final class AiChatClient {
     }
 
     private String rawGemini(ChatbotConfig cfg, String system, String userText) throws Exception {
-        // The router runs on a lean Flash model.
-        String model = cfg.getModel().isBlank() ? "gemini-flash-latest" : cfg.getModel();
+        // The router always runs on the LIGHTEST flash model: it only has to
+        // classify the request (or answer small talk), it never touches
+        // business data — so it must not burn the user's chosen (possibly
+        // paid/scarce) model quota and adds minimal latency.
+        String model = "gemini-flash-lite-latest";
         String url = (cfg.getEndpoint().isBlank()
                 ? "https://generativelanguage.googleapis.com/v1beta/models/" : cfg.getEndpoint())
                 + model + ":generateContent?key=" + cfg.getApiKey();
@@ -410,6 +444,7 @@ public final class AiChatClient {
             case ChatbotConfig.OLLAMA -> "http://localhost:11434/v1/chat/completions";
             case ChatbotConfig.MISTRAL -> "https://api.mistral.ai/v1/chat/completions";
             case ChatbotConfig.DEEPSEEK -> "https://api.deepseek.com/v1/chat/completions";
+            case ChatbotConfig.GLM -> GLM_ENDPOINT;
             default -> cfg.getEndpoint().isBlank()
                     ? "https://api.openai.com/v1/chat/completions" : cfg.getEndpoint();
         };
@@ -422,29 +457,47 @@ public final class AiChatClient {
         return root.path("choices").path(0).path("message").path("content").asText("");
     }
 
-    /** Routes to the right provider implementation with the allowed-tool filter. */
+    /**
+     * Routes to the right provider implementation with the allowed-tool filter.
+     *
+     * @param mcpOff when true the request carries zero tool schemas and the
+     *               system instruction explains how to re-enable tools —
+     *               used when the MCP server is stopped so the model can
+     *               still answer (and point at Settings → MCP Server).
+     */
     private ProviderResponse dispatch(ChatbotConfig cfg, List<ChatTurn> turns,
-                                      java.util.Set<String> allowed) throws Exception {
+                                      java.util.Set<String> allowed, boolean mcpOff) throws Exception {
         return switch (cfg.getProvider()) {
             case ChatbotConfig.OPENAI -> callOpenAiCompatible(cfg, turns,
-                    "https://api.openai.com/v1/chat/completions", Map.of(), allowed);
-            case ChatbotConfig.ANTHROPIC -> callAnthropic(cfg, turns, allowed);
+                    "https://api.openai.com/v1/chat/completions", Map.of(), allowed, mcpOff);
+            case ChatbotConfig.ANTHROPIC -> callAnthropic(cfg, turns, allowed, mcpOff);
             case ChatbotConfig.OPENROUTER -> callOpenAiCompatible(cfg, turns,
-                    "https://openrouter.ai/api/v1/chat/completions", Map.of(), allowed);
+                    "https://openrouter.ai/api/v1/chat/completions", Map.of(), allowed, mcpOff);
             case ChatbotConfig.GROQ -> callOpenAiCompatible(cfg, turns,
-                    "https://api.groq.com/openai/v1/chat/completions", Map.of(), allowed);
+                    "https://api.groq.com/openai/v1/chat/completions", Map.of(), allowed, mcpOff);
             case ChatbotConfig.OLLAMA -> callOpenAiCompatible(cfg, turns,
-                    "http://localhost:11434/v1/chat/completions", Map.of(), allowed);
+                    "http://localhost:11434/v1/chat/completions", Map.of(), allowed, mcpOff);
             case ChatbotConfig.MISTRAL -> callOpenAiCompatible(cfg, turns,
-                    "https://api.mistral.ai/v1/chat/completions", Map.of(), allowed);
+                    "https://api.mistral.ai/v1/chat/completions", Map.of(), allowed, mcpOff);
             case ChatbotConfig.DEEPSEEK -> callOpenAiCompatible(cfg, turns,
-                    "https://api.deepseek.com/v1/chat/completions", Map.of(), allowed);
-            case ChatbotConfig.CUSTOM -> callOpenAiCompatible(cfg, turns, "", Map.of(), allowed);
-            default -> callGemini(cfg, turns, allowed);
+                    "https://api.deepseek.com/v1/chat/completions", Map.of(), allowed, mcpOff);
+            case ChatbotConfig.GLM -> callOpenAiCompatible(cfg, turns, GLM_ENDPOINT, Map.of(), allowed, mcpOff);
+            case ChatbotConfig.CUSTOM -> callOpenAiCompatible(cfg, turns, "", Map.of(), allowed, mcpOff);
+            default -> callGemini(cfg, turns, allowed, mcpOff);
         };
     }
 
-    /** Provider default model when the user left the model field blank. */
+    /** Z.ai (GLM) OpenAI-compatible chat endpoint — free flash tier by default. */
+    public static final String GLM_ENDPOINT = "https://api.z.ai/api/paas/v4/chat/completions";
+
+    /**
+     * Provider default model when the user left the model field blank.
+     *
+     * <p><b>Light-by-default policy:</b> Gemini defaults to the flash-LITE
+     * alias — the lightest chat-capable tier — so everyday questions never
+     * burn the scarcer flash/pro request quotas. Heavier models remain one
+     * pick away in Settings → Chatbot / the header model menu.</p>
+     */
     public static String defaultModel(String provider) {
         return switch (provider) {
             case ChatbotConfig.OPENAI -> "gpt-4o-mini";
@@ -454,11 +507,12 @@ public final class AiChatClient {
             case ChatbotConfig.OLLAMA -> "llama3.1";
             case ChatbotConfig.MISTRAL -> "mistral-large-latest";
             case ChatbotConfig.DEEPSEEK -> "deepseek-chat";
+            case ChatbotConfig.GLM -> "glm-4.5-flash"; // free tier on Z.ai
             case ChatbotConfig.CUSTOM -> "";
-            // "flash-latest" is Google's stable alias for the current flash
-            // model — immune to per-version retirements (gemini-2.0-flash's
-            // 404 was live-verified) and listed for this key.
-            default -> "gemini-flash-latest";
+            // "flash-lite-latest" is Google's stable alias for the current
+            // light flash model — immune to per-version retirements (the
+            // gemini-2.0-flash 404 was live-verified) and listed for this key.
+            default -> "gemini-flash-lite-latest";
         };
     }
 
@@ -472,6 +526,7 @@ public final class AiChatClient {
             case ChatbotConfig.OLLAMA -> "Ollama (local, free)";
             case ChatbotConfig.MISTRAL -> "Mistral AI";
             case ChatbotConfig.DEEPSEEK -> "DeepSeek";
+            case ChatbotConfig.GLM -> "Z.ai GLM (free flash tier)";
             case ChatbotConfig.CUSTOM -> "Custom OpenAI-compatible…";
             default -> "Google Gemini";
         };
@@ -482,16 +537,21 @@ public final class AiChatClient {
     // ─────────────────────────────────────────────────────────────────
 
     private ProviderResponse callGemini(ChatbotConfig cfg, List<ChatTurn> turns,
-                                        java.util.Set<String> allowed) throws Exception {
+                                        java.util.Set<String> allowed, boolean mcpOff) throws Exception {
         String model = cfg.getModel().isBlank() ? defaultModel(ChatbotConfig.GEMINI) : cfg.getModel();
         String url = (cfg.getEndpoint().isBlank()
                 ? "https://generativelanguage.googleapis.com/v1beta/models/" : cfg.getEndpoint())
                 + model + ":generateContent?key=" + cfg.getApiKey();
 
         ObjectNode body = M.createObjectNode();
-        body.set("system_instruction", sysInstruction());
+        body.set("system_instruction", sysInstruction(mcpOff));
         body.set("contents", geminiContents(cfg, turns));
-        body.set("tools", geminiTools(allowed));
+        // Zero-schema fast paths (smalltalk / MCP-off) omit the tools field
+        // entirely — some Gemini versions reject an EMPTY functionDeclarations
+        // array with HTTP 400, and an omitted field is the cleanest "no tools".
+        if (allowed == null || !allowed.isEmpty()) {
+            body.set("tools", geminiTools(allowed));
+        }
 
         JsonNode root = post(url, "POST", body, Map.of());
         JsonNode cand = root.path("candidates").path(0);
@@ -594,7 +654,9 @@ public final class AiChatClient {
     private ArrayNode geminiTools(java.util.Set<String> allowed) {
         ArrayNode fns = M.createArrayNode();
         for (McpToolRegistry.ToolDef t : McpToolRegistry.tools()) {
-            if (allowed != null && !allowed.isEmpty() && !allowed.contains(t.name)) continue;
+            // allowed == null → full catalogue; empty set → ZERO tools
+            // (smalltalk / MCP-off fast paths). Non-empty → shortlist only.
+            if (allowed != null && !allowed.contains(t.name)) continue;
             ObjectNode f = fns.addObject();
             f.put("name", t.name);
             f.put("description", t.description);
@@ -626,7 +688,7 @@ public final class AiChatClient {
 
     private ProviderResponse callOpenAiCompatible(ChatbotConfig cfg, List<ChatTurn> turns,
                                                   String defaultUrl, Map<String, String> extraHeaders,
-                                                  java.util.Set<String> allowed) throws Exception {
+                                                  java.util.Set<String> allowed, boolean mcpOff) throws Exception {
         String model = cfg.getModel().isBlank() ? defaultModel(cfg.getProvider()) : cfg.getModel();
         String url = cfg.getEndpoint().isBlank() ? defaultUrl : cfg.getEndpoint();
         if (url == null || url.isBlank()) {
@@ -637,7 +699,7 @@ public final class AiChatClient {
         ObjectNode body = M.createObjectNode();
         body.put("model", model);
         ArrayNode msgs = body.putArray("messages");
-        msgs.add(M.createObjectNode().put("role", "system").put("content", systemPrompt()));
+        msgs.add(M.createObjectNode().put("role", "system").put("content", systemPrompt(mcpOff)));
         for (ChatTurn t : prepareTurns(turns, cfg)) {
             switch (t.role()) {
                 case "call" -> {
@@ -682,13 +744,18 @@ public final class AiChatClient {
                 default -> { }
             }
         }
-        ArrayNode tools = body.putArray("tools");
-        for (McpToolRegistry.ToolDef t : McpToolRegistry.tools()) {
-            if (allowed != null && !allowed.isEmpty() && !allowed.contains(t.name)) continue;
-            ObjectNode fn = tools.addObject().put("type", "function").putObject("function");
-            fn.put("name", t.name);
-            fn.put("description", t.description);
-            fn.set("parameters", M.valueToTree(t.inputSchema));
+        // Zero-schema fast paths omit the tools field entirely (empty tools
+        // arrays are rejected by some providers with HTTP 400).
+        if (allowed == null || !allowed.isEmpty()) {
+            ArrayNode tools = body.putArray("tools");
+            for (McpToolRegistry.ToolDef t : McpToolRegistry.tools()) {
+                // allowed == null → full catalogue; empty set → ZERO tools.
+                if (allowed != null && !allowed.contains(t.name)) continue;
+                ObjectNode fn = tools.addObject().put("type", "function").putObject("function");
+                fn.put("name", t.name);
+                fn.put("description", t.description);
+                fn.set("parameters", M.valueToTree(t.inputSchema));
+            }
         }
 
         Map<String, String> headers = new java.util.LinkedHashMap<>(extraHeaders);
@@ -712,7 +779,7 @@ public final class AiChatClient {
     // ─────────────────────────────────────────────────────────────────
 
     private ProviderResponse callAnthropic(ChatbotConfig cfg, List<ChatTurn> turns,
-                                           java.util.Set<String> allowed) throws Exception {
+                                           java.util.Set<String> allowed, boolean mcpOff) throws Exception {
         String model = cfg.getModel().isBlank() ? defaultModel(ChatbotConfig.ANTHROPIC) : cfg.getModel();
         String url = cfg.getEndpoint().isBlank()
                 ? "https://api.anthropic.com/v1/messages" : cfg.getEndpoint();
@@ -724,7 +791,7 @@ public final class AiChatClient {
         // returns the INNER node, and Anthropic needs { "system": [ {type,text} ] }.
         ObjectNode sysBlock = M.createObjectNode();
         ObjectNode sysItem = sysBlock.putArray("content").addObject();
-        sysItem.put("type", "text").put("text", systemPrompt());
+        sysItem.put("type", "text").put("text", systemPrompt(mcpOff));
         body.set("system", sysBlock.get("content"));
         ArrayNode msgs = body.putArray("messages");
         for (ChatTurn t : prepareTurns(turns, cfg)) {
@@ -773,13 +840,18 @@ public final class AiChatClient {
                 default -> { }
             }
         }
-        ArrayNode tools = body.putArray("tools");
-        for (McpToolRegistry.ToolDef t : McpToolRegistry.tools()) {
-            if (allowed != null && !allowed.isEmpty() && !allowed.contains(t.name)) continue;
-            ObjectNode f = tools.addObject();
-            f.put("name", t.name);
-            f.put("description", t.description);
-            f.set("input_schema", M.valueToTree(t.inputSchema));
+        // Zero-schema fast paths omit the tools field entirely (empty tools
+        // arrays are rejected by some providers with HTTP 400).
+        if (allowed == null || !allowed.isEmpty()) {
+            ArrayNode tools = body.putArray("tools");
+            for (McpToolRegistry.ToolDef t : McpToolRegistry.tools()) {
+                // allowed == null → full catalogue; empty set → ZERO tools.
+                if (allowed != null && !allowed.contains(t.name)) continue;
+                ObjectNode f = tools.addObject();
+                f.put("name", t.name);
+                f.put("description", t.description);
+                f.set("input_schema", M.valueToTree(t.inputSchema));
+            }
         }
 
         JsonNode root = post(url, "POST", body, Map.of(
@@ -926,18 +998,80 @@ public final class AiChatClient {
         return combined;
     }
 
+    /**
+     * Slims the conversation for a post-quota-failover request on a NEW model.
+     *
+     * <p>The failed model may have accumulated many call/tool turn pairs —
+     * each pairing re-sends the full MCP tool result payloads (up to
+     * {@link #MAX_RESULT_CHARS} chars per result) as input tokens. Replaying
+     * all of that into a fresh model burns quota and adds latency for context
+     * the new model never asked for. Instead we keep:</p>
+     * <ul>
+     *   <li>the tail of the prior conversation (user + assistant TEXT only,
+     *       i.e. the last correct responses), trimmed to the configured
+     *       history window, and</li>
+     *   <li>the current interaction from the user's original prompt onward —
+     *       with every in-flight call/tool payload dropped.</li>
+     * </ul>
+     * The new model then re-plans the tool work itself, from the prompt.
+     */
+    static List<ChatTurn> trimForFailover(List<ChatTurn> turns, ChatbotConfig cfg) {
+        if (turns == null || turns.isEmpty()) return turns;
+        int lastUser = -1;
+        for (int i = turns.size() - 1; i >= 0; i--) {
+            if ("user".equals(turns.get(i).role())) { lastUser = i; break; }
+        }
+        if (lastUser < 0) return turns;
+
+        List<ChatTurn> prior = new ArrayList<>();
+        for (ChatTurn t : turns.subList(0, lastUser)) {
+            if ("user".equals(t.role()) || "assistant".equals(t.role())) prior.add(t);
+        }
+        int keep = cfg.getHistoryMessages();
+        if (prior.size() > keep) {
+            prior = new ArrayList<>(prior.subList(prior.size() - keep, prior.size()));
+        }
+        List<ChatTurn> out = new ArrayList<>(prior);
+        // Keep ONLY the user's original prompt — every in-flight call/tool
+        // payload turn that the failed model accumulated is dropped.
+        out.add(turns.get(lastUser));
+        return out;
+    }
+
     private ObjectNode sysInstruction() throws Exception {
+        return sysInstruction(false);
+    }
+
+    private ObjectNode sysInstruction(boolean mcpOff) throws Exception {
         // NOTE: same chained-call trap as the Anthropic system block — hold the
         // wrapper explicitly so we return { "parts": [ {"text": …} ] }, not the
         // bare inner text node (that exact mistake produced Gemini HTTP 400s).
         ObjectNode si = M.createObjectNode();
         ObjectNode part = si.putArray("parts").addObject();
-        part.put("text", systemPrompt());
+        part.put("text", systemPrompt(mcpOff));
         return si;
     }
 
     /** The assistant's identity + tool etiquette. Mirrors MCP_SERVER.md's safety model. */
     private String systemPrompt() {
+        return systemPrompt(false);
+    }
+
+    /** The assistant's identity + tool etiquette. Mirrors MCP_SERVER.md's safety model. */
+    private String systemPrompt(boolean mcpOff) {
+        if (mcpOff) {
+            return """
+                    You are the InvoiceStudio Assistant, embedded inside the InvoiceStudio desktop billing \
+                    application. The InvoiceStudio MCP tool server is currently OFF, so you have NO \
+                    business-data tools in this conversation — do not pretend to look anything up and do \
+                    not invent numbers. Answer general conversation normally (greetings, explanations, \
+                    billing advice, template/design help). Whenever the user asks for live business data \
+                    (bills, buyers, suppliers, items, stock, purchases, expenses, reports, printing) or \
+                    any action on their records, politely explain that the MCP server is switched off and \
+                    tell them exactly: please start the MCP server by going to Settings → MCP Server and \
+                    turning it on (Auto-start keeps it on). After they start it, they can ask again. \
+                    Answer in the user's language and be concise.""";
+        }
         return """
                 You are the InvoiceStudio Assistant, embedded inside the InvoiceStudio desktop billing \
                 application (wholesale apparel business: buyers, suppliers, items/stock, invoices, purchases, \

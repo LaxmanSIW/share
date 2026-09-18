@@ -590,9 +590,36 @@ public class ChatbotPanel extends VBox {
             messages.getChildren().remove(busy);
             sendBtn.setDisable(false);
             Throwable ex = task.getException();
-            addAiBubble(ex == null ? "Request failed." : String.valueOf(ex.getMessage()), null);
+            addAiBubble(friendlyError(ex), null);
         }));
-        AppExecutors.io().execute(task);
+        AppExecutors.chat().execute(task);
+    }
+
+    /**
+     * Human-readable failure text. When the MCP tool server is off (or the
+     * failure mentions the tool layer) the message points at Settings →
+     * MCP Server instead of showing a raw stacktrace string — the assistant
+     * must never go silent or leave the user with "null".
+     */
+    private static String friendlyError(Throwable ex) {
+        String raw = ex == null ? null : String.valueOf(ex.getMessage());
+        if (raw == null || raw.isBlank() || "null".equals(raw)) {
+            raw = ex == null ? "unknown error" : ex.getClass().getSimpleName();
+        }
+        boolean mcpRelated = raw.toLowerCase().contains("mcp")
+                || raw.contains("DataManager")
+                || raw.contains("McpToolRegistry")
+                || raw.contains("tool");
+        if (mcpRelated && !com.invoicestudio.mcp.McpServer.isRunning()) {
+            return "The assistant couldn't run its business-data tools because the MCP server is not "
+                    + "running. Please start MCP by going to Settings → MCP Server (switch it on, or "
+                    + "enable Auto-start), then ask again.\n\nTechnical detail: " + raw;
+        }
+        if (mcpRelated) {
+            return "A business-data tool failed while answering. The MCP server is running, so this is "
+                    + "likely temporary — please try again.\n\nTechnical detail: " + raw;
+        }
+        return raw;
     }
 
     /** The attachment of the newest user turn (for the in-flight request). */
