@@ -12,7 +12,8 @@ import java.io.File;
  * <p>Stored per-user as {@code chatbot.json} in the application data
  * directory (same pattern as {@code mcp-server.json}). Holds the provider
  * choice (Gemini / OpenAI / Anthropic-compatible), model id, API key,
- * optional endpoint override and whether the floating chat icon is shown.</p>
+ * optional endpoint override, whether the floating chat icon is shown,
+ * the maximum tool-call rounds per send, and smart-routing toggle.</p>
  */
 public final class ChatbotConfig {
 
@@ -45,6 +46,12 @@ public final class ChatbotConfig {
     /** Smart tool routing: a cheap first pass decides if tools are needed at
      *  all, so chat-only messages never carry the full tool schemas. */
     private boolean smartRouting = true;
+    /**
+     * Maximum number of model↔tool round-trips allowed per single send.
+     * Capped in both directions (1–20) by the getter. Default matches the
+     * previous hard-coded {@code MAX_TOOL_ROUNDS = 6}.
+     */
+    private int maxToolCalls = 6;
 
     private static final java.util.List<java.util.function.Consumer<ChatbotConfig>> LISTENERS =
             new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -119,4 +126,8 @@ public final class ChatbotConfig {
     /** Smart tool routing (cheap router pass, fewer/leaner requests). */
     public boolean isSmartRouting() { return smartRouting; }
     public void setSmartRouting(boolean smartRouting) { this.smartRouting = smartRouting; }
+
+    /** Max model↔tool round-trips per send (1–20). */
+    public int getMaxToolCalls() { return Math.max(1, Math.min(20, maxToolCalls)); }
+    public void setMaxToolCalls(int maxToolCalls) { this.maxToolCalls = maxToolCalls; }
 }

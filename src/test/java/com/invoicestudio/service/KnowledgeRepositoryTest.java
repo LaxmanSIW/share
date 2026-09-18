@@ -31,16 +31,19 @@ class KnowledgeRepositoryTest {
     }
 
     @Test
-    void seedsDefaultArticlesUnderTscRoot() {
+    void seedsDefaultArticlesWithTscAndAiChatbot() {
         List<KnowledgeArticle> articles = repo.getAllArticles();
         assertFalse(articles.isEmpty(), "Should seed default articles");
-        assertTrue(articles.size() >= 12, "Should seed at least 12 TSC articles");
+        assertTrue(articles.size() >= 24, "Should seed at least 24 articles (TSC + AI Chatbot): got " + articles.size());
 
-        // Verify all default articles start under TSC
+        // Verify articles belong to either TSC or AI Chatbot and carry authors
         for (KnowledgeArticle a : articles) {
-            assertTrue(a.path().startsWith("TSC"), "Default article path must start with 'TSC': " + a.path());
+            assertTrue(a.path().startsWith("TSC") || a.path().startsWith("AI Chatbot"),
+                    "Default article path must start with 'TSC' or 'AI Chatbot': " + a.path());
             assertNotNull(a.markdown(), "Article markdown must not be null");
             assertFalse(a.markdown().isBlank(), "Article markdown must not be blank");
+            assertNotNull(a.author(), "Article author must not be null");
+            assertFalse(a.author().isBlank(), "Article author must not be blank");
         }
 
         // Verify persistence to disk
@@ -49,31 +52,40 @@ class KnowledgeRepositoryTest {
     }
 
     @Test
-    void buildsMultiLevelCategoryTree() {
+    void buildsMultiLevelCategoryTreeWithBothRoots() {
         KnowledgeRepository.CategoryNode root = repo.buildCategoryTree();
         assertNotNull(root);
         assertFalse(root.subCategories().isEmpty());
 
-        // Find the "TSC" root category
+        // Find "TSC" root category
         KnowledgeRepository.CategoryNode tscNode = root.subCategories().stream()
                 .filter(c -> "TSC".equalsIgnoreCase(c.name()))
                 .findFirst()
                 .orElse(null);
-
         assertNotNull(tscNode, "Category tree must contain 'TSC' as top-level category");
         assertTrue(tscNode.subCategories().size() >= 4, "TSC should have subcategories like TA210, TSPL, etc.");
-        assertTrue(tscNode.totalArticles() >= 12, "TSC should contain all seeded articles");
+        assertTrue(tscNode.totalArticles() >= 12, "TSC should contain at least 12 articles");
+
+        // Find "AI Chatbot" root category
+        KnowledgeRepository.CategoryNode aiNode = root.subCategories().stream()
+                .filter(c -> "AI Chatbot".equalsIgnoreCase(c.name()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(aiNode, "Category tree must contain 'AI Chatbot' as top-level category");
+        assertTrue(aiNode.subCategories().size() >= 5, "AI Chatbot should have at least 5 chapters/subcategories");
+        assertTrue(aiNode.totalArticles() >= 11, "AI Chatbot should contain at least 11 articles");
     }
 
     @Test
-    void savesAndRetrievesNewCustomArticle() {
+    void savesAndRetrievesNewCustomArticleWithAuthor() {
         KnowledgeArticle custom = new KnowledgeArticle(
                 "art_custom_gst",
                 "Invoicing / Taxes / GST",
                 "GST Input Tax Credit Guide",
                 "How to claim ITC in InvoiceStudio",
                 "### Claiming ITC\nAlways enter a valid 15-digit GSTIN on purchases.",
-                System.currentTimeMillis()
+                System.currentTimeMillis(),
+                "Kapto Accountant"
         );
 
         repo.saveArticle(custom);
@@ -82,16 +94,18 @@ class KnowledgeRepositoryTest {
         assertTrue(retrieved.isPresent());
         assertEquals("GST Input Tax Credit Guide", retrieved.get().title());
         assertEquals("Invoicing / Taxes / GST", retrieved.get().path());
+        assertEquals("Kapto Accountant", retrieved.get().author());
 
         // Reload from disk to verify persistence
         KnowledgeRepository reloadedRepo = KnowledgeRepository.createCustom(tempFile);
         Optional<KnowledgeArticle> fromDisk = reloadedRepo.getArticleById("art_custom_gst");
         assertTrue(fromDisk.isPresent());
         assertEquals("GST Input Tax Credit Guide", fromDisk.get().title());
+        assertEquals("Kapto Accountant", fromDisk.get().author());
     }
 
     @Test
-    void updatesExistingArticle() {
+    void updatesExistingArticlePreservingAuthor() {
         Optional<KnowledgeArticle> firstOpt = repo.getAllArticles().stream().findFirst();
         assertTrue(firstOpt.isPresent());
         KnowledgeArticle first = firstOpt.get();
@@ -100,7 +114,8 @@ class KnowledgeRepositoryTest {
                 first.path(),
                 "Updated " + first.title(),
                 first.subtitle(),
-                "# New Markdown Content\n\nUpdated paragraph text."
+                "# New Markdown Content\n\nUpdated paragraph text.",
+                "Custom Editor"
         );
 
         repo.saveArticle(updated);
@@ -108,6 +123,7 @@ class KnowledgeRepositoryTest {
         Optional<KnowledgeArticle> fetched = repo.getArticleById(first.id());
         assertTrue(fetched.isPresent());
         assertEquals("Updated " + first.title(), fetched.get().title());
+        assertEquals("Custom Editor", fetched.get().author());
         assertTrue(fetched.get().markdown().contains("New Markdown Content"));
     }
 
@@ -119,7 +135,8 @@ class KnowledgeRepositoryTest {
                 "Temporary Note",
                 "",
                 "This will be deleted.",
-                System.currentTimeMillis()
+                System.currentTimeMillis(),
+                "Tester"
         );
         repo.saveArticle(toDelete);
         assertTrue(repo.getArticleById("art_to_delete").isPresent());
@@ -135,6 +152,9 @@ class KnowledgeRepositoryTest {
         assertTrue(root.matches("bitmap"));
         assertTrue(root.matches("TA210"));
         assertTrue(root.matches("sensor"));
+        assertTrue(root.matches("Smart Routing"));
+        assertTrue(root.matches("Smalltalk"));
+        assertTrue(root.matches("InvoiceStudio AI Core"));
         assertFalse(root.matches("non_existent_xyz_random_string"));
     }
 }

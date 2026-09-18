@@ -11,6 +11,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  * @param subtitle  Short description or summary
  * @param markdown  Full Markdown body text
  * @param updatedAt Timestamp of last modification
+ * @param author    Author or contributor of the article (e.g. "InvoiceStudio Core", "Kapto")
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record KnowledgeArticle(
@@ -19,7 +20,8 @@ public record KnowledgeArticle(
     String title,
     String subtitle,
     String markdown,
-    long updatedAt
+    long updatedAt,
+    String author
 ) {
     public KnowledgeArticle {
         if (id == null || id.isBlank()) {
@@ -37,9 +39,22 @@ public record KnowledgeArticle(
         if (markdown == null) {
             markdown = "";
         }
+        if (author == null || author.isBlank()) {
+            author = "InvoiceStudio Core";
+        }
+    }
+
+    /** Backwards-compatible constructor without author. */
+    public KnowledgeArticle(String id, String path, String title, String subtitle, String markdown, long updatedAt) {
+        this(id, path, title, subtitle, markdown, updatedAt, "InvoiceStudio Core");
+    }
+
+    public KnowledgeArticle withUpdates(String newPath, String newTitle, String newSubtitle, String newMarkdown, String newAuthor) {
+        return new KnowledgeArticle(id, newPath, newTitle, newSubtitle, newMarkdown, System.currentTimeMillis(),
+                (newAuthor == null || newAuthor.isBlank()) ? author : newAuthor);
     }
 
     public KnowledgeArticle withUpdates(String newPath, String newTitle, String newSubtitle, String newMarkdown) {
-        return new KnowledgeArticle(id, newPath, newTitle, newSubtitle, newMarkdown, System.currentTimeMillis());
+        return withUpdates(newPath, newTitle, newSubtitle, newMarkdown, author);
     }
 }

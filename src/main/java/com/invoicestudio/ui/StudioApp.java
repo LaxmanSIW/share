@@ -322,7 +322,7 @@ public class StudioApp extends Application {
         sidebarController.updateNavActive(id);
 
         Node content = viewNode;
-        if (content instanceof VBox) {
+        if (content instanceof VBox && !(content instanceof SettingsView)) {
             // Wrap bare vertical lists in a scroll container so long content stays reachable.
             ScrollPane scroll = new ScrollPane(content);
             scroll.setFitToWidth(true);

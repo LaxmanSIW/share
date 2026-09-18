@@ -48,6 +48,7 @@ public class ChatbotSettingsPanel extends VBox {
     private final Spinner<Integer> historySpin = new Spinner<>(4, 80, 30, 2);
     private final CheckBox showIconCb = new CheckBox("Show the floating chat icon (bottom-right)");
     private final CheckBox smartRouteCb = new CheckBox("Smart tool routing (recommended — fewer tokens & requests)");
+    private final Spinner<Integer> maxToolSpin = new Spinner<>(1, 20, 6, 1);
     private final Label status = new Label();
 
     public ChatbotSettingsPanel(StudioApp app, ChatbotConfig cfg) {
@@ -148,6 +149,8 @@ public class ChatbotSettingsPanel extends VBox {
         styleCheck(showIconCb);
         styleCheck(smartRouteCb);
         historySpin.setPrefWidth(90);
+        maxToolSpin.setPrefWidth(90);
+        maxToolSpin.setEditable(true);
         Label histNote = new Label("Messages of history sent with each request (higher = better context, more tokens).");
         histNote.setWrapText(true);
         histNote.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0;");
@@ -155,8 +158,14 @@ public class ChatbotSettingsPanel extends VBox {
                 + "so big tool catalogues are not sent every time — chat-only messages skip them entirely.");
         routeNote.setWrapText(true);
         routeNote.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0;");
+        Label toolNote = new Label(
+                "Maximum model\u2194tool round-trips per single request. Lower = cheaper / faster; raise for complex "
+                + "multi-step tasks. The assistant will tell you if it hits this limit and ask you to continue.");
+        toolNote.setWrapText(true);
+        toolNote.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0;");
         VBox box = new VBox(8, head, showIconCb, smartRouteCb, routeNote,
-                row("History window", historySpin), histNote);
+                row("History window", historySpin), histNote,
+                row("Max tool rounds", maxToolSpin), toolNote);
         box.setStyle(CARD);
         return box;
     }
@@ -184,6 +193,7 @@ public class ChatbotSettingsPanel extends VBox {
         keyField.setText(cfg.getApiKey());
         endpointField.setText(cfg.getEndpoint());
         historySpin.getValueFactory().setValue(cfg.getHistoryMessages());
+        maxToolSpin.getValueFactory().setValue(cfg.getMaxToolCalls());
         showIconCb.setSelected(cfg.isShowIcon());
         smartRouteCb.setSelected(cfg.isSmartRouting());
     }
@@ -194,6 +204,7 @@ public class ChatbotSettingsPanel extends VBox {
         cfg.setApiKey(keyField.getText());
         cfg.setEndpoint(endpointField.getText());
         cfg.setHistoryMessages(historySpin.getValue());
+        cfg.setMaxToolCalls(maxToolSpin.getValue());
         cfg.setShowIcon(showIconCb.isSelected());
         cfg.setSmartRouting(smartRouteCb.isSelected());
         cfg.save();

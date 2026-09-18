@@ -57,7 +57,12 @@ public final class AiChatClient {
     /** Result of one full send: the assistant's text + what tools it ran. */
     public record ChatResult(String text, List<String> toolTrace) {}
 
-    /** Hard cap on model↔tool round trips per send (safety + cost bound). */
+    /**
+     * Hard cap on model↔tool round trips per send (safety + cost bound).
+     * @deprecated Replaced by {@link ChatbotConfig#getMaxToolCalls()} — this constant
+     *             is kept only for Javadoc reference; the live value comes from settings.
+     */
+    @SuppressWarnings("unused")
     private static final int MAX_TOOL_ROUNDS = 6;
 
     private static final ObjectMapper M = new ObjectMapper();
@@ -143,9 +148,9 @@ public final class AiChatClient {
         java.util.Set<String> exhausted = new java.util.HashSet<>();
         String originalModel = cfg.getModel();
         while (true) {
-            if (round > MAX_TOOL_ROUNDS) {
-                ChatbotLogManager.warn("Safety limit reached: " + MAX_TOOL_ROUNDS + " tool rounds", null);
-                return new ChatResult("(stopped after " + MAX_TOOL_ROUNDS
+            if (round > cfg.getMaxToolCalls()) {
+                ChatbotLogManager.warn("Safety limit reached: " + cfg.getMaxToolCalls() + " tool rounds", null);
+                return new ChatResult("(stopped after " + cfg.getMaxToolCalls()
                         + " tool rounds — ask me to continue)", trace);
             }
             ProviderResponse resp;
@@ -159,16 +164,24 @@ public final class AiChatClient {
             } catch (IllegalStateException ex) {
                 ChatbotLogManager.error("Provider call failed: " + ex.getMessage(), null);
                 String msg = String.valueOf(ex.getMessage());
-                if (msg.contains("Daily free-tier limit")
-                        && ChatbotConfig.GEMINI.equals(cfg.getProvider())) {
+                // ── Quota / daily-limit failover ──────────────────────────────
+                // When a Gemini model hits its daily free-tier bucket ("Daily
+                // free-tier limit") or any provider returns a hard quota error,
+                // iterate through failover candidates until one succeeds.
+                // We only failover for Gemini because other providers don't share
+                // a common failover catalogue — but we still give a friendly error.
+                boolean isDailyLimit = msg.contains("Daily free-tier limit");
+                boolean isGemini = ChatbotConfig.GEMINI.equals(cfg.getProvider());
+                if (isDailyLimit && isGemini) {
                     // Auto-failover: this model's daily bucket is empty — try
                     // the next best chat model with remaining quota.
-                    exhausted.add(cfg.getModel().isBlank() ? defaultModel(cfg.getProvider()) : cfg.getModel());
-                    String next = ModelCatalog.nextFailover(
-                            cfg.getModel().isBlank() ? defaultModel(cfg.getProvider()) : cfg.getModel(),
-                            exhausted);
+                    String currentModel = cfg.getModel().isBlank() ? defaultModel(cfg.getProvider()) : cfg.getModel();
+                    exhausted.add(currentModel);
+                    String next = ModelCatalog.nextFailover(currentModel, exhausted);
                     if (next != null) {
                         exhausted.add(next); // one attempt per candidate
+                        ChatbotLogManager.warn(
+                                "Model " + currentModel + " hit daily quota — trying " + next, null);
                         cfg.setModel(next);
                         trace.add("⚠ model " + (originalModel.isBlank() ? "default" : originalModel)
                                 + " hit its daily limit — switched to " + next);
