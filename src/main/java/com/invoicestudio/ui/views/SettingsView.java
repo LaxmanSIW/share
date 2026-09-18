@@ -154,6 +154,13 @@ public class SettingsView extends VBox {
         Tab tab = new Tab(title);
         tab.setGraphic(IconHelper.createTabGraphic(iconName, tab.selectedProperty()));
 
+        // Full-height multi-pane views (like Knowledge Hub) manage their own internal
+        // scrolling and must occupy 100% of the tab viewport height.
+        if (content instanceof com.invoicestudio.ui.KnowledgeHubPanel) {
+            tab.setContent(content);
+            return tab;
+        }
+
         VBox wrapper = new VBox(content);
         wrapper.setPadding(new Insets(4, 6, 20, 4));
         VBox.setVgrow(content, Priority.NEVER);

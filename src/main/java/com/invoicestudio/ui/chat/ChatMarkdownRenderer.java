@@ -6,6 +6,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Separator;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -128,20 +129,43 @@ public final class ChatMarkdownRenderer {
                 continue;
             }
 
-            // 5. Blank line
+            // 5. Blockquote / Callout (> ...)
+            if (trimmed.startsWith(">")) {
+                StringBuilder quote = new StringBuilder();
+                while (i < n && lines[i].trim().startsWith(">")) {
+                    String qLine = lines[i].trim();
+                    if (qLine.startsWith("> ")) qLine = qLine.substring(2);
+                    else if (qLine.startsWith(">")) qLine = qLine.substring(1);
+                    if (quote.length() > 0) quote.append("\n");
+                    quote.append(qLine);
+                    i++;
+                }
+                container.getChildren().add(renderCallout(quote.toString()));
+                continue;
+            }
+
+            // 6. Horizontal Rule (---, ***, ___)
+            if (trimmed.equals("---") || trimmed.equals("***") || trimmed.equals("___")) {
+                container.getChildren().add(renderSeparator());
+                i++;
+                continue;
+            }
+
+            // 7. Blank line
             if (trimmed.isEmpty()) {
                 i++;
                 continue;
             }
 
-            // 6. Regular paragraph (collect consecutive paragraph lines)
+            // 8. Regular paragraph (collect consecutive paragraph lines)
             StringBuilder para = new StringBuilder(line);
             i++;
             while (i < n) {
                 String next = lines[i];
                 String nextTrimmed = next.trim();
                 if (nextTrimmed.isEmpty() || nextTrimmed.startsWith("```") || isTableStart(lines, i)
-                        || nextTrimmed.startsWith("#") || isListItem(nextTrimmed)) {
+                        || nextTrimmed.startsWith("#") || isListItem(nextTrimmed)
+                        || nextTrimmed.startsWith(">") || nextTrimmed.equals("---") || nextTrimmed.equals("***")) {
                     break;
                 }
                 para.append("\n").append(next);
@@ -151,6 +175,42 @@ public final class ChatMarkdownRenderer {
         }
 
         return container;
+    }
+
+    private static Node renderCallout(String text) {
+        String clean = text == null ? "" : text.trim();
+        String title = "NOTE";
+        String color = GOLD;
+        if (clean.startsWith("[!NOTE]") || clean.startsWith("[!note]")) {
+            clean = clean.substring(7).trim();
+            title = "NOTE";
+            color = GOLD;
+        } else if (clean.startsWith("[!TIP]") || clean.startsWith("[!tip]")) {
+            clean = clean.substring(6).trim();
+            title = "TIP";
+            color = "#10B981";
+        } else if (clean.startsWith("[!WARNING]") || clean.startsWith("[!warning]")) {
+            clean = clean.substring(10).trim();
+            title = "WARNING";
+            color = "#F59E0B";
+        }
+
+        Label titleLbl = new Label(title);
+        titleLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: " + color + ";");
+
+        TextFlow flow = parseRichText(clean);
+
+        VBox box = new VBox(4, titleLbl, flow);
+        box.setStyle("-fx-background-color: rgba(217, 161, 59, 0.08); -fx-border-color: " + color + ";"
+                + "-fx-border-width: 0 0 0 3; -fx-border-radius: 4; -fx-background-radius: 4;"
+                + "-fx-padding: 8 12 8 12;");
+        return box;
+    }
+
+    private static Node renderSeparator() {
+        Separator s = new Separator();
+        s.setStyle("-fx-background-color: #273449; -fx-padding: 4 0 4 0;");
+        return s;
     }
 
     // ── Table Parsing & Rendering ─────────────────────────────────────
