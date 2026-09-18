@@ -43,8 +43,10 @@ public final class ChatbotConfig {
     private String apiKey = "";
     /** Optional endpoint override (blank = provider default). */
     private String endpoint = "";
-    /** How many past messages accompany each request (context window control). */
-    private int historyMessages = 30;
+    /** How many past messages accompany each request (context window control).
+     *  12 keeps answers contextual while every extra message costs input tokens
+     *  on EVERY request — the settings spinner default matches this. */
+    private int historyMessages = 12;
     /** Smart tool routing: a cheap first pass decides if tools are needed at
      *  all, so chat-only messages never carry the full tool schemas. */
     private boolean smartRouting = true;

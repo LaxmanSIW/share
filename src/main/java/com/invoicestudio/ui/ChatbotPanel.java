@@ -98,6 +98,11 @@ public class ChatbotPanel extends VBox {
     private final VBox chipsRow = new VBox(6);
     private boolean expanded = false;
     private com.invoicestudio.ui.chat.ChatbotLogDialog logDialog;
+    /** Small animated “assistant at work” strip (character + tokens + progress
+     *  bar). Hidden & unmanaged while idle; its two animations run only while
+     *  a request is in flight. */
+    private final com.invoicestudio.ui.chat.ChatPipelineBar pipeline =
+            new com.invoicestudio.ui.chat.ChatPipelineBar();
     private final DoubleBinding maxBubbleWidth;
 
     public ChatbotPanel(StudioApp app, ChatbotConfig cfg, Runnable closeAction) {
@@ -310,7 +315,7 @@ public class ChatbotPanel extends VBox {
         attachRow.setManaged(false);
         attachRow.setVisible(false);
 
-        VBox footer = new VBox(6, attachRow, pill, hint);
+        VBox footer = new VBox(6, attachRow, pipeline, pill, hint);
         return footer;
     }
 
@@ -392,10 +397,10 @@ public class ChatbotPanel extends VBox {
             List<com.invoicestudio.service.ModelCatalog.ModelInfo> models = List.of();
             String error = null;
             try {
-                if (com.invoicestudio.service.ChatbotConfig.GEMINI.equals(cfg.getProvider())) {
-                    models = com.invoicestudio.service.ModelCatalog.chatModels(cfg.getApiKey());
+                if (com.invoicestudio.service.ModelCatalog.hasLiveCatalogue(cfg.getProvider())) {
+                    models = com.invoicestudio.service.ModelCatalog.modelsFor(cfg.getProvider(), cfg.getApiKey());
                 } else {
-                    error = "Live catalogue is available for Gemini; type a model id in Settings → Chatbot.";
+                    error = "Live catalogue is available for Gemini and Z.ai GLM; type a model id in Settings → Chatbot.";
                 }
             } catch (Exception ex) {
                 error = "Couldn't load catalogue: " + ex.getMessage();
@@ -493,7 +498,7 @@ public class ChatbotPanel extends VBox {
             pendingImage = new AiChatClient.ImagePart(mime, data);
             renderPendingImage();
         } catch (Exception ex) {
-            addAiBubble("Couldn't read that image: " + ex.getMessage(), null);
+            addAiBubble("Couldn't read that image: " + ex.getMessage(), null, true);
         }
     }
 
@@ -537,7 +542,7 @@ public class ChatbotPanel extends VBox {
             l.maxWidthProperty().bind(maxBubbleWidth);
 
             Button copyBtn = copyButton(text);
-            HBox actionRow = new HBox(copyBtn);
+            HBox actionRow = new HBox(5, metaLabel(nowTime()), copyBtn);
             actionRow.setAlignment(Pos.CENTER_RIGHT);
             actionRow.setPadding(new Insets(1, 4, 0, 0));
 
@@ -561,7 +566,7 @@ public class ChatbotPanel extends VBox {
         scrollToBottom();
 
         if (cfg.getApiKey().isBlank()) {
-            addAiBubble("No API key configured — open Settings → Chatbot to set one up.", null);
+            addAiBubble("No API key configured — open Settings → Chatbot to set one up.", null, true);
             return;
         }
 
@@ -576,10 +581,13 @@ public class ChatbotPanel extends VBox {
         scrollToBottom();
         sendBtn.setDisable(true);
 
+        pipeline.begin(); // animated character + token coins + progress bar
+
         java.util.function.Consumer<com.invoicestudio.service.ChatbotLogManager.LogEntry> progress =
                 entry -> {
                     String step = progressText(entry);
                     if (!step.isEmpty()) busy.setText(step);
+                    pipeline.onLog(entry);
                 };
         com.invoicestudio.service.ChatbotLogManager.addListener(progress);
 
@@ -596,6 +604,7 @@ public class ChatbotPanel extends VBox {
             com.invoicestudio.service.ChatbotLogManager.removeListener(progress);
             messages.getChildren().remove(busy);
             sendBtn.setDisable(false);
+            pipeline.end(true);
             AiChatClient.ChatResult r = task.getValue();
             if (!r.toolTrace().isEmpty()) {
                 Label trace = new Label("🔧  " + String.join("  ·  ", r.toolTrace()));
@@ -603,15 +612,16 @@ public class ChatbotPanel extends VBox {
                 trace.setStyle("-fx-font-size: 10.5px; -fx-text-fill: #7C8AA0; -fx-padding: 0 0 0 36;");
                 messages.getChildren().add(trace);
             }
-            addAiBubble(r.text(), null);
+            addAiBubble(r.text(), null, false, resultMeta(r));
             history.add(AiChatClient.ChatTurn.assistant(r.text()));
         }));
         task.setOnFailed(e -> AppExecutors.runOnFx(() -> {
             com.invoicestudio.service.ChatbotLogManager.removeListener(progress);
             messages.getChildren().remove(busy);
             sendBtn.setDisable(false);
+            pipeline.end(false);
             Throwable ex = task.getException();
-            addAiBubble(friendlyError(ex), null);
+            addAiBubble(friendlyError(ex), null, true, nowTime());
         }));
         AppExecutors.chat().execute(task);
     }
@@ -672,10 +682,23 @@ public class ChatbotPanel extends VBox {
         return null;
     }
 
+    /** Greeting / simple notices — no meta row beyond the copy button. */
     private void addAiBubble(String text, javafx.scene.image.Image img) {
+        addAiBubble(text, img, false, null);
+    }
+
+    /** Error-styled bubble (explicit flag — no text sniffing). */
+    private void addAiBubble(String text, javafx.scene.image.Image img, boolean isError) {
+        addAiBubble(text, img, isError, null);
+    }
+
+    /**
+     * Assistant bubble with a compact meta row: copy button, local time and —
+     * when the provider reported usage — ↑input ↓output tokens + wall time,
+     * all in 10px muted text so the chat stays clean.
+     */
+    private void addAiBubble(String text, javafx.scene.image.Image img, boolean isError, String meta) {
         VBox box = new VBox(2);
-        boolean isError = text != null && (text.startsWith("Provider error") || text.startsWith("HTTP")
-                || text.toLowerCase().contains("error") || text.toLowerCase().contains("api key"));
 
         Node contentNode = com.invoicestudio.ui.chat.ChatMarkdownRenderer.render(text, isError);
         VBox bubble = new VBox(contentNode);
@@ -684,7 +707,12 @@ public class ChatbotPanel extends VBox {
         bubble.maxWidthProperty().bind(maxBubbleWidth);
 
         Button copyBtn = copyButton(text);
-        HBox actionRow = new HBox(copyBtn);
+        HBox actionRow;
+        if (meta != null && !meta.isBlank()) {
+            actionRow = new HBox(5, metaLabel(meta), copyBtn);
+        } else {
+            actionRow = new HBox(copyBtn);
+        }
         actionRow.setAlignment(Pos.CENTER_LEFT);
         actionRow.setPadding(new Insets(1, 0, 0, 4));
 
@@ -694,6 +722,34 @@ public class ChatbotPanel extends VBox {
         row.setAlignment(Pos.TOP_LEFT);
         messages.getChildren().add(row);
         scrollToBottom();
+    }
+
+    /** Tiny muted caption (time · tokens · duration) beside the copy icon. */
+    private static Label metaLabel(String text) {
+        Label l = new Label(text);
+        l.setStyle("-fx-font-size: 10px; -fx-text-fill: #5b6779; -fx-padding: 0 2 0 2;");
+        return l;
+    }
+
+    /** Local HH:mm timestamp used on every bubble's meta row. */
+    private static String nowTime() {
+        return java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+    }
+
+    /** "12:34 · ↑1,234 ↓567 tok · 3.2s" — only the parts the provider reported. */
+    private static String resultMeta(AiChatClient.ChatResult r) {
+        StringBuilder sb = new StringBuilder(nowTime());
+        if (r.promptTokens() >= 0 || r.completionTokens() >= 0) {
+            sb.append(" · ↑").append(r.promptTokens() < 0 ? "—" : String.format("%,d", r.promptTokens()))
+              .append(" ↓").append(r.completionTokens() < 0 ? "—" : String.format("%,d", r.completionTokens()))
+              .append(" tok");
+        }
+        if (r.elapsedMs() >= 0) {
+            sb.append(" · ").append(r.elapsedMs() < 1000
+                    ? r.elapsedMs() + " ms"
+                    : String.format("%.1f s", r.elapsedMs() / 1000.0));
+        }
+        return sb.toString();
     }
 
     private void scrollToBottom() {

@@ -1,6 +1,8 @@
 package com.invoicestudio.service;
 
 import com.invoicestudio.db.DatabaseManager;
+import com.invoicestudio.mcp.McpConfig;
+import com.invoicestudio.mcp.McpServer;
 import com.invoicestudio.model.ItemRecord;
 import com.invoicestudio.service.AuthSessionManager;
 import com.invoicestudio.ui.DataManager;
@@ -29,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AiChatLiveMcpTest {
 
     private static String apiKey;
+    private static String glmKey;
     private static DataManager dm;
     private static Path tmpDb;
 
@@ -36,20 +39,42 @@ class AiChatLiveMcpTest {
     static void setUp() throws Exception {
         // Live tests burn real quota (free tier: 20 req/day per model) — they
         // run ONLY on explicit opt-in:  mvn test -Dlive.gemini=true
-        Assumptions.assumeTrue(Boolean.getBoolean("live.gemini"),
-                "Live Gemini test skipped (run with -Dlive.gemini=true to opt in)");
+        // (Gemini)  or  mvn test -Dlive.glm=true -Dglm.key=…  (Z.ai GLM)
+        boolean geminiOptIn = Boolean.getBoolean("live.gemini");
+        boolean glmOptIn = Boolean.getBoolean("live.glm");
+        Assumptions.assumeTrue(geminiOptIn || glmOptIn,
+                "Live provider test skipped (run with -Dlive.gemini=true or -Dlive.glm=true to opt in)");
         // Key resolution: -Dgemini.key=... wins (CI / borrowed keys), the
         // user's saved chatbot.json is the fallback.
         apiKey = System.getProperty("gemini.key",
                 System.getenv("GEMINI_API_KEY") != null ? System.getenv("GEMINI_API_KEY") : "");
         if (apiKey.isBlank()) apiKey = ChatbotConfig.load().getApiKey();
-        Assumptions.assumeTrue(apiKey != null && !apiKey.isBlank(),
-                "No Gemini API key configured — live test skipped");
+        if (geminiOptIn) {
+            Assumptions.assumeTrue(apiKey != null && !apiKey.isBlank(),
+                    "No Gemini API key configured — live test skipped");
+        }
+        // GLM key: -Dglm.key=... or GLM_API_KEY env — never persisted.
+        glmKey = System.getProperty("glm.key",
+                System.getenv("GLM_API_KEY") != null ? System.getenv("GLM_API_KEY") : "");
+        if (glmOptIn) {
+            Assumptions.assumeTrue(glmKey != null && !glmKey.isBlank(),
+                    "No GLM API key configured (pass -Dglm.key=…) — live test skipped");
+        }
 
         try {
             javafx.application.Platform.startup(() -> {});
         } catch (IllegalStateException ignored) {
             // Toolkit already initialized
+        }
+
+        // The tool loop only runs when the MCP server is UP (send() has an
+        // MCP-off fast path). Without this the live tool round silently took
+        // the zero-schema branch and the model said "MCP is off".
+        for (int port : new int[]{17821, 18345, 19157}) {
+            McpConfig mc = new McpConfig();
+            mc.setPort(port);
+            mc.setRequireToken(false);
+            if (McpServer.start(mc) == null) break;
         }
 
         tmpDb = Files.createTempFile("aichat-live", ".db");
@@ -87,6 +112,7 @@ class AiChatLiveMcpTest {
 
     @AfterAll
     static void tearDown() throws Exception {
+        McpServer.shutdown();
         AuthSessionManager.clear();
         if (tmpDb != null) Files.deleteIfExists(tmpDb);
         resetSingleton(DatabaseManager.class, "instance");
@@ -103,6 +129,7 @@ class AiChatLiveMcpTest {
     @Test
     @Order(1)
     void geminiAnswersFromLiveMcpToolResult() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("live.gemini"), "Gemini opt-in required");
         ChatbotConfig cfg = new ChatbotConfig();
         cfg.setProvider(ChatbotConfig.GEMINI);
         cfg.setApiKey(apiKey);
@@ -133,6 +160,7 @@ class AiChatLiveMcpTest {
     @Test
     @Order(2)
     void twoToolRoundsStillWork() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("live.gemini"), "Gemini opt-in required");
         ChatbotConfig cfg = new ChatbotConfig();
         cfg.setProvider(ChatbotConfig.GEMINI);
         cfg.setApiKey(apiKey);
@@ -157,6 +185,7 @@ class AiChatLiveMcpTest {
     @Test
     @Order(3)
     void attachmentWorksWithGemini() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("live.gemini"), "Gemini opt-in required");
         ChatbotConfig cfg = new ChatbotConfig();
         cfg.setProvider(ChatbotConfig.GEMINI);
         cfg.setApiKey(apiKey);
@@ -184,6 +213,7 @@ class AiChatLiveMcpTest {
     @Test
     @Order(4)
     void confirmationFlowExecutesConfirmOperationOnYes() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("live.gemini"), "Gemini opt-in required");
         ChatbotConfig cfg = new ChatbotConfig();
         cfg.setProvider(ChatbotConfig.GEMINI);
         cfg.setApiKey(apiKey);
@@ -222,6 +252,7 @@ class AiChatLiveMcpTest {
     @Test
     @Order(5)
     void liveQueryFormatsTabularDataAndLogsExecutionSteps() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("live.gemini"), "Gemini opt-in required");
         ChatbotLogManager.clear();
 
         ChatbotConfig cfg = new ChatbotConfig();
@@ -257,5 +288,100 @@ class AiChatLiveMcpTest {
         java.lang.reflect.Field f = c.getDeclaredField(n);
         f.setAccessible(true);
         return f;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Z.ai GLM live scenarios (opt-in: -Dlive.glm=true -Dglm.key=…)
+    // Every contract below was verified against the live API first: the
+    // catalogue endpoint, the free glm-4.5-flash tier and OpenAI-shaped
+    // tool_calls + usage blocks.
+    // ══════════════════════════════════════════════════════════════════
+
+    @Test
+    @Order(10)
+    void glmLiveCatalogueListsChatModels() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("live.glm"), "GLM opt-in required");
+        var models = ModelCatalog.glmModels(glmKey);
+        System.out.println("[GLM-LIVE] catalogue = " + models.stream().map(m -> m.id()).toList());
+        assertFalse(models.isEmpty(), "the GLM catalogue must return at least one chat model");
+        assertTrue(models.stream().anyMatch(m -> m.id().startsWith("glm-")),
+                "entries must be GLM model ids");
+        // The default must stay inside what this key can actually use.
+        assertEquals("glm-4.5-flash", AiChatClient.defaultModel(ChatbotConfig.GLM));
+    }
+
+    @Test
+    @Order(11)
+    void glmLiveToolRoundAnswersFromRealData() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("live.glm"), "GLM opt-in required");
+        ChatbotConfig cfg = new ChatbotConfig();
+        cfg.setProvider(ChatbotConfig.GLM);
+        cfg.setApiKey(glmKey);
+        cfg.setModel(System.getProperty("live.glm.model", "glm-4.5-flash"));
+
+        AiChatClient client = new AiChatClient();
+        AiChatClient.ChatResult r = client.send(cfg, List.of(),
+                "How many pieces of 'Probe Denim Jeans' are in stock right now? "
+                        + "Use the app tools and report the exact number.",
+                null);
+
+        System.out.println("[GLM-LIVE] toolTrace = " + r.toolTrace());
+        System.out.println("[GLM-LIVE] answer    = " + r.text());
+        System.out.println("[GLM-LIVE] usage     = ↑" + r.promptTokens() + " ↓" + r.completionTokens()
+                + " tok in " + r.elapsedMs() + " ms (model " + r.modelUsed() + ")");
+
+        assertFalse(r.text().isBlank(), "GLM must produce an answer");
+        assertTrue(r.toolTrace().size() > 0 || r.text().contains("7"),
+                "expected a tool call (trace=" + r.toolTrace() + ") in answer: " + r.text());
+        if (!r.toolTrace().isEmpty()) {
+            assertTrue(r.text().contains("7"),
+                    "answer must reflect the tool result (7 pcs), got: " + r.text());
+        }
+    }
+
+    @Test
+    @Order(12)
+    void glmLiveUsageIsReportedOnTheResult() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("live.glm"), "GLM opt-in required");
+        ChatbotConfig cfg = new ChatbotConfig();
+        cfg.setProvider(ChatbotConfig.GLM);
+        cfg.setApiKey(glmKey);
+        cfg.setModel("glm-4.5-flash");
+
+        AiChatClient.ChatResult r = new AiChatClient().send(cfg, List.of(),
+                "Reply with exactly: OK", null);
+
+        System.out.println("[GLM-LIVE] text  = " + r.text());
+        System.out.println("[GLM-LIVE] usage = ↑" + r.promptTokens() + " ↓" + r.completionTokens()
+                + " total " + r.totalTokens() + " tok in " + r.elapsedMs() + " ms");
+        assertTrue(r.promptTokens() > 0, "Z.ai reports prompt_tokens — it must reach the meta row");
+        assertTrue(r.completionTokens() > 0, "Z.ai reports completion_tokens — it must reach the meta row");
+        assertEquals(r.promptTokens() + r.completionTokens(), r.totalTokens());
+        assertTrue(r.elapsedMs() >= 0);
+        assertEquals("glm-4.5-flash", r.modelUsed());
+    }
+
+    @Test
+    @Order(13)
+    void glmLiveMeteredModelSurfacesBalanceErrorHonesty() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("live.glm"), "GLM opt-in required");
+        // glm-5.3-flash is NOT covered by this key's balance (live-verified
+        // 429 "Insufficient balance") — the chat must surface that honestly.
+        ChatbotConfig cfg = new ChatbotConfig();
+        cfg.setProvider(ChatbotConfig.GLM);
+        cfg.setApiKey(glmKey);
+        cfg.setModel("glm-5.3-flash");
+
+        try {
+            new AiChatClient().send(cfg, List.of(), "Reply with exactly: OK", null);
+            // If the key gained balance since verification, the model simply
+            // answered — the assertion target moved, not the contract.
+            System.out.println("[GLM-LIVE] glm-5.3-flash now has balance — honesty check skipped");
+        } catch (IllegalStateException ex) {
+            String msg = String.valueOf(ex.getMessage());
+            System.out.println("[GLM-LIVE] surfaced error = " + msg);
+            assertTrue(msg.toLowerCase().contains("balance") || msg.contains("429"),
+                    "the provider's balance/quota message must be surfaced verbatim, got: " + msg);
+        }
     }
 }

@@ -41,3 +41,6 @@ graphify-out/
 *.graphify*
 labelstock-verify/
 ruler-verify/
+
+# Chatbot verification harness output (screenshots)
+cb-verify/shots/

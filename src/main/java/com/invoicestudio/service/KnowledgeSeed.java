@@ -1282,6 +1282,117 @@ public final class KnowledgeSeed {
                 "InvoiceStudio AI Core"
         ));
 
+        list.add(new KnowledgeArticle(
+                "art_ai_15_round3_tokens_glm_pipeline",
+                "AI Chatbot / 10. Round 3 — Token Meter, GLM Catalogue & Live Pipeline",
+                "What Changed in the Third Optimization Round — and Why It Stays Fast",
+                "Per-message time & token counts beside every reply, token + HTTP tracing in the execution logs, the live Z.ai GLM model catalogue with a free-flash router, the animated assistant pipeline bar with its performance contract, and the small audit fixes that came out of this round.",
+                """
+                This chapter documents the third chatbot round: **making costs visible, adding a second live \
+                provider catalogue, and showing — with a tiny animation — what the assistant is actually doing \
+                between your message and its answer**. Every item shipped with tests; nothing here guesses at \
+                API behaviour, all provider contracts were verified against the live APIs first.
+
+                ---
+
+                ### 1. What you can see now (and where)
+
+                | Feature | Where you see it | What it tells you |
+                | :--- | :--- | :--- |
+                | **Message meta row** | Under every bubble, beside the copy icon — `12:34 · ↑1,234 ↓567 tok · 3.2 s` | Local send/reply time, the tokens the request consumed (↑ input, ↓ output) and the wall time of the whole send. User bubbles show the time only; parts the provider did not report are simply omitted. |
+                | **Token + HTTP tracing** | Chat header → terminal icon → live execution logs | New `TOKENS` lines after each stage ("↑123 ↓45 tok — total 168 (Final …)") and one `HTTP` line per real request ("HTTP 200 in 812 ms — payload 14,210 chars") — so you can see exactly where time and tokens go. |
+                | **Pipeline bar** | Slim strip above the input pill, only while a request runs | A character walks the pipeline in plain words: *Received → Routing — picking the right tools → Asking the AI (API) → Assistant calls a tool → Working in your app (MCP) → Done*. A coin counter ticks up as rounds report tokens, and a slim progress bar creeps underneath. |
+                | **GLM model catalogue** | Chat header model chip · Settings → Chatbot → Browse | Z.ai (GLM) now fetches its model list live from `GET /api/paas/v4/models` (Bearer key), same 10-minute cache as Gemini. `glm-4.5-flash` stays the default — it is the tier this key can use for free. |
+
+                ---
+
+                ### 2. How the pipeline bar stays free (the performance contract)
+
+                The animation was added **only** because it provably cannot affect the app or the chat speed:
+
+                - **Idle cost: zero.** The strip is hidden *and* unmanaged when no request is in flight — it is \
+                removed from layout entirely, not merely invisible.
+                - **Two tiny animations while visible.** A 650 ms scale pulse on a 22 px avatar and a 300 ms timer \
+                advancing the bar width (it moves 7% of the remaining distance, slowing as it goes). No CSS \
+                effects, no shadows, no image decoding, no binding chains.
+                - **Both animations STOP the instant the reply lands.** The bar shows a final "Done — answer \
+                ready" state for ~1.4 s, then removes itself again.
+                - **It renders, never generates.** Stages and coins are driven by the same log entries the \
+                assistant already produces (`ROUTER`, `DISPATCH`, `TOOL-CALL`, `MCP-EXEC`, `TOKENS`) — no \
+                extra work is created for the sake of the animation.
+
+                The stage captions use deliberate plain language: **Routing** means the cheap classifier is \
+                picking tools; **Asking the AI (API)** is the real model call; **Working in your app (MCP)** \
+                means a tool is reading or writing your records. If you can read the strip, you know where the \
+                time is being spent.
+
+                ---
+
+                ### 3. The token meter — how the numbers are produced
+
+                - Each provider response carries a usage block: Gemini calls it `usageMetadata` \
+                (`promptTokenCount` / `candidatesTokenCount`), OpenAI-compatible APIs (including Z.ai GLM) call \
+                it `usage` (`prompt_tokens` / `completion_tokens`), Anthropic calls it `usage` \
+                (`input_tokens` / `output_tokens`). All three are parsed.
+                - A send usually makes several requests (router pass + one per tool round). The counts you see \
+                are the **sum over the whole send**, not just the last request.
+                - Providers that omit usage simply produce no token display — the UI never shows a made-up \
+                zero. The same data feeds the `TOKENS` log lines and the coin counter, so chat, logs and \
+                animation always agree.
+
+                #### Reading the numbers
+                - **↑ (input) grows with history, tool schemas and tool results** — it is re-sent every round, \
+                which is why the router shortlist, the 12-message history window and the 4K result cap matter.
+                - **↓ (output) is the model's answer + tool-call arguments** — short questions with "top 5" \
+                bounds keep it small.
+                - A "hi" costs almost nothing (zero-schema fast path, single request). A "list top 5 buyers" \
+                typically spends the most on the tool-result round trip — watch the `HTTP` payload sizes in \
+                the log to confirm.
+
+                ---
+
+                ### 4. GLM as a full first-class provider
+
+                - **Live catalogue** (this round): the model chip and Settings Browse button now list real \
+                Z.ai models. The endpoint was verified live before wiring: it returns plain ids \
+                (`glm-4.5`, `glm-4.5-air`, `glm-5` …); the id doubles as the display name.
+                - **Free-flash router policy** (this round): the smart router is pinned to `glm-4.5-flash` for \
+                GLM — the same rule Gemini already had. Classification never burns the (possibly metered) \
+                model you actually picked.
+                - **Tool calling verified live**: GLM answers with standard OpenAI-style `tool_calls`, so the \
+                whole MCP tool surface (bills, suppliers, payments, knowledge, confirmations) works without \
+                any provider-specific branch in the tool layer.
+                - **Balance errors surfaced honestly**: models outside your plan's balance return HTTP 429 with \
+                "Insufficient balance" — that message reaches the chat verbatim instead of a mystery failure.
+
+                ---
+
+                ### 5. Small audit fixes that shipped with this round
+
+                | Found | Impact | Fix |
+                | :--- | :--- | :--- |
+                | New-install history window was still 30 — the documented intent (and the Settings spinner) say 12 | Every request silently carried ~18 extra messages of input tokens | Field default corrected to 12; existing saved configs are untouched |
+                | Router pass for non-Gemini OpenAI-compatible providers ran on the user's chosen model | GLM users paid metered tokens for mere classification | Router pinned to the provider's free flash tier where one exists |
+                | Error bubbles were detected by sniffing reply text ("error", "api key" substrings) | Legitimate answers mentioning errors were styled red | Explicit error flag passed at the call sites — no sniffing |
+                | Verification screenshots (PNGs) sat in the repo from old UI test runs | Dead weight, no runtime reference | Removed; the shots directory is git-ignored |
+
+                ---
+
+                ### 6. If something looks off — the 60-second routine
+
+                1. Open the terminal icon in the chat header. The newest lines tell the story: `HTTP` for \
+                transport, `TOKENS` for cost, `ROUTER` for tool choice, `MCP-EXEC` for data operations.
+                2. Cross-check the meta row under the reply: does the token total match the `TOKENS` log? If \
+                yes, the spend was real and you can see which round it came from.
+                3. Daily GLM/Gemini quotas reset per model — the failover trace ("switched to …") shows when a \
+                switch saved your session, and your picked model stays untouched in Settings.
+                4. Everything in this chapter is covered by automated tests: usage accumulation and the \
+                meta record contract, GLM catalogue parsing, and the end-to-end user journeys from chapter 09.
+                """,
+                now,
+                "InvoiceStudio AI Core"
+        ));
+
         return list;
     }
 }

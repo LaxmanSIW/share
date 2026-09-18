@@ -293,8 +293,8 @@ public class ChatbotSettingsPanel extends VBox {
     /** Dialog listing chat-capable models fetched LIVE from the provider. */
     private void showModelPicker() {
         String provider = providerCb.getValue() == null ? cfg.getProvider() : providerCb.getValue();
-        if (!ChatbotConfig.GEMINI.equals(provider)) {
-            status.setText("Live catalogue is Gemini-only right now — type the model id for "
+        if (!com.invoicestudio.service.ModelCatalog.hasLiveCatalogue(provider)) {
+            status.setText("Live catalogue is Gemini- and Z.ai GLM-only right now — type the model id for "
                     + AiChatClient.providerLabel(provider) + ".");
             return;
         }
@@ -309,7 +309,7 @@ public class ChatbotSettingsPanel extends VBox {
         com.invoicestudio.service.AppExecutors.io().execute(() -> {
             final List<com.invoicestudio.service.ModelCatalog.ModelInfo> models;
             try {
-                models = com.invoicestudio.service.ModelCatalog.chatModels(fkey);
+                models = com.invoicestudio.service.ModelCatalog.modelsFor(provider, fkey);
             } catch (Exception ex) {
                 javafx.application.Platform.runLater(() ->
                         status.setText("Couldn't load catalogue: " + ex.getMessage()));

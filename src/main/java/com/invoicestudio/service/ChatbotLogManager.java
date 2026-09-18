@@ -27,8 +27,10 @@ public final class ChatbotLogManager {
         INFO,
         ROUTER,
         DISPATCH,
+        HTTP,
         TOOL,
         MCP,
+        TOKENS,
         SUCCESS,
         WARN,
         ERROR
@@ -86,6 +88,16 @@ public final class ChatbotLogManager {
 
     public static void dispatch(String message, String details) {
         log(LogLevel.DISPATCH, "DISPATCH", message, details);
+    }
+
+    /** One line per real provider HTTP request: status, latency, payload size. */
+    public static void http(String message, String details) {
+        log(LogLevel.HTTP, "HTTP", message, details);
+    }
+
+    /** Compact token-usage trace (↑prompt ↓completion), per stage of a send. */
+    public static void usage(String message, String details) {
+        log(LogLevel.TOKENS, "TOKENS", message, details);
     }
 
     public static void tool(String message, String details) {

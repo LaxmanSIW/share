@@ -54,8 +54,22 @@ public final class AiChatClient {
         public static ChatTurn assistant(String t) { return new ChatTurn("assistant", t, null); }
     }
 
-    /** Result of one full send: the assistant's text + what tools it ran. */
-    public record ChatResult(String text, List<String> toolTrace) {}
+    /**
+     * Result of one full send: the assistant's text + what tools it ran.
+     *
+     * <p>Token counts are the SUM over every provider request of the send
+     * (router pass + each tool round), parsed from the provider's own usage
+     * block — they show next to each reply so users can see what a question
+     * really costs. {@code -1} means the provider did not report usage.</p>
+     */
+    public record ChatResult(String text, List<String> toolTrace,
+                             long promptTokens, long completionTokens,
+                             long totalTokens, long elapsedMs, String modelUsed) {
+        /** Back-compatible constructor: no usage metadata. */
+        public ChatResult(String text, List<String> toolTrace) {
+            this(text, toolTrace, -1, -1, -1, -1, "");
+        }
+    }
 
     /**
      * Hard cap on model↔tool round trips per send (safety + cost bound).
@@ -86,6 +100,7 @@ public final class AiChatClient {
      */
     public ChatResult send(ChatbotConfig cfg, List<ChatTurn> history,
                            String userText, ImagePart attachment) throws Exception {
+        long t0 = System.currentTimeMillis();
         // Ollama runs locally and needs no key; every cloud provider does.
         if (cfg.getApiKey().isBlank() && !ChatbotConfig.OLLAMA.equals(cfg.getProvider())) {
             throw new IllegalStateException("No API key configured — open Settings → Chatbot and save your key.");
@@ -98,6 +113,7 @@ public final class AiChatClient {
         List<ChatTurn> turns = new ArrayList<>(history);
         turns.add(new ChatTurn("user", userText == null ? "" : userText, attachment));
 
+        Usage usage = new Usage();
         ChatbotLogManager.info("User prompt received: \"" + shorten(userText, 80) + "\"",
                 attachment != null ? "Image attached (" + attachment.mimeType() + ", " + attachment.data().length + " bytes)" : null);
 
@@ -124,8 +140,10 @@ public final class AiChatClient {
             ChatbotLogManager.warn("MCP server is OFF — replying without business-data tools",
                     "If the user asks for live data the model will direct them to Settings → MCP Server");
             ProviderResponse resp = dispatch(cfg, turns, java.util.Set.of(), true);
+            usage.add(resp.promptTokens(), resp.completionTokens());
+            logUsage(usage, "MCP-off reply");
             ChatbotLogManager.success("Completed (MCP off — conversational reply)", resp.text());
-            return new ChatResult(resp.text(), List.of());
+            return result(resp.text(), List.of(), usage, t0, activeModel(cfg));
         }
 
         java.util.Set<String> allowed = null;
@@ -139,17 +157,20 @@ public final class AiChatClient {
             if (pureChat) {
                 ChatbotLogManager.router("Smalltalk detected -> schema-free dispatch (0 tools)", first);
                 ProviderResponse resp = dispatch(cfg, turns, java.util.Set.of(), false);
+                usage.add(resp.promptTokens(), resp.completionTokens());
+                logUsage(usage, "Smalltalk reply");
                 ChatbotLogManager.success("Completed via pure conversational shortcut", resp.text());
-                return new ChatResult(resp.text(), List.of());
+                return result(resp.text(), List.of(), usage, t0, activeModel(cfg));
             }
             ChatbotLogManager.router("Evaluating tools via smart router...", first);
-            ToolRoute route = routeTools(cfg, turns, first, confirmCtx);
+            ToolRoute route = routeTools(cfg, turns, first, confirmCtx, usage);
             if (route != null && !route.needTools() && !confirmCtx) {
                 // Router already answered the question conversationally —
                 // no second request, no schemas, no tool rounds.
                 ChatbotLogManager.router("Direct conversational answer from router", route.note());
+                logUsage(usage, "Router direct answer");
                 ChatbotLogManager.success("Completed via smart router direct answer", route.note());
-                return new ChatResult(route.note(), List.of());
+                return result(route.note(), List.of(), usage, t0, activeModel(cfg));
             }
             if (route != null && !route.tools().isEmpty()) {
                 allowed = new java.util.HashSet<>(route.tools());
@@ -173,7 +194,9 @@ public final class AiChatClient {
             if (round > cfg.getMaxToolCalls()) {
                 ChatbotLogManager.warn("Safety limit reached: " + cfg.getMaxToolCalls() + " tool rounds", null);
                 return new ChatResult("(stopped after " + cfg.getMaxToolCalls()
-                        + " tool rounds — ask me to continue)", trace);
+                        + " tool rounds — ask me to continue)", trace,
+                        usage.prompt, usage.completion, usage.total(),
+                        System.currentTimeMillis() - t0, cfg.getModel());
             }
             ProviderResponse resp;
             try {
@@ -216,6 +239,7 @@ public final class AiChatClient {
                         escalated = false;   // and may escalate once again
                         trace.add("⚠ model " + (originalModel.isBlank() ? "default" : originalModel)
                                 + " hit its daily limit — switched to " + next);
+                        logUsage(usage, "After failover to " + next);
                         continue;
                     }
                     throw new IllegalStateException(msg + "\nAll Gemini fallback models are also at their "
@@ -223,10 +247,13 @@ public final class AiChatClient {
                 }
                 throw ex;
             }
+            usage.add(resp.promptTokens(), resp.completionTokens());
             if (resp.toolCalls().isEmpty()) {
                 ChatbotLogManager.success("Completed in " + round + " tool round(s)",
                         trace.isEmpty() ? "Direct response" : "Tools executed: " + String.join(" -> ", trace));
-                return new ChatResult(resp.text(), trace);
+                logUsage(usage, "Final (" + round + " tool round(s), model "
+                        + (cfg.getModel().isBlank() ? "default" : cfg.getModel()) + ")");
+                return result(resp.text(), trace, usage, t0, activeModel(cfg));
             }
             // Router under-selected? (model called a tool that wasn't
             // shortlisted). Escalate once to the full catalogue and re-ask —
@@ -265,7 +292,7 @@ public final class AiChatClient {
             for (ToolCall tc : resp.toolCalls()) {
                 trace.add(tc.name() + "(" + shorten(tc.argumentsJson()) + ")");
                 String out;
-                long t0 = System.currentTimeMillis();
+                long tTool0 = System.currentTimeMillis();
                 try {
                     Object res = McpToolRegistry.call(tc.name(), parseArgs(tc.argumentsJson()));
                     out = M.writeValueAsString(res);
@@ -277,7 +304,7 @@ public final class AiChatClient {
                     }
                     out = M.writeValueAsString(Map.of("error", err));
                 }
-                long elapsed = System.currentTimeMillis() - t0;
+                long elapsed = System.currentTimeMillis() - tTool0;
                 ChatbotLogManager.mcp("MCP " + tc.name() + " executed in " + elapsed + "ms",
                         "Result: " + shorten(out, 120));
                 // Mirror into the MCP audit trail. Chatbot executions go
@@ -348,6 +375,29 @@ public final class AiChatClient {
     record ToolRoute(boolean needTools, List<String> tools, String note) {}
 
     /**
+     * Emits one compact TOKENS log entry per stage. Everything logged here
+     * was already computed (usage blocks ride along with every provider
+     * response) — the tracing adds no extra network or CPU work.
+     */
+    private static void logUsage(Usage usage, String stage) {
+        if (!usage.reported()) return; // provider sent no usage block — stay quiet
+        ChatbotLogManager.usage("↑" + Math.max(usage.prompt, 0) + " ↓" + Math.max(usage.completion, 0)
+                + " tok — total " + usage.total() + (stage == null || stage.isBlank() ? "" : "  (" + stage + ")"), null);
+    }
+
+    /** Builds the final ChatResult with the accumulated usage + wall time. */
+    private static ChatResult result(String text, List<String> trace, Usage usage,
+                                     long t0, String modelUsed) {
+        return new ChatResult(text, trace, usage.prompt, usage.completion, usage.total(),
+                System.currentTimeMillis() - t0, modelUsed == null ? "" : modelUsed);
+    }
+
+    /** The model that actually answers for this send (default filled in when blank). */
+    private static String activeModel(ChatbotConfig cfg) {
+        return cfg.getModel().isBlank() ? defaultModel(cfg.getProvider()) : cfg.getModel();
+    }
+
+    /**
      * Router pass: one lean request (no tool schemas — names only) that
      * either answers conversationally (CHAT) or shortlists the tools the
      * question needs (ROUTE). Supplies the immediately preceding assistant
@@ -355,7 +405,8 @@ public final class AiChatClient {
      * Returns null to fail OPEN (full catalogue) on any router error —
      * optimization must never cost correctness.
      */
-    private ToolRoute routeTools(ChatbotConfig cfg, List<ChatTurn> turns, String userText, boolean confirmCtx) {
+    private ToolRoute routeTools(ChatbotConfig cfg, List<ChatTurn> turns, String userText,
+                                 boolean confirmCtx, Usage usage) {
         try {
             StringBuilder names = new StringBuilder();
             for (McpToolRegistry.ToolDef t : McpToolRegistry.tools()) {
@@ -380,9 +431,10 @@ public final class AiChatClient {
                 query = userText;
             }
 
-            String out = rawCompletion(cfg, sys, query);
-            if (out == null) return null;
-            return parseRouteDecision(out, cfg);
+            RawAnswer raw = rawCompletion(cfg, sys, query);
+            if (raw == null || raw.text() == null) return null;
+            usage.add(raw.promptTokens(), raw.completionTokens());
+            return parseRouteDecision(raw.text(), cfg);
         } catch (Exception e) {
             AppLog.debug(e);
             return null; // fail open
@@ -417,14 +469,17 @@ public final class AiChatClient {
     }
 
     /** One no-tools completion with a custom system instruction (router). */
-    private String rawCompletion(ChatbotConfig cfg, String system, String userText) throws Exception {
+    private RawAnswer rawCompletion(ChatbotConfig cfg, String system, String userText) throws Exception {
         return switch (cfg.getProvider()) {
             case ChatbotConfig.GEMINI -> rawGemini(cfg, system, userText);
             default -> rawOpenAiCompatible(cfg, system, userText);
         };
     }
 
-    private String rawGemini(ChatbotConfig cfg, String system, String userText) throws Exception {
+    /** Router answer + the usage block of that single lean request. */
+    private record RawAnswer(String text, long promptTokens, long completionTokens) {}
+
+    private RawAnswer rawGemini(ChatbotConfig cfg, String system, String userText) throws Exception {
         // The router always runs on the LIGHTEST flash model: it only has to
         // classify the request (or answer small talk), it never touches
         // business data — so it must not burn the user's chosen (possibly
@@ -442,12 +497,21 @@ public final class AiChatClient {
         c.put("role", "user");
         c.putArray("parts").addObject().put("text", userText);
         JsonNode root = post(url, "POST", body, Map.of());
-        return root.path("candidates").path(0).path("content").path("parts").path(0)
-                .path("text").asText("");
+        return new RawAnswer(
+                root.path("candidates").path(0).path("content").path("parts").path(0)
+                        .path("text").asText(""),
+                root.path("usageMetadata").path("promptTokenCount").asLong(-1),
+                root.path("usageMetadata").path("candidatesTokenCount").asLong(-1));
     }
 
-    private String rawOpenAiCompatible(ChatbotConfig cfg, String system, String userText) throws Exception {
-        String model = cfg.getModel().isBlank() ? defaultModel(cfg.getProvider()) : cfg.getModel();
+    private RawAnswer rawOpenAiCompatible(ChatbotConfig cfg, String system, String userText) throws Exception {
+        // Same light-router policy as Gemini: Z.ai's glm-4.5-flash tier is
+        // free (live-verified with a real key) — the router must never burn
+        // the user's chosen (possibly metered) GLM model on classification.
+        String model = switch (cfg.getProvider()) {
+            case ChatbotConfig.GLM -> "glm-4.5-flash";
+            default -> cfg.getModel().isBlank() ? defaultModel(cfg.getProvider()) : cfg.getModel();
+        };
         String url = switch (cfg.getProvider()) {
             case ChatbotConfig.OPENROUTER -> "https://openrouter.ai/api/v1/chat/completions";
             case ChatbotConfig.GROQ -> "https://api.groq.com/openai/v1/chat/completions";
@@ -464,7 +528,10 @@ public final class AiChatClient {
         body.putArray("messages").add(M.createObjectNode().put("role", "system").put("content", system))
                 .add(M.createObjectNode().put("role", "user").put("content", userText));
         JsonNode root = post(url, "POST", body, Map.of("Authorization", "Bearer " + cfg.getApiKey()));
-        return root.path("choices").path(0).path("message").path("content").asText("");
+        return new RawAnswer(
+                root.path("choices").path(0).path("message").path("content").asText(""),
+                root.path("usage").path("prompt_tokens").asLong(-1),
+                root.path("usage").path("completion_tokens").asLong(-1));
     }
 
     /**
@@ -589,7 +656,9 @@ public final class AiChatClient {
                 throw new IllegalStateException("Gemini returned finishReason=" + reason);
             }
         }
-        return new ProviderResponse(text.toString(), calls);
+        return new ProviderResponse(text.toString(), calls,
+                root.path("usageMetadata").path("promptTokenCount").asLong(-1),
+                root.path("usageMetadata").path("candidatesTokenCount").asLong(-1));
     }
 
     private ArrayNode geminiContents(ChatbotConfig cfg, List<ChatTurn> turns) throws Exception {
@@ -781,7 +850,9 @@ public final class AiChatClient {
                             tc.path("id").asText(), ""));
             }
         }
-        return new ProviderResponse(text, calls);
+        return new ProviderResponse(text, calls,
+                root.path("usage").path("prompt_tokens").asLong(-1),
+                root.path("usage").path("completion_tokens").asLong(-1));
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -881,7 +952,9 @@ public final class AiChatClient {
             }
             text = sb.toString();
         }
-        return new ProviderResponse(text, calls);
+        return new ProviderResponse(text, calls,
+                root.path("usage").path("input_tokens").asLong(-1),
+                root.path("usage").path("output_tokens").asLong(-1));
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -889,7 +962,32 @@ public final class AiChatClient {
     // ─────────────────────────────────────────────────────────────────
 
     private record ToolCall(String name, String argumentsJson, String id, String thoughtSignature) {}
-    private record ProviderResponse(String text, List<ToolCall> toolCalls) {}
+
+    /**
+     * One provider answer + the usage block it carried. Usage parsing is
+     * per-provider ({@code usageMetadata} for Gemini, {@code usage} for the
+     * OpenAI-compatible shape, {@code usage} for Anthropic) and defaults to
+     * -1 when the provider omits it — totals simply stay hidden in the UI.
+     */
+    private record ProviderResponse(String text, List<ToolCall> toolCalls,
+                                    long promptTokens, long completionTokens) {
+        ProviderResponse(String text, List<ToolCall> toolCalls) { this(text, toolCalls, -1, -1); }
+    }
+
+    /** Running token totals for one send (accumulated across all requests). */
+    private static final class Usage {
+        long prompt = -1;   // -1 = nothing reported yet
+        long completion = -1;
+        void add(long p, long c) {
+            if (p >= 0)  prompt     = Math.max(prompt, 0) + p;
+            if (c >= 0)  completion = Math.max(completion, 0) + c;
+        }
+        long total() {
+            long p = Math.max(prompt, 0), c = Math.max(completion, 0);
+            return (prompt < 0 && completion < 0) ? -1 : p + c;
+        }
+        boolean reported() { return prompt >= 0 || completion >= 0; }
+    }
 
     private JsonNode post(String url, String method, ObjectNode body,
                           Map<String, String> headers) throws Exception {
@@ -899,22 +997,38 @@ public final class AiChatClient {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(M.writeValueAsString(body)));
         headers.forEach(rb::header);
+        String payloadChars = null;
+        try {
+            payloadChars = String.valueOf(rb.build().bodyPublisher().orElseThrow().contentLength());
+        } catch (Exception ignored) { }
         HttpResponse<String> resp = null;
+        long httpStart = System.currentTimeMillis();
         // Transient provider failures (5xx overload, per-minute 429 bursts) get
         // a short retry ladder. DAILY quota exhaustion (free tier: 20 req/day
         // per model) is NOT retryable — fail fast with an honest message.
         for (int attempt = 0; ; attempt++) {
             resp = http.send(rb.build(), HttpResponse.BodyHandlers.ofString());
             boolean dailyQuota = resp.statusCode() == 429
-                    && resp.body() != null && resp.body().contains("PerDay");
+                    && resp.body() != null && (resp.body().contains("PerDay")
+                        // Z.ai: a model outside the key's plan/balance is NOT
+                        // transient — retrying just wastes ~9 s of the user's
+                        // time before the honest error (live-verified).
+                        || resp.body().contains("Insufficient balance"));
             boolean retryable = (resp.statusCode() == 429 || resp.statusCode() >= 500) && !dailyQuota;
             if (!retryable || attempt >= 2) break;
             long delayMs = 3000L * (attempt + 1); // 3s, 6s
+            ChatbotLogManager.warn("Provider returned HTTP " + resp.statusCode()
+                    + " (retry " + (attempt + 1) + "/2 in " + delayMs + "ms)", null);
             try { Thread.sleep(delayMs); } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
+        // One trace line per real HTTP request: bytes up, status, wall time.
+        // Pure bookkeeping on data already in hand — no measurable cost.
+        ChatbotLogManager.http("HTTP " + resp.statusCode() + " in "
+                + (System.currentTimeMillis() - httpStart) + "ms"
+                + (payloadChars != null ? " — payload " + payloadChars + " chars" : ""), null);
         if (resp.statusCode() / 100 != 2) {
             throw new IllegalStateException(friendlyProviderError(resp.statusCode(), resp.body()));
         }
@@ -940,6 +1054,13 @@ public final class AiChatClient {
             return "Daily free-tier limit reached for this model (20 requests/day on the free plan). "
                     + "Wait for the daily reset, pick another model in Settings → Chatbot, or use a "
                     + "different provider (e.g. a local Ollama model — unlimited and free).";
+        }
+        // Z.ai balance wall (live-verified): newer GLM tiers need a paid plan —
+        // the hint must point at a FREE model, not a vague "rate limit".
+        if (rawBody != null && rawBody.contains("Insufficient balance")) {
+            return "This GLM model needs balance/plan on your Z.ai key. Pick the free tier "
+                    + "(glm-4.5-flash — it is the default) or another model in Settings → Chatbot, "
+                    + "or add balance in your Z.ai console.";
         }
         String hint = switch (status) {
             case 401, 403 -> " — check the API key in Settings → Chatbot.";

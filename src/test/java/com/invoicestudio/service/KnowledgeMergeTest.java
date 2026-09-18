@@ -71,7 +71,7 @@ class KnowledgeMergeTest {
     @Test
     void bundledResourceContainsToolLimitChapter() throws Exception {
         // The shipped resource itself must no longer lag the seed (the root
-        // cause of the missing chapter): 13 TSC + 13 AI = 26 articles.
+        // cause of the missing chapter): 13 TSC + 15 AI = 28 articles.
         try (var in = KnowledgeRepository.class.getResourceAsStream("/knowledge/knowledge-hub.json")) {
             assertNotNull(in, "bundled knowledge-hub.json must exist");
             com.fasterxml.jackson.databind.ObjectMapper m = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -83,7 +83,9 @@ class KnowledgeMergeTest {
                     "bundled resource must contain the speed-optimization chapter");
             assertTrue(bundled.stream().anyMatch(a -> "art_ai_14_bug_playbook".equals(a.id())),
                     "bundled resource must contain the bug-playbook chapter");
-            assertEquals(27, bundled.size(), "seed and bundled resource must stay in sync");
+            assertTrue(bundled.stream().anyMatch(a -> "art_ai_15_round3_tokens_glm_pipeline".equals(a.id())),
+                    "bundled resource must contain the round-3 chapter");
+            assertEquals(28, bundled.size(), "seed and bundled resource must stay in sync");
         }
         assertTrue(Files.exists(tempDir), "tempdir sanity");
     }

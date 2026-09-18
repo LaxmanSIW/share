@@ -29,9 +29,14 @@ public final class ModelCatalog {
     public record ModelInfo(String id, String displayName, String description,
                             long inputTokenLimit) {}
 
+    /** Z.ai (GLM) OpenAI-compatible model catalogue endpoint (live-verified:
+     *  GET with Bearer auth returns {"object":"list","data":[{"id":…}]}). */
+    public static final String GLM_MODELS_URL = "https://api.z.ai/api/paas/v4/models";
+
     private record Cache(long fetchedAt, List<ModelInfo> models) {}
 
     private static Cache cache;
+    private static Cache glmCache;
     private static final long TTL_MS = 10 * 60_000L; // 10 minutes
 
     private ModelCatalog() {}
@@ -67,6 +72,67 @@ public final class ModelCatalog {
 
         cache = new Cache(System.currentTimeMillis(), List.copyOf(out));
         return cache.models();
+    }
+
+    /**
+     * Chat models for the given Z.ai (GLM) key — live from
+     * {@code GET /api/paas/v4/models} (cached 10 min, same policy as Gemini).
+     *
+     * <p>The raw entries carry only {@code id}/{@code created}/{@code owned_by}
+     * (no display names or token limits — live-verified), so the id doubles as
+     * the display name. Obvious non-chat entries (embeddings/audio) are
+     * filtered defensively; ids are returned in the API's own order.</p>
+     */
+    public static List<ModelInfo> glmModels(String apiKey) throws Exception {
+        if (glmCache != null && System.currentTimeMillis() - glmCache.fetchedAt() < TTL_MS) {
+            return glmCache.models();
+        }
+        ObjectMapper M = new ObjectMapper();
+        HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(GLM_MODELS_URL))
+                .timeout(Duration.ofSeconds(30))
+                .header("Authorization", "Bearer " + apiKey)
+                .GET().build();
+        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() / 100 != 2) {
+            throw new IllegalStateException("HTTP " + resp.statusCode() + " loading GLM model catalogue");
+        }
+        JsonNode root = M.readTree(resp.body());
+        List<ModelInfo> out = new ArrayList<>();
+        for (JsonNode m : root.path("data")) {
+            ModelInfo info = parseGlm(m);
+            if (info != null) out.add(info);
+        }
+        glmCache = new Cache(System.currentTimeMillis(), List.copyOf(out));
+        return glmCache.models();
+    }
+
+    /** Parses one raw GLM model entry; null when not chat-capable. */
+    static ModelInfo parseGlm(JsonNode m) {
+        String id = m.path("id").asText("").trim();
+        if (id.isEmpty()) return null;
+        String lower = id.toLowerCase();
+        if (lower.contains("embed") || lower.contains("audio") || lower.contains("tts")
+                || lower.contains("asr") || lower.contains("video") || lower.contains("image")) {
+            return null;
+        }
+        return new ModelInfo(id, id, "", 0);
+    }
+
+    /**
+     * Chat models for a provider id — the single entry point used by the
+     * pickers. Only providers with a live catalogue endpoint are supported;
+     * the caller decides what to do for the rest.
+     */
+    public static boolean hasLiveCatalogue(String provider) {
+        return ChatbotConfig.GEMINI.equals(provider) || ChatbotConfig.GLM.equals(provider);
+    }
+
+    /** Provider-dispatching catalogue fetch (cached per provider). */
+    public static List<ModelInfo> modelsFor(String provider, String apiKey) throws Exception {
+        if (ChatbotConfig.GLM.equals(provider)) return glmModels(apiKey);
+        return chatModels(apiKey); // default: Gemini
     }
 
     /** Parses + filters one raw model entry; null when not chat-capable. */
@@ -117,5 +183,8 @@ public final class ModelCatalog {
         return null;
     }
 
-    public static void invalidate() { cache = null; }
+    public static void invalidate() {
+        cache = null;
+        glmCache = null;
+    }
 }
