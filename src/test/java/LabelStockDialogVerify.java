@@ -294,6 +294,61 @@ public class LabelStockDialogVerify extends StudioApp {
                 passed.add("auto-fit saved: strip width 61.0 mm");
             else failures.add("auto-fit not saved: strip " + c.getStripWidth());
         });
+        // ── Session 4: TSC TA210 preset selector ──
+        queue.add(() -> Platform.runLater(() -> invokePrivate("showLabelSettingsDialog")));
+        queue.add(() -> {});
+        queue.add(() -> {});
+        queue.add(() -> {
+            Parent dlgRoot = dialogRoot();
+            if (dlgRoot == null) { failures.add("dialog did not re-open (session 4)"); finish(); return; }
+            @SuppressWarnings("unchecked")
+            ComboBox<com.invoicestudio.service.LabelPresets.Preset> pc =
+                    (ComboBox<com.invoicestudio.service.LabelPresets.Preset>) (ComboBox<?>) presetCombo(dlgRoot);
+            if (pc == null) { failures.add("TA210 preset combo missing"); finish(); return; }
+            if (pc.getItems().size() == 17) passed.add("17 TA210 presets listed");
+            else failures.add("expected 17 presets, got " + pc.getItems().size());
+
+            com.invoicestudio.service.LabelPresets.Preset target = pc.getItems().stream()
+                    .filter(p -> Math.abs(p.w() - 50) < 1e-9 && Math.abs(p.h() - 25) < 1e-9)
+                    .findFirst().orElse(null);
+            if (target == null) {
+                failures.add("50×25 preset missing");
+            } else {
+                pc.setValue(target);
+                boolean filled = spinnersContain(dlgRoot, 50.0) && spinnersContain(dlgRoot, 25.0)
+                        && spinnersContain(dlgRoot, 1.0) && spinnersContain(dlgRoot, 1.5)
+                        && spinnersContain(dlgRoot, 2.0);
+                if (filled) passed.add("selecting 50×25 filled W/H/L-R/RowGap/ColGap");
+                else failures.add("preset did not fill all five spacing fields");
+                Label env = labelContaining(dlgRoot, "Within TA210 media envelope");
+                if (env != null) passed.add("envelope indicator shows ✓ for the preset size");
+                else failures.add("TA210 envelope indicator missing");
+            }
+            shotDialog("labelstock-4-preset");
+
+            // Presets are suggestions: a hand edit clears the highlight.
+            setSpinner(dlgRoot, 25.0, 45.0); // 50×45 matches no preset
+            if (pc.getValue() == null) passed.add("hand edit clears the preset highlight");
+            else failures.add("preset combo should be blank after a custom edit: " + pc.getValue());
+
+            // Out-of-range hand-typed width explains the violation.
+            setSpinner(dlgRoot, 50.0, 200.0);
+            Label warn = labelContaining(dlgRoot, "outside TA210 media range");
+            if (warn != null) passed.add("custom 200 mm width explains the TA210 violation");
+            else failures.add("no validation message for a 200 mm width");
+            shotDialog("labelstock-5-custom-invalid");
+
+            Button cancel = findButtonInAnyWindow("Cancel");
+            if (cancel == null) failures.add("Cancel button not found");
+            else cancel.fire();
+        });
+        queue.add(() -> {
+            LabelConfig c = template().labelOrNew();
+            boolean untouched = Math.abs(c.getStripWidth() - 61.0) < 1e-9
+                    && Math.abs(c.getLabelWidth() - 60.0) < 1e-9;
+            if (untouched) passed.add("Cancel left the saved config untouched after preset experiments");
+            else failures.add("Cancel leaked dialog values into the template: strip " + c.getStripWidth());
+        });
         queue.add(this::finish);
     }
 
@@ -374,6 +429,20 @@ public class LabelStockDialogVerify extends StudioApp {
     void collectSpinners(Node n, List<Spinner<?>> out) {
         if (n instanceof Spinner<?> s) out.add(s);
         if (n instanceof Parent p) for (Node ch : p.getChildrenUnmodifiable()) collectSpinners(ch, out);
+    }
+
+    /** The TA210 preset selector is the only combo whose items are Preset
+     *  records — find it by item type, not by text. */
+    ComboBox<?> presetCombo(Node n) {
+        if (n instanceof ComboBox<?> cb && !cb.getItems().isEmpty()
+                && cb.getItems().get(0) instanceof com.invoicestudio.service.LabelPresets.Preset) return cb;
+        if (n instanceof Parent p) {
+            for (Node ch : p.getChildrenUnmodifiable()) {
+                ComboBox<?> r = presetCombo(ch);
+                if (r != null) return r;
+            }
+        }
+        return null;
     }
 
     CheckBox checkboxContaining(Node n, String text) {

@@ -1,0 +1,9 @@
+{
+  "showIcon" : true,
+  "provider" : "gemini",
+  "model" : "",
+  "apiKey" : "",
+  "endpoint" : "",
+  "historyMessages" : 30,
+  "smartRouting" : true
+}

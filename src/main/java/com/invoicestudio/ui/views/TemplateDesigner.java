@@ -9,6 +9,7 @@ import com.invoicestudio.model.TableColumn;
 import com.invoicestudio.service.BarcodeService;
 import com.invoicestudio.service.CustomComponentManager;
 import com.invoicestudio.service.LabelGeometryService;
+import com.invoicestudio.service.LabelPresets;
 import com.invoicestudio.service.RenderContext;
 import com.invoicestudio.service.TsplPrintService;
 import com.invoicestudio.service.VariableGrouper;
@@ -6219,6 +6220,49 @@ public class TemplateDesigner extends BorderPane {
         artCaption.setWrapText(true);
         artCaption.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
 
+        // ── TSC TA210 preset selector (gold-rectangle chips → compact combo) ──
+        // Display format per user spec: [W×H] | L/R: xmm | Row Gap: ymm | Col Gap: zmm.
+        // Selecting a preset FILLS the spinners (suggestions, never hard bindings);
+        // all fields stay editable and custom sizes are validated against the
+        // TA210 hardware envelope.
+        final boolean[] applyingPreset = {false};
+        ComboBox<LabelPresets.Preset> presetCb = new ComboBox<>(
+                FXCollections.observableArrayList(LabelPresets.TA210));
+        presetCb.setMaxWidth(Double.MAX_VALUE);
+        presetCb.setCellFactory(lv -> new ListCell<>() {
+            @Override protected void updateItem(LabelPresets.Preset p, boolean empty) {
+                super.updateItem(p, empty);
+                if (p == null || empty) { setText(null); setGraphic(null); return; }
+                VBox box = new VBox(1);
+                Label spec = new Label(p.spec());
+                spec.setStyle("-fx-font-size: 12px; -fx-text-fill: #E6EAF0; -fx-font-family: 'Consolas','Courier New',monospace;");
+                box.getChildren().add(spec);
+                if (p.note() != null && !p.note().isBlank()) {
+                    Label note = new Label(p.note());
+                    note.setStyle("-fx-font-size: 10px; -fx-text-fill: #97A3B6;");
+                    box.getChildren().add(note);
+                }
+                setText(null); setGraphic(box);
+            }
+        });
+        presetCb.setButtonCell(new ListCell<>() {
+            @Override protected void updateItem(LabelPresets.Preset p, boolean empty) {
+                super.updateItem(p, empty);
+                setText(p == null || empty ? "Preset label size — TSC TA210…" : p.spec());
+                setStyle("-fx-font-family: 'Consolas','Courier New',monospace; -fx-font-size: 12px;");
+            }
+        });
+        presetCb.setPromptText("Preset label size — TSC TA210…");
+
+        Label presetWarn = new Label();
+        presetWarn.setWrapText(true);
+        presetWarn.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
+
+        VBox presetSection = new VBox(6, presetCb, presetWarn);
+        presetSection.setStyle("-fx-background-color: rgba(217,161,59,0.07); -fx-background-radius: 8;"
+                + "-fx-border-color: rgba(217,161,59,0.45); -fx-border-radius: 8; -fx-border-width: 1;"
+                + "-fx-padding: 8;");
+
         // Live recompute: derives the design canvas from the PHYSICAL spinners
         // + artwork rotation, auto-fits the paper width, refreshes every number
         // and redraws the strip diagram.
@@ -6251,6 +6295,37 @@ public class TemplateDesigner extends BorderPane {
                     fits ? "✓" : "⚠", LabelGeometryService.requiredStripWidth(tmp),
                     tmp.getStripWidth(), LabelGeometryService.feedPitchMm(tmp)));
             needLbl.setStyle(fits ? "-fx-text-fill: #16a34a;" : "-fx-text-fill: #dc2626;");
+            // Keep the selector in sync with hand edits: highlight the matching
+            // preset, or blank it for custom dimensions.
+            applyingPreset[0] = true;
+            LabelPresets.Preset match = null;
+            for (LabelPresets.Preset p : LabelPresets.TA210) {
+                if (Math.abs(p.w() - pw) < 0.05 && Math.abs(p.h() - ph) < 0.05
+                        && Math.abs(p.marginLR() - mlSpin.getValue()) < 0.05
+                        && Math.abs(p.rowGap() - gapYSpin.getValue()) < 0.05
+                        && Math.abs(p.colGap() - gapXSpin.getValue()) < 0.05) {
+                    match = p; break;
+                }
+            }
+            presetCb.setValue(match);
+            applyingPreset[0] = false;
+            // TA210 hardware-envelope validation for hand-typed dimensions.
+            // The gap advisory only applies to CUSTOM dims — the curated
+            // presets carry real-world commercial gaps (1.5/1.0/0.5 mm on
+            // small labels) that must not warn.
+            String hwErr = LabelPresets.validate(pw, ph);
+            if (hwErr != null) {
+                presetWarn.setText("⚠ " + hwErr);
+                presetWarn.setStyle("-fx-font-size: 11px; -fx-text-fill: #dc2626;");
+            } else if (match == null && tmp.getGapY() > 0 && tmp.getGapY() < LabelPresets.GAP_MIN_TYPICAL) {
+                presetWarn.setText(String.format(java.util.Locale.US,
+                        "Feed gap %.1f mm is below the typical 2 mm die-cut gap — check your roll.",
+                        tmp.getGapY()));
+                presetWarn.setStyle("-fx-font-size: 11px; -fx-text-fill: #D9A13B;");
+            } else {
+                presetWarn.setText("✓ Within TA210 media envelope (25.4–118 mm wide · 10–2794 mm long · 203 dpi)");
+                presetWarn.setStyle("-fx-font-size: 11px; -fx-text-fill: #16a34a;");
+            }
             caption.setText(String.format(java.util.Locale.US,
                     "Paper (liner) %.1f mm wide   ·   Label on strip %.1f × %.1f mm (W × H)   ·   Feed pitch %.1f mm/row",
                     tmp.getStripWidth(), pw, ph, LabelGeometryService.feedPitchMm(tmp)));
@@ -6290,6 +6365,7 @@ public class TemplateDesigner extends BorderPane {
         stockCard.add("Feed gap between rows (mm)", gapYSpin);
         stockCard.add("Gap between columns (mm)", gapXSpin);
         stockCard.add("Corner radius (mm)", cornerSpin);
+        stockCard.box.getChildren().add(1, presetSection); // gold selector above the field grid
 
         SettingsCard linerCard = new SettingsCard("LINER, MARGINS & STOCK TYPE");
         linerCard.add("Paper (liner) width (mm)", stripWSpin);
@@ -6297,6 +6373,20 @@ public class TemplateDesigner extends BorderPane {
         linerCard.add("Stock type", stockCb);
         linerCard.add("Left margin (mm)", mlSpin);
         linerCard.add("Right margin (mm)", mrSpin);
+
+        presetCb.valueProperty().addListener((obs, o, p) -> {
+            if (p == null || applyingPreset[0]) return;
+            // Fill W, H, L/R margin, row gap, col gap (spec behaviour) — fields
+            // stay fully editable afterwards.
+            physWSpin.getValueFactory().setValue(p.w());
+            physHSpin.getValueFactory().setValue(p.h());
+            mlSpin.getValueFactory().setValue(p.marginLR());
+            mrSpin.getValueFactory().setValue(p.marginLR());
+            gapYSpin.getValueFactory().setValue(p.rowGap());
+            gapXSpin.getValueFactory().setValue(p.colGap());
+            autoPaper.setSelected(true); // presets imply a fitted liner
+            upd.run();
+        });
 
         colsSpin.valueProperty().addListener((o, a, b) -> upd.run());
         for (Spinner<Double> s : List.of(physWSpin, physHSpin, gapXSpin, gapYSpin, mlSpin, mrSpin)) {

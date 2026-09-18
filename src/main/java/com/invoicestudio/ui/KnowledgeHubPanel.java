@@ -4,15 +4,14 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
-import javafx.scene.control.ListView;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.StackPane;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 
@@ -21,37 +20,64 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Settings → Knowledge Hub: the researched reference material for the
- * thermal label printing stack — the TSC TA210 printer, its native
- * TSPL/TSPL2 command language and how InvoiceStudio's print pipeline
- * drives it — presented as a modern, searchable topic browser.
- * <p>
- * All command syntax documented here was verified against the official
- * "TSPL/TSPL2 Programming Language" manual (TSC Auto ID) and field prints.
- * <p>
- * Design (modernized per user request): a gold-accented hero header, a
- * searchable sidebar whose topics are grouped into category sections
- * (PRINTER / TSPL LANGUAGE / GUIDES / INSIDE THE APP) with card-style
- * cells, and the article itself on a matching dark card with a gold
- * accent bar. All reference content is unchanged — only the shell is new.
+ * Settings → Knowledge Hub (redesigned): reference material for the thermal
+ * label printing stack — the TSC TA210 printer, its native TSPL/TSPL2 command
+ * language and how InvoiceStudio's print pipeline drives it.
+ *
+ * <p>Redesign contract (user spec):</p>
+ * <ul>
+ *   <li>Single "TSC" top-level group containing everything, with nested
+ *       levels (TSC → TA210 → Label Sizes / Print Settings / Troubleshooting …)
+ *       that each expand/collapse independently.</li>
+ *   <li>Top level expanded by default; sub-levels collapsed.</li>
+ *   <li>Rotating-arrow toggles, clear indentation per level.</li>
+ *   <li>High-contrast dark scheme — no light-on-light text.</li>
+ *   <li>Full available height, small bottom margin, scrollbar only on
+ *       overflow.</li>
+ * </ul>
+ *
+ * <p>All reference content is carried over from the previous hub unchanged —
+ * only the shell and structure are new.</p>
  */
 public class KnowledgeHubPanel extends VBox {
 
-    /** One browsable knowledge topic: category + title + intro + content blocks. */
-    private record Topic(String category, String title, String subtitle, Node[] blocks) {}
+    // ── Tree model ────────────────────────────────────────────────────
 
-    /** Sidebar row: either a group header or a selectable topic. */
-    private static final class Row {
-        final String header;
-        final Topic topic;
-        private Row(String header, Topic topic) { this.header = header; this.topic = topic; }
-        static Row header(String h) { return new Row(h, null); }
-        static Row topic(Topic t) { return new Row(null, t); }
-        boolean isHeader() { return header != null; }
-        /** Runtime verify harnesses locate topics by scanning item strings —
-         *  keep the title (or header) in toString(). */
-        @Override public String toString() { return header != null ? header : (topic != null ? topic.title() : ""); }
+    /** One browsable article (a leaf of the tree). */
+    public record Article(String title, String subtitle, Node[] blocks) {}
+
+    /** A tree node: either an expandable group or a selectable article. */
+    public static final class TreeNode {
+        final String name;
+        final List<TreeNode> children = new ArrayList<>();
+        Article article;
+        boolean expanded;
+
+        /** Group node. */
+        public static TreeNode group(String name, boolean expanded) {
+            TreeNode n = new TreeNode(name);
+            n.expanded = expanded;
+            return n;
+        }
+        /** Article leaf node. */
+        public static TreeNode leaf(Article a) {
+            TreeNode n = new TreeNode(a.title());
+            n.article = a;
+            return n;
+        }
+        private TreeNode(String name) { this.name = name; }
+
+        boolean isGroup() { return article == null; }
+        boolean matches(String q) {
+            if (q.isEmpty()) return true;
+            if (name.toLowerCase(Locale.ROOT).contains(q)) return true;
+            if (article != null && article.subtitle().toLowerCase(Locale.ROOT).contains(q)) return true;
+            for (TreeNode c : children) if (c.matches(q)) return true;
+            return false;
+        }
     }
+
+    // ── Styling ───────────────────────────────────────────────────────
 
     private static final String CODE_STYLE =
             "-fx-background-color: #0d1117; -fx-text-fill: #c9d1d9; -fx-font-family: 'Consolas','Courier New',monospace;"
@@ -66,33 +92,43 @@ public class KnowledgeHubPanel extends VBox {
             "-fx-background-color: #151C29; -fx-background-radius: 8;"
             + "-fx-border-color: #273245; -fx-border-radius: 8; -fx-border-width: 1;";
 
-    private final List<Topic> allTopics = new ArrayList<>();
-    private final ListView<Row> topicList = new ListView<>();
+    private static final String GOLD = "#D9A13B";
+    private static final String TEXT = "#F2F4F8";
+    private static final String MUTED = "#97A3B6";
+    private static final String BODY = "#d0d0d0";
+
+    // ── State ─────────────────────────────────────────────────────────
+
+    private final TreeNode root = TreeNode.group("TSC", true);
+    private final VBox treeBox = new VBox(2);
     private final TextField searchField = new TextField();
     private final VBox contentBox = new VBox(12);
     private final Label contentTitle = new Label();
     private final Label contentSubtitle = new Label();
     private final Label countChip = new Label();
+    private Article selected;
 
     public KnowledgeHubPanel() {
         setSpacing(10);
-        setPadding(new Insets(12, 14, 14, 14));
+        // Full available height, small bottom margin only (user spec):
+        setPadding(new Insets(10, 10, 6, 10));
 
-        allTopics.addAll(buildTopics());
-
+        buildTree();
         getChildren().addAll(buildHero(), buildBody());
 
-        searchField.textProperty().addListener((obs, old, val) -> refreshRows());
-        refreshRows();
-        showTopic(allTopics.get(0));
+        searchField.textProperty().addListener((obs, o, v) -> rebuildTree());
+        rebuildTree();
+        // Show the first article so the panel never opens empty.
+        TreeNode first = firstArticle(root);
+        if (first != null) show(first);
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // Modern shell: hero header + searchable sidebar / article card
+    // Shell
     // ─────────────────────────────────────────────────────────────────
 
     private Node buildHero() {
-        StackPane badge = new StackPane(IconHelper.getIcon(IconHelper.ICON_SPARKLES, 20, "#D9A13B"));
+        StackPane badge = new StackPane(IconHelper.getIcon(IconHelper.ICON_SPARKLES, 20, GOLD));
         badge.setStyle("-fx-background-color: rgba(217,161,59,0.14); -fx-background-radius: 10;"
                 + "-fx-border-color: rgba(217,161,59,0.45); -fx-border-radius: 10; -fx-border-width: 1;");
         badge.setPrefSize(42, 42);
@@ -100,17 +136,16 @@ public class KnowledgeHubPanel extends VBox {
         badge.setMaxSize(42, 42);
 
         Label title = new Label("Knowledge Hub");
-        title.setStyle("-fx-font-size: 17px; -fx-font-weight: bold; -fx-text-fill: #F2F4F8;");
+        title.setStyle("-fx-font-size: 17px; -fx-font-weight: bold; -fx-text-fill: " + TEXT + ";");
         Label subtitle = new Label("Everything the app knows about the TSC TA210 printer, the TSPL/TSPL2 "
                 + "command language and how InvoiceStudio turns your label design into burned dots.");
-        subtitle.setStyle("-fx-font-size: 12px; -fx-text-fill: #97A3B6;");
+        subtitle.setStyle("-fx-font-size: 12px; -fx-text-fill: " + MUTED + ";");
         subtitle.setWrapText(true);
 
-        countChip.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #D9A13B;"
+        countChip.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: " + GOLD + ";"
                 + "-fx-background-color: rgba(217,161,59,0.12); -fx-background-radius: 8;"
                 + "-fx-border-color: rgba(217,161,59,0.35); -fx-border-radius: 8; -fx-border-width: 1;"
                 + "-fx-padding: 2 8 2 8;");
-        countChip.setText(allTopics.size() + " topics");
 
         HBox titleRow = new HBox(8, title, countChip);
         titleRow.setAlignment(Pos.CENTER_LEFT);
@@ -123,94 +158,50 @@ public class KnowledgeHubPanel extends VBox {
     }
 
     private Node buildBody() {
-        // ── Sidebar: search + grouped topic list ─────────────────────
         searchField.setPromptText("Search topics…");
-        searchField.setStyle("-fx-background-color: #0F1520; -fx-text-fill: #E6EAF0; -fx-prompt-text-fill: #5b6779;"
+        searchField.setStyle("-fx-background-color: #0F1520; -fx-text-fill: " + TEXT
+                + "; -fx-prompt-text-fill: #5b6779;"
                 + "-fx-background-radius: 6; -fx-border-color: #273245; -fx-border-radius: 6; -fx-border-width: 1;"
                 + "-fx-padding: 6 10 6 10; -fx-font-size: 12px;");
 
-        topicList.getStyleClass().add("bg-card");
-        topicList.setStyle("-fx-background-color: transparent;");
-        topicList.setPrefWidth(320);
-        topicList.setMinWidth(280);
-        topicList.setPlaceholder(new Label("No matching topics"));
-        topicList.setCellFactory(lv -> new ListCell<>() {
-            {
-                // selection changes don't re-run updateItem — re-render on both
-                selectedProperty().addListener((obs, a, b) -> render());
-            }
-            @Override protected void updateItem(Row r, boolean empty) {
-                super.updateItem(r, empty);
-                render();
-            }
-            private void render() {
-                Row r = getItem();
-                if (r == null || isEmpty()) {
-                    setText(null); setGraphic(null);
-                    setStyle("-fx-background-color: transparent; -fx-padding: 0;");
-                    return;
-                }
-                if (r.isHeader()) {
-                    Label h = new Label(r.header.toUpperCase(Locale.ROOT));
-                    h.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #D9A13B;");
-                    HBox box = new HBox(h);
-                    box.setPadding(new Insets(10, 6, 2, 8));
-                    setGraphic(box);
-                    setText(null);
-                    setStyle("-fx-background-color: transparent; -fx-padding: 0;");
-                    return;
-                }
-                boolean sel = isSelected();
-                Label t = new Label(r.topic.title());
-                t.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: "
-                        + (sel ? "#F0D9A8" : "#ECEFF4") + ";");
-                t.setWrapText(true);
-                Label s = new Label(r.topic.subtitle());
-                s.setStyle("-fx-font-size: 11px; -fx-text-fill: #8A94A6;");
-                s.setWrapText(true);
-                s.setMaxWidth(250);
-                s.setTextOverrun(javafx.scene.control.OverrunStyle.ELLIPSIS);
-                VBox card = new VBox(2, t, s);
-                card.setPadding(new Insets(7, 9, 7, 9));
-                card.setStyle("-fx-background-color: " + (sel ? "#1D2839" : "transparent") + ";"
-                        + "-fx-background-radius: 6; -fx-border-radius: 6;"
-                        + (sel ? "-fx-border-color: #D9A13B; -fx-border-width: 0 0 0 3;" : ""));
-                setGraphic(card);
-                setText(null);
-                setStyle("-fx-background-color: transparent; -fx-padding: 1 3;");
-            }
-        });
-        topicList.getSelectionModel().selectedItemProperty().addListener((obs, o, sel) -> {
-            if (sel != null && !sel.isHeader()) showTopic(sel.topic);
-        });
+        // Tree sidebar — grows to full height; its own scrollbar appears only
+        // on overflow (ScrollPane policy BELOW).
+        treeBox.setStyle("-fx-background-color: transparent;");
+        ScrollPane treeScroll = new ScrollPane(treeBox);
+        treeScroll.setFitToWidth(true);
+        treeScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        treeScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        treeScroll.setStyle("-fx-background-color: transparent;");
+        VBox.setVgrow(treeScroll, Priority.ALWAYS);
 
-        VBox sidebar = new VBox(8, searchField, topicList);
+        VBox sidebar = new VBox(8, searchField, treeScroll);
         sidebar.setStyle(CARD_STYLE + "-fx-padding: 10;");
         sidebar.setPrefWidth(344);
         sidebar.setMinWidth(300);
-        VBox.setVgrow(topicList, Priority.ALWAYS);
+        VBox.setVgrow(sidebar, Priority.ALWAYS);
 
-        // ── Article card ─────────────────────────────────────────────
+        // Article card — full height, scrollbar only on overflow.
         Region accentBar = new Region();
-        accentBar.setStyle("-fx-background-color: #D9A13B; -fx-background-radius: 2;");
+        accentBar.setStyle("-fx-background-color: " + GOLD + "; -fx-background-radius: 2;");
         accentBar.setPrefSize(44, 4);
         accentBar.setMinSize(44, 4);
         accentBar.setMaxSize(44, 4);
 
-        contentTitle.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #F2F4F8;");
+        contentTitle.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: " + TEXT + ";");
         contentTitle.setWrapText(true);
-        contentSubtitle.setStyle("-fx-font-size: 12px; -fx-text-fill: #97A3B6;");
+        contentSubtitle.setStyle("-fx-font-size: 12px; -fx-text-fill: " + MUTED + ";");
         contentSubtitle.setWrapText(true);
-        contentBox.setPadding(new Insets(2, 2, 18, 2));
+        contentBox.setPadding(new Insets(2, 2, 14, 2));
 
-        var scroll = new ScrollPane(contentBox);
-        scroll.setFitToWidth(true);
-        scroll.setStyle("-fx-background-color: transparent;");
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        VBox.setVgrow(scroll, Priority.ALWAYS);
+        ScrollPane articleScroll = new ScrollPane(contentBox);
+        articleScroll.setFitToWidth(true);
+        articleScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        articleScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        articleScroll.setStyle("-fx-background-color: transparent;");
+        VBox.setVgrow(articleScroll, Priority.ALWAYS);
 
-        VBox article = new VBox(8, accentBar, contentTitle, contentSubtitle, scroll);
-        article.setStyle(CARD_STYLE + "-fx-padding: 16 18 6 18;");
+        VBox article = new VBox(8, accentBar, contentTitle, contentSubtitle, articleScroll);
+        article.setStyle(CARD_STYLE + "-fx-padding: 16 18 4 18;");
         HBox.setHgrow(article, Priority.ALWAYS);
 
         HBox split = new HBox(14, sidebar, article);
@@ -219,83 +210,122 @@ public class KnowledgeHubPanel extends VBox {
         return split;
     }
 
-    /** Rebuilds the sidebar rows from the search filter, keeping grouped
-     *  category headers; preserves the visible article if it still matches. */
-    private void refreshRows() {
+    // ─────────────────────────────────────────────────────────────────
+    // Tree rendering
+    // ─────────────────────────────────────────────────────────────────
+
+    /** Rebuilds the visible tree from the search filter. Groups containing
+     *  matches auto-expand while searching; otherwise stored state applies. */
+    private void rebuildTree() {
         String q = searchField.getText() == null ? "" : searchField.getText().trim().toLowerCase(Locale.ROOT);
-        Topic selected = currentlyShown();
-        List<Row> rows = new ArrayList<>();
-        String lastCat = null;
-        int shown = 0;
-        for (Topic t : allTopics) {
-            boolean match = q.isEmpty()
-                    || t.title().toLowerCase(Locale.ROOT).contains(q)
-                    || t.subtitle().toLowerCase(Locale.ROOT).contains(q)
-                    || t.category().toLowerCase(Locale.ROOT).contains(q);
-            if (!match) continue;
-            if (!t.category().equals(lastCat)) {
-                rows.add(Row.header(t.category()));
-                lastCat = t.category();
+        treeBox.getChildren().clear();
+        int[] count = {0};
+        renderChildren(root, q, 0, count);
+        countChip.setText(count[0] + " topics");
+    }
+
+    private void renderChildren(TreeNode parent, String q, int depth, int[] count) {
+        boolean searching = !q.isEmpty();
+        for (TreeNode child : parent.children) {
+            if (!child.matches(q)) continue;
+            if (child.isGroup()) {
+                if (searching) child.expanded = true; // reveal matches while searching
+                treeBox.getChildren().add(groupRow(child, depth));
+                if (child.expanded) {
+                    renderChildren(child, q, depth + 1, count);
+                }
+            } else {
+                treeBox.getChildren().add(articleRow(child, depth));
+                count[0]++;
             }
-            rows.add(Row.topic(t));
-            shown++;
-        }
-        topicList.getItems().setAll(rows);
-        countChip.setText(shown + " topics");
-        // restore selection: previously shown topic, else first topic row
-        Row target = null;
-        if (selected != null) {
-            for (Row r : rows) {
-                if (!r.isHeader() && r.topic == selected) { target = r; break; }
-            }
-        }
-        if (target == null) {
-            for (Row r : rows) { if (!r.isHeader()) { target = r; break; } }
-        }
-        if (target != null) {
-            topicList.getSelectionModel().select(target);
-            if (selected == target.topic) showTopic(selected); // re-render highlight
-        } else {
-            topicList.getSelectionModel().clearSelection();
         }
     }
 
-    private Topic currentlyShown() {
-        for (Topic t : allTopics) {
-            if (t.title().equals(contentTitle.getText())) return t;
+    /** One expand/collapse group row: rotating arrow + name, indented per level. */
+    private Node groupRow(TreeNode group, int depth) {
+        Label arrow = new Label(group.expanded ? "▾" : "▸");
+        arrow.setStyle("-fx-text-fill: " + GOLD + "; -fx-font-size: 12px; -fx-font-weight: bold;");
+        arrow.setMinWidth(14);
+
+        Label name = new Label(group.name);
+        boolean topLevel = depth == 0;
+        name.setStyle("-fx-font-size: " + (topLevel ? "12px" : "12.5px") + "; -fx-font-weight: bold; -fx-text-fill: "
+                + (topLevel ? GOLD : "#c8d2e0") + ";"
+                + (topLevel ? "" : " -fx-font-style: normal;"));
+
+        HBox row = new HBox(6, arrow, name);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.setPadding(new Insets(topLevel ? 8 : 5, 6, topLevel ? 3 : 5, 8 + depth * 16));
+        if (!topLevel) {
+            row.setStyle("-fx-background-color: rgba(255,255,255,0.03); -fx-background-radius: 6;");
+        }
+        row.addEventHandler(MouseEvent.MOUSE_CLICKED, e -> {
+            group.expanded = !group.expanded;
+            rebuildTree();
+        });
+        row.setCursor(javafx.scene.Cursor.HAND);
+        return row;
+    }
+
+    /** One selectable article row, indented per level. */
+    private Node articleRow(TreeNode leaf, int depth) {
+        boolean sel = selected == leaf.article;
+        Label t = new Label(leaf.article.title());
+        t.setStyle("-fx-font-size: 12.5px; -fx-font-weight: bold; -fx-text-fill: "
+                + (sel ? "#F0D9A8" : "#ECEFF4") + ";");
+        t.setWrapText(true);
+
+        VBox card = new VBox(2, t);
+        card.setPadding(new Insets(6, 9, 6, 9));
+        card.setStyle("-fx-background-color: " + (sel ? "#1D2839" : "transparent") + ";"
+                + "-fx-background-radius: 6; -fx-border-radius: 6;"
+                + (sel ? "-fx-border-color: " + GOLD + "; -fx-border-width: 0 0 0 3;" : ""));
+        HBox holder = new HBox(card);
+        holder.setPadding(new Insets(1, 0, 1, 8 + depth * 16));
+        holder.addEventHandler(MouseEvent.MOUSE_CLICKED, e -> show(leaf));
+        holder.setCursor(javafx.scene.Cursor.HAND);
+        return holder;
+    }
+
+    private TreeNode firstArticle(TreeNode n) {
+        for (TreeNode c : n.children) {
+            if (!c.isGroup()) return c;
+            TreeNode r = firstArticle(c);
+            if (r != null) return r;
         }
         return null;
     }
 
-    private void showTopic(Topic t) {
-        if (t == null) return;
-        contentTitle.setText(t.title());
-        contentSubtitle.setText(t.subtitle());
-        contentBox.getChildren().setAll(t.blocks());
+    private void show(TreeNode leaf) {
+        selected = leaf.article;
+        contentTitle.setText(leaf.article.title());
+        contentSubtitle.setText(leaf.article.subtitle());
+        contentBox.getChildren().setAll(leaf.article.blocks());
+        rebuildTree(); // re-render selection highlight
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // Content builders
+    // Content builders (high-contrast: gold headings on dark card only)
     // ─────────────────────────────────────────────────────────────────
 
     private static Node para(String text) {
         Label l = new Label(text);
         l.setWrapText(true);
-        l.setStyle("-fx-text-fill: #d0d0d0; -fx-font-size: 13px;");
+        l.setStyle("-fx-text-fill: " + BODY + "; -fx-font-size: 13px;");
         return l;
     }
 
     private static Node bullet(String text) {
         Label l = new Label("•  " + text);
         l.setWrapText(true);
-        l.setStyle("-fx-text-fill: #d0d0d0; -fx-font-size: 13px;");
+        l.setStyle("-fx-text-fill: " + BODY + "; -fx-font-size: 13px;");
         VBox.setMargin(l, new Insets(0, 0, 0, 10));
         return l;
     }
 
     private static Node heading(String text) {
         Label l = new Label(text);
-        l.setStyle("-fx-text-fill: #d9a13b; -fx-font-size: 12px; -fx-font-weight: bold;");
+        l.setStyle("-fx-text-fill: " + GOLD + "; -fx-font-size: 12px; -fx-font-weight: bold;");
         VBox.setMargin(l, new Insets(6, 0, 0, 0));
         return l;
     }
@@ -322,27 +352,69 @@ public class KnowledgeHubPanel extends VBox {
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // The knowledge base
+    // The knowledge tree — single TSC root with nested sub-levels
+    // (article bodies carried over unchanged from the previous hub)
     // ─────────────────────────────────────────────────────────────────
 
-    private List<Topic> buildTopics() {
-        return List.of(
-            ta210Overview(),
-            stockSensingAndOrientation(),
-            tsplLanguage(),
-            scriptAnatomy(),
-            setupCommands(),
-            bitmapCommand(),
-            printCommand(),
-            blankLabelsGuide(),
-            appPipeline(),
-            thresholdGuide(),
-            troubleshooting(),
-            advancedKnobs());
+    private void buildTree() {
+        // TSC → TA210 (printer + label sizes + media specs)
+        TreeNode ta210 = TreeNode.group("TA210 — Printer", false);
+        ta210.children.add(TreeNode.leaf(ta210Overview()));
+        ta210.children.add(TreeNode.leaf(stockSensingAndOrientation()));
+        ta210.children.add(TreeNode.leaf(labelSizesAndMedia()));
+
+        // TSC → Print Settings
+        TreeNode settings = TreeNode.group("Print Settings", false);
+        settings.children.add(TreeNode.leaf(thresholdGuide()));
+        settings.children.add(TreeNode.leaf(advancedKnobs()));
+
+        // TSC → TSPL Language
+        TreeNode tspl = TreeNode.group("TSPL Language", false);
+        tspl.children.add(TreeNode.leaf(tsplLanguage()));
+        tspl.children.add(TreeNode.leaf(scriptAnatomy()));
+        tspl.children.add(TreeNode.leaf(setupCommands()));
+        tspl.children.add(TreeNode.leaf(bitmapCommand()));
+        tspl.children.add(TreeNode.leaf(printCommand()));
+
+        // TSC → Troubleshooting
+        TreeNode trouble = TreeNode.group("Troubleshooting", false);
+        trouble.children.add(TreeNode.leaf(blankLabelsGuide()));
+        trouble.children.add(TreeNode.leaf(troubleshooting()));
+
+        // TSC → Inside the App
+        TreeNode inside = TreeNode.group("Inside the App", false);
+        inside.children.add(TreeNode.leaf(appPipeline()));
+
+        root.children.addAll(java.util.List.of(ta210, settings, tspl, trouble, inside));
     }
 
-    private Topic ta210Overview() {
-        return new Topic("PRINTER", "TSC TA210 — Printer Overview",
+    /** New article: the verified TA210 media-spec table + the preset story. */
+    private Article labelSizesAndMedia() {
+        return new Article("Label Sizes & Media Specs — TA210 Envelope",
+            "Verified media envelope and the 17 built-in presets the Label Stock dialog offers.",
+            new Node[] {
+                para("Every preset in the Label Stock dialog falls inside the TA210's official media envelope, "
+                    + "validated before the fields are filled:"),
+                heading("VERIFIED MEDIA SPECS (SOURCE-BACKED)"),
+                bullet("Media width: 25.4 – 118 mm (die-cut liner)."),
+                bullet("Label length: 10 – 2794 mm (feed direction)."),
+                bullet("Max print width: 108 mm (the 203-dpi print head — media wider than this will not fully print)."),
+                bullet("Resolution: 203 DPI = 8 dots/mm."),
+                bullet("Typical die-cut gap: 2 mm or more."),
+                bullet("Media core diameter: 25.4 – 38 mm."),
+                heading("THE BUILT-IN PRESETS"),
+                para("The preset selector offers 17 sizes, largest height first — from the full-width 108 × 2794 "
+                    + "continuous roll down to the 25.4 × 10 mm minimum. Each preset carries suggested L/R margin, "
+                    + "row gap and column gap values (shown in the selector as "
+                    + "[W×H] | L/R: xmm | Row Gap: ymm | Col Gap: zmm)."),
+                note("Presets fill the fields; they never lock them. Hand-typed dimensions are validated against "
+                    + "the envelope above — the dialog explains exactly which constraint a custom size violates, "
+                    + "and the FEED PITCH note still tells you what the printer will feed per label.")
+            });
+    }
+
+    private Article ta210Overview() {
+        return new Article("TSC TA210 — Printer Overview",
             "The desktop label printer this app targets: specs, sensors and what makes it different from an A4 printer.",
             new Node[] {
                 para("The TSC TA210 is a 4-inch desktop label printer (the TA310 is its 300-dpi sibling). Unlike an "
@@ -357,7 +429,7 @@ public class KnowledgeHubPanel extends VBox {
                 bullet("Media sensors: movable GAP sensor (die-cut labels) and BLACK MARK sensor (continuous stock with marks)."),
                 bullet("Command languages: TSPL / TSPL2 natively (also supports EPL/ZPL emulation on some firmware)."),
                 note("Because the head is 108 mm wide, any liner up to that width prints full-bleed — a 77 mm two-up "
-                    + "liner is perfectly in range. The app warns only when the Label Stock paper width exceeds 108 mm. "
+                    + "liner is perfectly in range. The app warns only when the Label stock paper width exceeds 108 mm. "
                     + "(Early app builds wrongly claimed a 2-inch / 54 mm head and warned about clipping — corrected "
                     + "against the official datasheet.)"),
                 sep(),
@@ -366,8 +438,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic stockSensingAndOrientation() {
-        return new Topic("PRINTER", "Label Stock, Sensors & Orientation — Who Knows What",
+    private Article stockSensingAndOrientation() {
+        return new Article("Label Stock, Sensors & Orientation — Who Knows What",
             "What the printer figures out by itself, what the software must declare, and how "
                 + "BarTender's Page Setup maps to the Label Stock dialog.",
             new Node[] {
@@ -415,8 +487,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic tsplLanguage() {
-        return new Topic("TSPL LANGUAGE", "TSPL / TSPL2 — The Command Language",
+    private Article tsplLanguage() {
+        return new Article("TSPL / TSPL2 — The Command Language",
             "The text-based printer language we send to the TA210: commands, units and line endings.",
             new Node[] {
                 para("TSPL (TSC Printer Language) and its extended version TSPL2 are the TA210's native command languages. "
@@ -435,8 +507,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic scriptAnatomy() {
-        return new Topic("TSPL LANGUAGE", "Script Anatomy — One Label Job",
+    private Article scriptAnatomy() {
+        return new Article("Script Anatomy — One Label Job",
             "The exact command sequence InvoiceStudio streams to the TA210 for a print run.",
             new Node[] {
                 para("Every print run is one script: a setup header followed by one image buffer per strip row and a PRINT "
@@ -458,8 +530,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic setupCommands() {
-        return new Topic("TSPL LANGUAGE", "Setup Commands — SIZE, GAP, DIRECTION, CLS",
+    private Article setupCommands() {
+        return new Article("Setup Commands — SIZE, GAP, DIRECTION, CLS",
             "The four commands that put the printer into a known state before drawing.",
             new Node[] {
                 heading("SIZE m,n — LABEL DIMENSIONS"),
@@ -479,8 +551,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic bitmapCommand() {
-        return new Topic("TSPL LANGUAGE", "Drawing the Label — the BITMAP Command",
+    private Article bitmapCommand() {
+        return new Article("Drawing the Label — the BITMAP Command",
             "How a 1-bit image reaches the head: syntax, bit polarity and row padding.",
             new Node[] {
                 para("BITMAP draws a monochrome image directly into the image buffer — this is how the app sends your "
@@ -502,8 +574,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic printCommand() {
-        return new Topic("TSPL LANGUAGE", "Printing & Quantities — the PRINT Command",
+    private Article printCommand() {
+        return new Article("Printing & Quantities — the PRINT Command",
             "PRINT m,n controls copies: how selecting 1 label feeds exactly 1 label.",
             new Node[] {
                 code("PRINT m[,n]"),
@@ -520,8 +592,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic blankLabelsGuide() {
-        return new Topic("GUIDES", "Blank Labels After a Good Label",
+    private Article blankLabelsGuide() {
+        return new Article("Blank Labels After a Good Label",
             "Printed one record but got extra empty labels? Work through the causes in order — "
                 + "almost all are configuration, one is printer calibration.",
             new Node[] {
@@ -553,7 +625,7 @@ public class KnowledgeHubPanel extends VBox {
                 para("Label Stock defines how many die-cut labels sit ACROSS the strip (Columns). The printer feeds one "
                     + "full row per strip; on 4-across stock a one-record job fills slot 1 and slots 2–4 pass under the "
                     + "head blank. That is physics, not a bug: the three empty die-cuts were part of the same fed row. "
-                    + "The toast says so explicitly: \"the last strip row fills 1 of 4 slots…\""),
+                    + "The toast says so explicitly: \"the last strip row fills k of N slots…\""),
                 bullet("Single-column roll? Open Template Designer → Label Stock and set Columns = 1 (and Strip width = "
                     + "label width). The Strip Preview then shows one label across — exactly what prints."),
                 bullet("Genuinely 4-across stock? Print records in multiples of 4 (or accept the blank waste on the "
@@ -589,8 +661,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic appPipeline() {
-        return new Topic("INSIDE THE APP", "InvoiceStudio Print Pipeline",
+    private Article appPipeline() {
+        return new Article("InvoiceStudio Print Pipeline",
             "From canvas design to burned dots: every stage between the Strip Preview and the label.",
             new Node[] {
                 para("The print path reuses the exact same renderer as the Strip Preview, so what you see is byte-for-byte "
@@ -611,8 +683,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic thresholdGuide() {
-        return new Topic("INSIDE THE APP", "Brightness Threshold — Sharp Black & White",
+    private Article thresholdGuide() {
+        return new Article("Brightness Threshold — Sharp Black & White",
             "The Settings → Print slider that decides which pixels burn black and which stay white.",
             new Node[] {
                 para("A thermal head has no gray levels: every dot either burns BLACK or stays WHITE. The Brightness "
@@ -631,8 +703,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic troubleshooting() {
-        return new Topic("GUIDES", "Troubleshooting Guide",
+    private Article troubleshooting() {
+        return new Article("Troubleshooting Guide",
             "Symptom → cause → fix for the most common thermal label printing problems.",
             new Node[] {
                 heading("PRINTS ALL BLACK WITH WHITE CONTENT SHAPES"),
@@ -663,8 +735,8 @@ public class KnowledgeHubPanel extends VBox {
             });
     }
 
-    private Topic advancedKnobs() {
-        return new Topic("INSIDE THE APP", "Advanced Settings & Knobs",
+    private Article advancedKnobs() {
+        return new Article("Advanced Settings & Knobs",
             "System properties for support sessions — plus how routing picks the native pipeline.",
             new Node[] {
                 heading("PRINT ENGINE ROUTING"),

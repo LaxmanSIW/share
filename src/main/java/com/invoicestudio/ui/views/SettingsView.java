@@ -143,6 +143,8 @@ public class SettingsView extends VBox {
             createTab("Knowledge", IconHelper.ICON_HELP, new com.invoicestudio.ui.KnowledgeHubPanel()),
             createTab("Backup", IconHelper.ICON_BACKUP, buildBackupStorageSection()),
             createTab("Shortcuts", IconHelper.ICON_CODE, new com.invoicestudio.ui.ShortcutsPanel()),
+            createTab("Chatbot", IconHelper.ICON_CHAT, new com.invoicestudio.ui.ChatbotSettingsPanel(
+                    app, app.chatbotConfig())),
             createTab("MCP Server", IconHelper.ICON_MCP, new com.invoicestudio.mcp.McpSettingsPanel(
                     com.invoicestudio.mcp.McpConfig.load()))
         );

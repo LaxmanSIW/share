@@ -77,6 +77,8 @@ public class IconHelper {
     public static final String ICON_STRIP_PREVIEW = "strip-preview";
     public static final String ICON_LABEL_MODE = "label-mode";
     public static final String ICON_MAGNET = "magnet";
+    /** Rounded chat bubble with three dots — the in-app AI chatbot. */
+    public static final String ICON_CHAT = "chat";
 
     public static Node getIcon(String name, double size, String colorHex) {
         String path = getSvgPath(name);
@@ -239,6 +241,9 @@ public class IconHelper {
     private static String getSvgPath(String name) {
         if (name == null) return null;
         switch (name.toLowerCase()) {
+            case "chat":
+                // Rounded chat bubble with three dots (readable at 20px+).
+                return "M12 3C6.9 3 2.8 6.4 2.8 10.6c0 2.4 1.3 4.5 3.4 5.9-.1 1-.5 2.2-1.6 3.2 1.9-.1 3.5-.8 4.6-1.6 .9.2 1.8.3 2.8.3 5.1 0 9.2-3.4 9.2-7.7S17.1 3 12 3zM8.6 12.1c-.7 0-1.3-.6-1.3-1.3s.6-1.3 1.3-1.3 1.3.6 1.3 1.3-.6 1.3-1.3 1.3zm3.4 0c-.7 0-1.3-.6-1.3-1.3s.6-1.3 1.3-1.3 1.3.6 1.3 1.3-.6 1.3-1.3 1.3zm3.4 0c-.7 0-1.3-.6-1.3-1.3s.6-1.3 1.3-1.3 1.3.6 1.3 1.3-.6 1.3-1.3 1.3z";
             case "mcp":
                 // MCP mark: stacked server layers joined by a T connector (readable at 13px).
                 return "M3 3 H21 V6.5 H3 Z M3 8.5 H21 V12 H3 Z M11 12 H13 V16 H18.5 V19 H5.5 V16 H11 Z";

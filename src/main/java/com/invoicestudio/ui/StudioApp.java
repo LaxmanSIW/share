@@ -93,6 +93,7 @@ public class StudioApp extends Application {
         mainLayout.setLeft(sidebarController.buildSidebar());
 
         rootPane.getChildren().add(mainLayout);
+        installChatbot();
 
         Scene scene = new Scene(rootPane, 1440, 900);
         shortcuts.installGlobalShortcuts(scene);
@@ -192,6 +193,85 @@ public class StudioApp extends Application {
         com.invoicestudio.mcp.McpServer.shutdown();
         com.invoicestudio.service.AppExecutors.shutdownAll();
         dbExecutor.shutdownNow();
+    }
+
+    // ------------------------------------------------------------------
+    // Chatbot — floating icon + right-side overlay panel
+    // ------------------------------------------------------------------
+
+    private com.invoicestudio.service.ChatbotConfig chatbotCfg;
+    private StackPane chatbotIcon;
+    private ChatbotPanel chatbotPanel;
+
+    /** The single chatbot-config instance the shell reacts to (Settings →
+     *  Chatbot edits and saves THIS instance, so the icon/panel follow). */
+    public com.invoicestudio.service.ChatbotConfig chatbotConfig() {
+        if (chatbotCfg == null) chatbotCfg = com.invoicestudio.service.ChatbotConfig.load();
+        return chatbotCfg;
+    }
+
+    /** Replaces the active chatbot config (Settings save / support hooks). */
+    public void setChatbotConfig(com.invoicestudio.service.ChatbotConfig cfg) {
+        this.chatbotCfg = cfg;
+        refreshChatbotIcon();
+    }
+
+    /** Adds the floating round chat icon (bottom-right), honoring the
+     *  Settings → Chatbot show/hide switch. Safe to call again. */
+    private void installChatbot() {
+        chatbotCfg = com.invoicestudio.service.ChatbotConfig.load();
+        if (chatbotIcon == null) {
+            chatbotIcon = new StackPane(IconHelper.getIcon(IconHelper.ICON_CHAT, 24, "#F2EBDD"));
+            chatbotIcon.setStyle("-fx-background-color: #D9A13B; -fx-background-radius: 26;"
+                    + "-fx-border-color: #8a671f; -fx-border-radius: 26; -fx-border-width: 1;"
+                    + "-fx-cursor: hand;");
+            chatbotIcon.setMinSize(52, 52);
+            chatbotIcon.setPrefSize(52, 52);
+            chatbotIcon.setMaxSize(52, 52);
+            chatbotIcon.setId("chatbot-fab");
+            javafx.scene.control.Tooltip.install(chatbotIcon,
+                    new javafx.scene.control.Tooltip("Chat with your business data"));
+            StackPane.setAlignment(chatbotIcon, javafx.geometry.Pos.BOTTOM_RIGHT);
+            StackPane.setMargin(chatbotIcon, new Insets(0, 18, 18, 0));
+            chatbotIcon.setOnMouseClicked(e -> toggleChatbot());
+            chatbotIcon.setOnMouseEntered(e -> chatbotIcon.setStyle(chatbotIcon.getStyle()
+                    .replace("#D9A13B", "#E4B25B")));
+            chatbotIcon.setOnMouseExited(e -> chatbotIcon.setStyle(chatbotIcon.getStyle()
+                    .replace("#E4B25B", "#D9A13B")));
+        }
+        refreshChatbotIcon();
+    }
+
+    /** Shows/hides the floating icon per Settings → Chatbot (called on save). */
+    public void refreshChatbotIcon() {
+        if (rootPane == null) return;
+        boolean show = chatbotCfg.isShowIcon();
+        if (show && chatbotIcon.getParent() == null) {
+            rootPane.getChildren().add(chatbotIcon);
+        } else if (!show && chatbotIcon.getParent() != null) {
+            rootPane.getChildren().remove(chatbotIcon);
+        }
+    }
+
+    /** Opens (or closes) the chatbot overlay panel. */
+    public void toggleChatbot() {
+        if (chatbotPanel != null && chatbotPanel.getParent() != null) {
+            rootPane.getChildren().remove(chatbotPanel);
+            return;
+        }
+        if (chatbotCfg.getApiKey().isBlank()) {
+            Toast.show(rootPane, "Chatbot not configured",
+                    "Add your AI provider API key in Settings → Chatbot first.", true);
+            showSettings();
+            return;
+        }
+        chatbotPanel = new ChatbotPanel(this, chatbotConfig(),
+                () -> rootPane.getChildren().remove(chatbotPanel));
+        // Pin to the right edge and fill the shell height (tracks resizes).
+        StackPane.setAlignment(chatbotPanel, javafx.geometry.Pos.CENTER_RIGHT);
+        chatbotPanel.maxHeightProperty().bind(rootPane.heightProperty());
+        chatbotPanel.setMaxWidth(Region.USE_PREF_SIZE);
+        rootPane.getChildren().add(chatbotPanel);
     }
 
     // ------------------------------------------------------------------
