@@ -1495,15 +1495,22 @@ public class TemplateDesigner extends BorderPane {
      * Draws one ruler as a 3-tier tick system (researched standard): MINOR
      * ticks are short, MID ticks (major/2) medium, MAJOR ticks longest and the
      * only ones carrying numbers — so a long strip always means a labelled,
-     * true-millimetre position. Tick lengths are SCREEN-constant (local length
-     * = screen px / zoom) and positions snap to whole device pixels, keeping
+     * true-millimetre position. Positions snap to whole device pixels, keeping
      * every tick 1 device px hairline-sharp at any zoom; duplicate snapped
      * positions skip themselves so minors never pile up when zoomed far out.
+     *
+     * <p>Tick lengths and number size: SCREEN px = base × max(1, zoom).
+     * Zoomed OUT (≤100%) keeps the previous screen-constant sizes (readability
+     * floor, behavior unchanged). Zoomed IN the ruler strip itself scales with
+     * the page (22 px → 22·zoom), so the old constant 10 px ticks / 8 px
+     * numbers looked lost inside a 44–66 px strip — now they grow with it so
+     * numbers and tick heights stay readable at every zoom level.</p>
      */
     private void buildRulerTicks(Pane ruler, boolean horizontal, double totalMm,
                                  double majorStep, double minorStep) {
         double z = Math.max(0.3, zoom);
-        double lenMajor = 10.0 / z, lenMid = 6.5 / z, lenMinor = 4.0 / z;
+        double k = Math.max(1.0, z) / z;   // local px = base·k  →  screen px = base·max(1, z)
+        double lenMajor = 10.0 * k, lenMid = 6.5 * k, lenMinor = 4.0 * k;
         long sub = Math.round(majorStep / minorStep);
         boolean hasMid = sub % 2 == 0 && sub > 2;      // mid tier only if exactly halfway exists
         long midEvery = hasMid ? sub / 2 : -1;
@@ -1534,14 +1541,15 @@ public class TemplateDesigner extends BorderPane {
             // Numbers ONLY on major ticks — the exact measure the long strip marks
             if (isMajor && v > 1e-9) {
                 String text = v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
-                double fontPx = 8.0 / z;
+                double fontPx = 8.0 * k;
                 double extent = horizontal ? ruler.getPrefWidth() : ruler.getPrefHeight();
                 // Space the label occupies along the ruler axis: width for the
-                // top ruler, line-box height for the left ruler.
+                // top ruler, line-box height for the left ruler. Both track the
+                // font scale (k) so the clip guard stays correct at any zoom.
                 double labelExtent = horizontal
-                        ? text.length() * 4.7 / z + 3.0 / z
-                        : 11.5 / z;
-                double pos = snapped + 2.0 / z;
+                        ? text.length() * 4.7 * k + 3.0 * k
+                        : 11.5 * k;
+                double pos = snapped + 2.0 * k;
                 boolean isLastMajor = v + majorStep > totalMm + 1e-9;
                 if (pos + labelExtent > extent) {
                     if (isLastMajor) {

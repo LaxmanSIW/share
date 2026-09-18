@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * Built-in documentation articles for InvoiceStudio:
  * 1. TSC Printer & Hardware Reference Library (13 articles)
- * 2. Complete AI Chatbot Architecture, Optimization & Build-From-Scratch Encyclopedia (11 chapters)
+ * 2. Complete AI Chatbot Architecture, Optimization & Build-From-Scratch Encyclopedia (16 chapters)
  */
 public final class KnowledgeSeed {
 
@@ -1388,6 +1388,87 @@ public final class KnowledgeSeed {
                 switch saved your session, and your picked model stays untouched in Settings.
                 4. Everything in this chapter is covered by automated tests: usage accumulation and the \
                 meta record contract, GLM catalogue parsing, and the end-to-end user journeys from chapter 09.
+                """,
+                now,
+                "InvoiceStudio AI Core"
+        ));
+
+        list.add(new KnowledgeArticle(
+                "art_ai_16_round4_instant_greetings_new_fullsurface",
+                "AI Chatbot / 16. Round-4 Change Log",
+                "Round 4: Instant Local Greetings, /new Context Reset & the Full-Surface Test Harness",
+                "What changed in this round: mid-chat greetings stopped costing API calls, /new resets context for free, every MCP tool is now chat-loop tested, and the template ruler reads correctly at any zoom.",
+                """
+                ### 1. The "chatbot feels slow" investigation — what was actually true
+
+                Three separate things were stacked on top of each other:
+
+                | Suspect | Verdict |
+                |---|---|
+                | Free-tier models are slow | **Partly true.** Free buckets (Gemini flash-lite, GLM flash) queue requests; per-minute 429s trigger the retry ladder (3 s + 6 s waits). Nothing to fix in code — but every AVOIDED request now matters twice as much. |
+                | The router adds a round trip | **True for every message**, but the router is names-only (no descriptions, ~1K tokens) and runs on the provider's lightest free model. It usually SAVES time by shrinking the heavy pass. Keep it. |
+                | "hi" mid-chat was slow | **Real bug (fixed).** The smalltalk shortcut required `turns.size() <= 1`, so ANY history pushed a greeting into the router + heavy pass — two provider calls to say hello. |
+
+                Measured with a zero-latency local provider (the new surface harness): the client pipeline
+                itself takes **10–41 ms for a full router + tool + answer flow**, and a local greeting is
+                **1 ms with ZERO requests**. Whatever slowness you feel beyond that is the provider queue —
+                the app's layer is effectively free.
+
+                ### 2. Instant local greetings (round 4 fix)
+
+                `AiChatClient.send()` now answers pure smalltalk LOCALLY before any provider call:
+
+                - Matches the same `CHAT_ONLY` regex ("hi", "hello", "hey", "thanks", "good morning", "bye",
+                "who are you", "what can you do", "help"…).
+                - Works **mid-chat** — history no longer disables it.
+                - **Zero requests, zero tokens**, replies in ~1 ms; the meta row shows the real time.
+                - Deterministic canned copy (same input → same reply, no randomness).
+                - Safety: confirmation contexts and queued approvals bypass the shortcut, so a "hi" can
+                never eat a pending yes/no. The scripted stub proves this in
+                `confirmationPromptBeatsTheGreetingMatcher`.
+
+                ### 3. The /new command (context reset for free)
+
+                - **`/new`** — clears the conversation context instantly and replies locally
+                ("Started a fresh thread…"). No API call, works even without an API key.
+                - **`/new <question>`** — sends ONLY the question; no history tokens ride along. Big
+                threads stop taxing every message on slow/free tiers.
+                - Input pill advertises it: "Ask about your business… (/new = fresh context)".
+                - Parsed in `ChatbotPanel.parseNewCommand` (unit-tested without JavaFX).
+
+                ### 4. Full MCP surface test harness ("the AI plays the AI")
+
+                `AiChatFullSurfaceStubTest` drives the REAL `AiChatClient` loop, REAL router and REAL
+                `McpToolRegistry` against a scripted Gemini-shaped local provider:
+
+                - **Every registered MCP tool** (76) executes through the chat loop; the harness
+                auto-detects `requiresConfirmation` results and completes the full
+                `confirm_operation` → approve flow like a real user.
+                - Covers: router shortlist + one-shot escalation to the full catalogue, the tool-round
+                safety stop, two tool calls in one round sharing one result turn, the history window
+                bounding real payloads, and greeting-vs-confirmation precedence.
+                - Latency probes print the client-layer overhead (see §1) so future "it's slow" reports
+                can be split into app time vs provider time.
+
+                ### 5. Template ruler at zoom (numbers & tick heights)
+
+                The ruler strip scales with the page (22 px → 22·zoom on screen), but ticks and numbers
+                were screen-CONSTANT (10 px / 8 px) — at 300% zoom a 66 px strip carried tiny 8 px
+                numbers and 10 px ticks that looked lost. Now:
+
+                - **Zoomed IN (>100%): tick lengths and number font grow with the strip**
+                (screen px = base × zoom) — at 200% ticks are 20 px and numbers 16 px.
+                - **Zoomed OUT (≤100%): unchanged** — the readability floor keeps the previous
+                screen-constant sizes.
+                - Positions, snapping, hairline width, colors, 1-2-5 step logic: all untouched.
+
+                ### 6. Housekeeping
+
+                - Stale verification run dirs (bulk-verify, knowledge-verify, selzoom-verify, zoom-verify)
+                removed from the workspace; the three remaining repo PNGs are LIVE app icons referenced
+                by code (window icon, dialogs, watermark) — they must stay.
+                - Everything here is covered by automated tests: the full-surface harness (§4), the
+                updated journey checklist, the /new parser tests, and the existing designer suites.
                 """,
                 now,
                 "InvoiceStudio AI Core"

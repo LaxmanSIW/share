@@ -263,7 +263,7 @@ public class ChatbotPanel extends VBox {
 
     private Node buildInputArea() {
         // Borderless auto-growing text area inside a rounded pill.
-        input.setPromptText("Ask about your business…");
+        input.setPromptText("Ask about your business…  (/new = fresh context)");
         input.setWrapText(true);
         input.setPrefRowCount(1);
         input.setMinHeight(36);
@@ -523,9 +523,21 @@ public class ChatbotPanel extends VBox {
     }
 
     private void send() {
-        String text = input.getText() == null ? "" : input.getText().trim();
-        if (text.isEmpty() && pendingImage == null) return;
+        String typed = input.getText() == null ? "" : input.getText().trim();
+        if (typed.isEmpty() && pendingImage == null) return;
         if (chipsRow.getParent() != null) messages.getChildren().remove(chipsRow);
+
+        // ── "/new" command: drop ALL prior conversation context ──────
+        // Long threads re-send their whole history on every message — the
+        // biggest avoidable token & latency cost on slow/free tiers. Bare
+        // "/new" resets the thread and is answered LOCALLY (instant, 0
+        // requests, 0 tokens); "/new <question>" sends ONLY the question
+        // with an empty history so no old tokens ride along.
+        String newQuestion = parseNewCommand(typed);
+        boolean newThread = newQuestion != null;
+        if (newThread) history.clear();
+        String text = newThread && !newQuestion.isEmpty() ? newQuestion : typed;
+
         if (!cfg.getApiKey().isBlank()) {
             history.add(pendingImage != null
                     ? AiChatClient.ChatTurn.userImage(text, pendingImage)
@@ -564,6 +576,14 @@ public class ChatbotPanel extends VBox {
         pendingImage = null;
         renderPendingImage();
         scrollToBottom();
+
+        // Bare "/new" — instant local thread reset (works even without a key).
+        if (newThread && newQuestion.isEmpty()) {
+            addAiBubble("Started a fresh thread — earlier context is cleared. "
+                    + "Ask me about bills, buyers, stock, payments, reports…", null, false,
+                    nowTime() + " · instant");
+            return;
+        }
 
         if (cfg.getApiKey().isBlank()) {
             addAiBubble("No API key configured — open Settings → Chatbot to set one up.", null, true);
@@ -624,6 +644,23 @@ public class ChatbotPanel extends VBox {
             addAiBubble(friendlyError(ex), null, true, nowTime());
         }));
         AppExecutors.chat().execute(task);
+    }
+
+    /**
+     * Parses a "/new" command. Returns {@code null} when the text is not a
+     * /new command, "" for a bare "/new" (thread reset), otherwise the
+     * question that must be answered WITHOUT any history. Package-private
+     * static so it is unit-testable without the JavaFX toolkit.
+     */
+    static String parseNewCommand(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+        if (t.equalsIgnoreCase("/new")) return "";
+        String lower = t.toLowerCase();
+        if (lower.startsWith("/new ") || lower.startsWith("/new\t") || lower.startsWith("/new\n")) {
+            return t.substring(5).trim();
+        }
+        return null;
     }
 
     /** One-line busy-label text for a log step (empty = keep previous). */

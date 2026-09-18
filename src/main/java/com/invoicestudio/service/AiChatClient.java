@@ -120,8 +120,8 @@ public final class AiChatClient {
         // ── Token & request optimization pipeline ────────────────────
         // Each tool schema costs input tokens on EVERY request, and tool
         // rounds multiply requests. So:
-        //   1. Zero-cost skip: greetings/smalltalk (regex) get one lean,
-        //      schema-free request.
+        //   1. Zero-cost skip: greetings/smalltalk (regex) are answered
+        //      LOCALLY — zero requests, zero tokens (works mid-chat).
         //   2. Smart routing: a tiny router request (tool NAMES only) picks
         //      the few tools this question needs; the heavy pass carries only
         //      those schemas (~7K → ~1K input tokens typically).
@@ -151,17 +151,25 @@ public final class AiChatClient {
         if (confirmCtx) {
             ChatbotLogManager.info("Confirmation context detected", "Ensuring confirm_operation is available");
         }
+
+        // ── Zero-cost local greetings (work MID-CHAT too) ─────────────
+        // "hi", "hello", "thanks"… carry no business intent, but once any
+        // history existed they fell through to the smart router and paid a
+        // full flash-model round trip before the answer (the "even a simple
+        // hi takes ages" report). They are now answered LOCALLY: zero
+        // requests, zero tokens, instant — at any position in the chat.
+        // Confirmation contexts and queued approvals still bypass the
+        // shortcut so "yes/ok" flows and "reply yes to confirm" turns are
+        // never eaten by the greeting matcher.
+        String first = userText == null ? "" : userText.trim();
+        if (attachment == null && !confirmCtx && CHAT_ONLY.matcher(first).matches()) {
+            String canned = localChatReply(first);
+            ChatbotLogManager.router("Instant local reply — no API call, no tokens", first);
+            ChatbotLogManager.success("Completed locally (0 requests)", canned);
+            return result(canned, List.of(), usage, t0, "local");
+        }
+
         if (cfg.isSmartRouting() && attachment == null) {
-            String first = userText == null ? "" : userText.trim();
-            boolean pureChat = !confirmCtx && turns.size() <= 1 && CHAT_ONLY.matcher(first).matches();
-            if (pureChat) {
-                ChatbotLogManager.router("Smalltalk detected -> schema-free dispatch (0 tools)", first);
-                ProviderResponse resp = dispatch(cfg, turns, java.util.Set.of(), false);
-                usage.add(resp.promptTokens(), resp.completionTokens());
-                logUsage(usage, "Smalltalk reply");
-                ChatbotLogManager.success("Completed via pure conversational shortcut", resp.text());
-                return result(resp.text(), List.of(), usage, t0, activeModel(cfg));
-            }
             ChatbotLogManager.router("Evaluating tools via smart router...", first);
             ToolRoute route = routeTools(cfg, turns, first, confirmCtx, usage);
             if (route != null && !route.needTools() && !confirmCtx) {
@@ -335,6 +343,51 @@ public final class AiChatClient {
             "(?is)^\\s*(hi+|hello+|hey+|yo|thanks?|thank\\s*you|thx|ty|great|nice|cool|wow|"
             + "good\\s*(morning|afternoon|evening|night)|bye+|goodbye|see\\s*ya|"
             + "who\\s+are\\s+you\\??|how\\s+are\\s+you\\??|what\\s+can\\s+you\\s+do\\??|help)\\s*[!.?]*\\s*$");
+
+    /**
+     * Deterministic local answers for pure-smalltalk messages — sent without
+     * ANY provider request (instant, 0 tokens, works mid-chat). Package-private
+     * static so tests can assert the exact copy. Kept free of randomness on
+     * purpose: same input, same reply, verifiable.
+     */
+    static String localChatReply(String input) {
+        String s = input == null ? "" : input.toLowerCase().replaceAll("\\s+", " ").trim();
+        s = s.replaceAll("[!.?]+$", "").trim();
+        if (s.matches("who\\s+are\\s+you")) {
+            return "I'm the InvoiceStudio Assistant — built into your billing app. I work on your real books: "
+                    + "buyers, suppliers, items & stock, invoices, purchases, expenses, reports and label "
+                    + "printing. Try e.g. \"list top 5 buyers by balance\".";
+        }
+        if (s.matches("how\\s+are\\s+you")) {
+            return "I'm running great, thanks! Ready when you are — invoices, stock, payments, reports.";
+        }
+        if (s.matches("what\\s+can\\s+you\\s+do") || s.equals("help")) {
+            return "Here's what I can do:\n"
+                    + "- Sales: create, pay and delete invoices; list & search bills\n"
+                    + "- Directory: buyers, suppliers, transports (create/update/delete)\n"
+                    + "- Catalog: items, categories, stock & reorder levels\n"
+                    + "- Purchases & expenses: record bills, payments, vouchers\n"
+                    + "- Reports: stock, profitability, financial summary, daybook\n"
+                    + "- Templates: design/print labels & invoices, export PDFs\n"
+                    + "- Knowledge Hub: how-to guides (try \"how do I design a label?\")\n\n"
+                    + "Tip: type /new to drop earlier context and save tokens.";
+        }
+        if (s.matches("good (morning|afternoon|evening|night)")) {
+            return "Good " + s.replace("good ", "") + "! Ready to help with invoices, stock, payments "
+                    + "or reports — what do you need?";
+        }
+        if (s.matches("(hi+|hello+|hey+|yo)")) {
+            return "Hello! I'm your InvoiceStudio assistant — I can manage invoices, buyers, suppliers, "
+                    + "stock, expenses and reports with your live data. What would you like to do?";
+        }
+        if (s.matches("(thanks?|thank you|thx|ty)")) {
+            return "You're welcome! Anything else — bills, stock, payments, reports?";
+        }
+        if (s.matches("(bye+|goodbye|see ya)")) {
+            return "Goodbye! Ping me anytime you need an invoice, a stock check or a report.";
+        }
+        return "Glad you like it! Want me to pull a report, create a bill or check stock?";
+    }
 
     /** Confirmation responses when an operation or prompt requires user approval or answer. */
     private static final java.util.regex.Pattern CONFIRMATION_WORDS = java.util.regex.Pattern.compile(

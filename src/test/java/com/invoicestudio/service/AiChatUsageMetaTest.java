@@ -129,10 +129,14 @@ class AiChatUsageMetaTest {
 
     @Test
     void singleRequestUsageIsReportedVerbatim() throws Exception {
-        SCRIPT.add(text("Hello!", 100, 20));
-        AiChatClient.ChatResult r = new AiChatClient().send(cfg(), List.of(), "hi", null);
+        // NOTE: not a greeting — pure smalltalk is answered LOCALLY now
+        // (zero requests, no usage block), so the verbatim-usage contract is
+        // exercised with a conversational-but-not-smalltalk message.
+        SCRIPT.add(text("Hello! How can I help?", 100, 20));
+        AiChatClient.ChatResult r = new AiChatClient().send(cfg(), List.of(),
+                "tell me about yourself briefly", null);
 
-        assertEquals("Hello!", r.text());
+        assertEquals("Hello! How can I help?", r.text());
         assertEquals(100, r.promptTokens(), "prompt tokens must come from the provider usage block");
         assertEquals(20, r.completionTokens());
         assertEquals(120, r.totalTokens());

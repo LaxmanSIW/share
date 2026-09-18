@@ -211,16 +211,28 @@ class AiChatUserJourneyStubTest {
     @Test
     @Order(1)
     void checklist1_greetingIsInstantZeroSchema() throws Exception {
-        SCRIPT.add(text("Hello! How can I help you today?"));
+        // Round-4 behavior: greetings are answered LOCALLY — zero provider
+        // requests at all (the old schema-free dispatch still cost one flash
+        // round trip; users felt it as "even a hi takes ages"). The stub must
+        // stay EMPTY: any request here means the local shortcut regressed.
         ChatbotConfig c = cfg();
-        c.setSmartRouting(true); // the small-talk shortcut lives behind the router switch
+        c.setSmartRouting(true); // the shortcut works with routing on…
         AiChatClient.ChatResult r = new AiChatClient().send(c, List.of(), "hi!", null);
 
-        assertEquals("Hello! How can I help you today?", r.text());
         assertTrue(r.toolTrace().isEmpty(), "greeting must not run tools");
-        List<JsonNode> reqs = capturedSince(baseline() - 1);
-        assertEquals(1, reqs.size(), "greeting must be a single request (router shortcut)");
-        assertFalse(hasTools(reqs.get(0)), "small talk must carry ZERO tool schemas");
+        assertTrue(CAPTURED.isEmpty(), "greeting must be answered with ZERO provider requests");
+        assertTrue(r.text().contains("InvoiceStudio"), "local reply introduces the assistant");
+        assertEquals(-1, r.totalTokens(), "no tokens can be reported for a local reply");
+        assertEquals("local", r.modelUsed());
+        assertTrue(r.elapsedMs() < 250, "local reply must be instant, was " + r.elapsedMs() + "ms");
+
+        // …and mid-chat too (this was the actual regression: history present).
+        AiChatClient.ChatResult r2 = new AiChatClient().send(c, List.of(
+                AiChatClient.ChatTurn.user("list my suppliers"),
+                AiChatClient.ChatTurn.assistant("Here are your suppliers.")), "hello", null);
+        assertTrue(r2.toolTrace().isEmpty());
+        assertTrue(CAPTURED.isEmpty(), "mid-chat greeting must also be local (0 requests)");
+        assertTrue(r2.text().contains("InvoiceStudio"));
     }
 
     @Test
