@@ -59,7 +59,9 @@ class ChatbotConfigTest {
 
     @Test
     void providerDefaultsAndLabels() {
-        assertEquals("gemini-flash-latest", AiChatClient.defaultModel(ChatbotConfig.GEMINI));
+        // Light-by-default policy (AiChatOptimizationPassTest locks it too):
+        // the Gemini default is the LIGHTEST stable alias, not plain flash.
+        assertEquals("gemini-flash-lite-latest", AiChatClient.defaultModel(ChatbotConfig.GEMINI));
         assertEquals("gpt-4o-mini", AiChatClient.defaultModel(ChatbotConfig.OPENAI));
         assertEquals("claude-sonnet-4-5", AiChatClient.defaultModel(ChatbotConfig.ANTHROPIC));
         assertEquals("Google Gemini", AiChatClient.providerLabel(ChatbotConfig.GEMINI));

@@ -38,7 +38,11 @@ class AiChatLiveMcpTest {
         // run ONLY on explicit opt-in:  mvn test -Dlive.gemini=true
         Assumptions.assumeTrue(Boolean.getBoolean("live.gemini"),
                 "Live Gemini test skipped (run with -Dlive.gemini=true to opt in)");
-        apiKey = ChatbotConfig.load().getApiKey();
+        // Key resolution: -Dgemini.key=... wins (CI / borrowed keys), the
+        // user's saved chatbot.json is the fallback.
+        apiKey = System.getProperty("gemini.key",
+                System.getenv("GEMINI_API_KEY") != null ? System.getenv("GEMINI_API_KEY") : "");
+        if (apiKey.isBlank()) apiKey = ChatbotConfig.load().getApiKey();
         Assumptions.assumeTrue(apiKey != null && !apiKey.isBlank(),
                 "No Gemini API key configured — live test skipped");
 

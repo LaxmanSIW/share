@@ -202,19 +202,82 @@ delete_transport { id: "trn_...", force: true } // clears buyer references + del
   (spelled out in the confirmation summary). Unreferenced transports delete
   directly.
 
+### Flow 9 — Money in: record a receipt against an invoice
+
+```
+list_bills { query: "INV-1024" }                  // find the invoice, read paid/remaining
+pay_bill { id: "bill_...", mode: "UPI", reference: "UPI/4452" }  // full remaining balance
+pay_bill { id: "bill_...", amount: 5000 }         // or an explicit partial amount
+```
+
+- `pay_bill` mirrors the Record Payment dialog in History: the payment is
+  APPENDED to the invoice's payment list; when payments cover the grand
+  total the invoice flips to PAID (`response.status` + `fullySettled: true`).
+- Prefer `pay_bill` over `update_bill_status { status: "PAID" }` whenever
+  money actually moved — the status flip alone writes no payment record and
+  the ledger will not show the receipt.
+- It is additive (non-destructive), so like `pay_purchase` it does not queue
+  a confirmation. Amounts are clamped to the remaining balance; a fully-paid
+  invoice refuses with a clear error instead of double-crediting.
+
+### Flow 10 — Knowledge Hub: the app documents ITSELF, read it first
+
+The Knowledge Hub is not help-file decoration — it is the assistant's own
+operating manual (chatbot internals, MCP tool semantics, TSC/TSPL printing,
+billing workflows). Reading the relevant chapter BEFORE a complex task is
+the single cheapest accuracy upgrade available:
+
+```
+list_knowledge { path: "AI Chatbot" }             // discover chapters (ids, titles, sizes)
+get_knowledge { id: "art_ai_12_tool_limit_failover" }   // read ONE chapter in full
+```
+
+Write paths (respect the reading order — discover, read, then write):
+
+```
+create_knowledge { path: "AI Chatbot / 09. Team Notes", title: "Idle timeouts",
+                   subtitle: "One line", markdown: "## Observation\n...", author: "Ops" }
+append_knowledge { id: "art_...", markdown: "\n## 2026-09-18 note\n..." }  // additive
+update_knowledge { id: "art_...", markdown: "<FULL new body>" }            // replace
+delete_knowledge { id: "art_..." }                                         // remove
+```
+
+Best practices baked into the tools:
+
+1. **Read before write.** `get_knowledge` first; `update_knowledge` REPLACES
+   the body — the confirmation summary says "body REPLACED" so nobody
+   truncates a chapter by accident. For additive changes (new section,
+   dated note) prefer `append_knowledge`.
+2. **Idempotence**: `create_knowledge` is idempotent by path+title — a
+   duplicate attempt returns the existing article (`existed=true`) instead
+   of stacking a twin chapter; `append_knowledge` recognises its own tail
+   block (`alreadyAppended` behaviour) and never duplicates on retry.
+3. **House style**: paths are `/`-separated category trees
+   (`AI Chatbot / 03. MCP & Tool Calling System`); the chapter number lives
+   in the PATH, never in the title; `subtitle` is one line; markdown bodies
+   use `##` sections.
+4. **Mutating an article is confirmation-gated** (update/append/delete),
+   like every other destructive op — Flow 5 etiquette applies unchanged.
+5. The in-app Knowledge Hub refreshes itself when the assistant writes, so
+   what you author is on screen immediately — no reopen, no reload.
+
 ## Golden habits (what a year of experience looks like)
 
 1. **Read first**: `get_app_guide` → `server_status` → `whoami` at session
    start; `list_*` before any create. Ten seconds of reading prevents an
    hour of cleanup.
-2. **Trust but verify auto-creation**: every `autoCreated` entry is a
+2. **Read the manual the app wrote about itself**: before a multi-step or
+   unusual task, `list_knowledge` + `get_knowledge` the relevant chapter —
+   billing flows, template design, label printing, chatbot/MCP behaviour
+   are all documented in the Knowledge Hub by the people who built them.
+3. **Trust but verify auto-creation**: every `autoCreated` entry is a
    dependency that now exists with default fields. If it deserves real data
    (GSTIN, phone), say so or fix it via the update tools.
-3. **Prefer natural keys**: pass `buyerName`/`categoryName` you can spell
+4. **Prefer natural keys**: pass `buyerName`/`categoryName` you can spell
    consistently — resolution is case-insensitive but spelling-sensitive
    ("Ramesh Traders" ≠ "Ramesh Trader").
-4. **Reuse ids from responses**, don't guess ids.
-5. **Reports are your receipt**: after billing, confirm in `stock_report` /
+5. **Reuse ids from responses**, don't guess ids.
+6. **Reports are your receipt**: after billing, confirm in `stock_report` /
    `daybook` / `financial_summary`. The books must tell the same story you
    just wrote.
 
@@ -306,6 +369,7 @@ Every create path funnels through `com.invoicestudio.mcp.McpEnsure`:
 | `create_purchase` | supplier (id→name), each line item | same as bill | supplier+items rolled back | `autoCreated` |
 | `record_expense` | none by design | duplicates allowed | — | `head` |
 | `pay_purchase` | purchase must exist (hard error) | n/a | — | `paid`, `remaining`, `fullySettled` |
+| `pay_bill` | bill must exist (hard error); refuses when already settled; amount clamped to remaining | n/a | — | `paid`, `totalPaid`, `remaining`, `fullySettled`, `status` (PAID when covered) |
 | `create_expense_account` | — (leaf; unique name) | by name (case-insensitive) | — | `created` |
 | `update_expense_account` | id must exist; rename cascades to every voucher | n/a | — | summary lists each change (rename/archive/notes/paymentMode) |
 | `delete_expense_account` | refuses while vouchers still reference the name | n/a | — | error names the voucher count (use rename/archive instead) |
@@ -313,6 +377,9 @@ Every create path funnels through `com.invoicestudio.mcp.McpEnsure`:
 | `print_labels` | template must be in Barcode Mode; printer must exist | n/a (spools) | — | `ok`, `pages`, `labels`; `test: true` = one free label |
 | `rebind_shortcut` | actionId must exist; combo validated at call time | blank combo = unbind | — | validation errors fire before queuing |
 | `reset_shortcut` | actionId must exist (unless `resetAll: true`) | idempotent | — | resetAll summary spells out EVERY-shortcut scope |
+| `create_knowledge` | — (leaf) | by path + title (case-insensitive) | — | `existed`, `matchedBy` |
+| `update_knowledge` | id must exist (fails BEFORE queuing) | n/a | — | summary warns the body is REPLACED |
+| `append_knowledge` | id must exist (fails BEFORE queuing) | same tail block never duplicates | — | summary says "append" |
 
 Update/delete tools: queue a `PendingOperations` op (confirmation-gated) and
 re-validate existence at execution time. Exception to "unchanged":

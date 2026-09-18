@@ -234,5 +234,44 @@ class AiChatOptimizationPassTest {
         // of each — so assert ordering: the exhausted 429 came first.
         assertEquals(429, STATUS_LOG.get(0).intValue(), "first request hits the exhausted model");
         assertTrue(STATUS_LOG.size() >= 3, "expected 429 + tool round + final answer");
+
+        // ── Model-sync contract (September user report: settings and chat
+        //    chip drifted to a model the user never picked) ──
+        assertEquals("gemini-exhausted-test", cfg.getModel(),
+                "failover must live on the per-send copy — the user's saved model is untouchable");
+
+        // ── Audit-mirror contract (September user report: chatbot deleted
+        //    records but "no logs" anywhere) ──
+        assertTrue(com.invoicestudio.mcp.McpAuditLog.recent().stream()
+                        .anyMatch(s -> s.contains("[CHAT") && s.contains("list_buyers")),
+                "chatbot tool executions must be mirrored into the MCP audit trail");
+    }
+
+    @Test
+    void copyForSendClonesEveryField() {
+        ChatbotConfig original = new ChatbotConfig();
+        original.setProvider(ChatbotConfig.GLM);
+        original.setModel("glm-4.6");
+        original.setApiKey("k-test");
+        original.setEndpoint("http://example/v1");
+        original.setHistoryMessages(9);
+        original.setMaxToolCalls(11);
+        original.setSmartRouting(false);
+        original.setShowIcon(false);
+
+        ChatbotConfig copy = original.copyForSend();
+        assertEquals(original.getProvider(), copy.getProvider());
+        assertEquals(original.getModel(), copy.getModel());
+        assertEquals(original.getApiKey(), copy.getApiKey());
+        assertEquals(original.getEndpoint(), copy.getEndpoint());
+        assertEquals(original.getHistoryMessages(), copy.getHistoryMessages());
+        assertEquals(original.getMaxToolCalls(), copy.getMaxToolCalls());
+        assertEquals(original.isSmartRouting(), copy.isSmartRouting());
+        assertEquals(original.isShowIcon(), copy.isShowIcon());
+
+        // The whole point: mutating the copy never touches the original
+        copy.setModel("failover-model");
+        assertNotEquals(copy.getModel(), original.getModel());
+        assertEquals("glm-4.6", original.getModel());
     }
 }

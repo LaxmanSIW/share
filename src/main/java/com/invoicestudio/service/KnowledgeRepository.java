@@ -41,6 +41,28 @@ public final class KnowledgeRepository {
     private final Path storagePath;
     private final boolean persistToDevSource;
     private final List<KnowledgeArticle> articles = new CopyOnWriteArrayList<>();
+    /** Notified after every mutation so open UI (Knowledge Hub panel) and any
+     *  future consumers can refresh — MCP/assistant edits happen on worker
+     *  threads and would otherwise stay invisible until reopen. */
+    private static final List<Runnable> CHANGE_LISTENERS = new CopyOnWriteArrayList<>();
+
+    public static void addChangeListener(Runnable l) {
+        if (l != null && !CHANGE_LISTENERS.contains(l)) CHANGE_LISTENERS.add(l);
+    }
+
+    public static void removeChangeListener(Runnable l) {
+        CHANGE_LISTENERS.remove(l);
+    }
+
+    private static void notifyChanged() {
+        for (Runnable l : CHANGE_LISTENERS) {
+            try {
+                l.run();
+            } catch (Exception e) {
+                AppLog.debug(e);
+            }
+        }
+    }
 
     public static synchronized KnowledgeRepository getInstance() {
         if (instance == null) {
@@ -188,6 +210,7 @@ public final class KnowledgeRepository {
             articles.add(article);
         }
         saveToFile();
+        notifyChanged();
     }
 
     public synchronized boolean deleteArticle(String id) {
@@ -195,6 +218,7 @@ public final class KnowledgeRepository {
         boolean removed = articles.removeIf(a -> a.id().equals(id));
         if (removed) {
             saveToFile();
+            notifyChanged();
         }
         return removed;
     }

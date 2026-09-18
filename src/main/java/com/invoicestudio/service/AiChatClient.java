@@ -90,6 +90,11 @@ public final class AiChatClient {
         if (cfg.getApiKey().isBlank() && !ChatbotConfig.OLLAMA.equals(cfg.getProvider())) {
             throw new IllegalStateException("No API key configured — open Settings → Chatbot and save your key.");
         }
+        // Per-send config copy: quota failover switches the model INSIDE this
+        // send. Mutating the shared persisted instance made the model chip and
+        // Settings silently drift to a model the user never picked (they are
+        // the same object) — the copy keeps the user's choice untouched.
+        cfg = cfg.copyForSend();
         List<ChatTurn> turns = new ArrayList<>(history);
         turns.add(new ChatTurn("user", userText == null ? "" : userText, attachment));
 
@@ -199,7 +204,7 @@ public final class AiChatClient {
                         exhausted.add(next); // one attempt per candidate
                         ChatbotLogManager.warn(
                                 "Model " + currentModel + " hit daily quota — trying " + next, null);
-                        cfg.setModel(next);
+                        cfg.setModel(next); // per-send copy — the saved config is NOT touched
                         // Failover is FREE: it does not consume a tool round
                         // (round is only incremented after a real tool result
                         // comes back). The heavy in-flight MCP payloads are
@@ -213,16 +218,12 @@ public final class AiChatClient {
                                 + " hit its daily limit — switched to " + next);
                         continue;
                     }
-                    cfg.setModel(originalModel); // restore before reporting
                     throw new IllegalStateException(msg + "\nAll Gemini fallback models are also at their "
                             + "daily limits — wait for the daily reset or use another provider (Ollama is local & free).", ex);
                 }
                 throw ex;
             }
             if (resp.toolCalls().isEmpty()) {
-                if (originalModel != null && !cfg.getModel().equals(originalModel)) {
-                    cfg.setModel(originalModel); // failover is per-send only
-                }
                 ChatbotLogManager.success("Completed in " + round + " tool round(s)",
                         trace.isEmpty() ? "Direct response" : "Tools executed: " + String.join(" -> ", trace));
                 return new ChatResult(resp.text(), trace);
@@ -279,6 +280,15 @@ public final class AiChatClient {
                 long elapsed = System.currentTimeMillis() - t0;
                 ChatbotLogManager.mcp("MCP " + tc.name() + " executed in " + elapsed + "ms",
                         "Result: " + shorten(out, 120));
+                // Mirror into the MCP audit trail. Chatbot executions go
+                // directly through McpToolRegistry (not the McpServer HTTP
+                // endpoint), so without this the Settings → MCP Server audit
+                // tab and mcp-audit.log never saw what the assistant did to
+                // the user's books ("no logs in logview").
+                boolean failed = out.startsWith("{\"error\"");
+                com.invoicestudio.mcp.McpAuditLog.log((failed ? "[CHAT-ERROR] " : "[CHAT] ")
+                        + tc.name() + " " + shorten(tc.argumentsJson(), 160)
+                        + " — " + elapsed + "ms — " + shorten(out, 140));
                 if (out.length() > MAX_RESULT_CHARS) {
                     out = M.writeValueAsString(out.substring(0, MAX_RESULT_CHARS)
                             + " …(truncated — narrow your query, e.g. add a limit)");
@@ -1072,7 +1082,7 @@ public final class AiChatClient {
                     turning it on (Auto-start keeps it on). After they start it, they can ask again. \
                     Answer in the user's language and be concise.""";
         }
-        return """
+        String base = """
                 You are the InvoiceStudio Assistant, embedded inside the InvoiceStudio desktop billing \
                 application (wholesale apparel business: buyers, suppliers, items/stock, invoices, purchases, \
                 expenses, financials, thermal label printing on a TSC TA210, and a bill/label template designer). \
@@ -1088,6 +1098,32 @@ public final class AiChatClient {
                 Markdown tables (| Column 1 | Column 2 | ...) with clear headers and aligned figures (e.g. ₹1,250.00). \
                 Use Markdown bold (**...**), bullet points, and section headers (###) to make answers structured, \
                 refined, and easily readable. Answer in the user's language and be concise.""";
+        return withPendingApprovals(base);
+    }
+
+    /**
+     * When destructive operations are queued for approval, spell them out in
+     * the system prompt (id + tool + summary). Without this the model only
+     * knew the operationId if it happened to be in visible history — it
+     * guessed one, got "unknown operationId" back, and burned rounds (the
+     * "asked to delete, it got stuck" report). Now a simple "yes" resolves
+     * in exactly one tool round.
+     */
+    static String withPendingApprovals(String base) {
+        List<com.invoicestudio.mcp.PendingOperations.PendingOp> ops =
+                com.invoicestudio.mcp.PendingOperations.pending();
+        if (ops == null || ops.isEmpty()) return base;
+        StringBuilder sb = new StringBuilder(base)
+                .append("\n\nPENDING APPROVALS — these queued operations are waiting for the user's yes/no:");
+        for (com.invoicestudio.mcp.PendingOperations.PendingOp op : ops) {
+            sb.append("\n- operationId=").append(op.getId())
+                    .append(" | tool=").append(op.getTool())
+                    .append(" | ").append(op.getSummary());
+        }
+        sb.append("\nIf the user just approved (yes/ok/confirm), call confirm_operation with approve=true and the ")
+            .append("operationId above — nothing else. If they refused, call it with approve=false. ")
+            .append("Do NOT call the underlying tool again — it would queue a duplicate.");
+        return sb.toString();
     }
 
     private Map<String, Object> parseArgs(String json) {

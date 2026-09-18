@@ -105,6 +105,27 @@ public final class ChatbotConfig {
         return AppDirs.dataDir().resolve(FILE_NAME).toFile();
     }
 
+    /**
+     * Shallow copy for a single send. {@link AiChatClient} mutates the model
+     * id on daily-quota failover; running that on the SHARED persisted
+     * instance silently changed the user's saved model (the header chip and
+     * Settings then showed — and later persisted — a model they never
+     * picked). Each send now works on its own copy, so Settings and the
+     * chat header always stay in sync with what the user actually chose.
+     */
+    public ChatbotConfig copyForSend() {
+        ChatbotConfig c = new ChatbotConfig();
+        c.showIcon = showIcon;
+        c.provider = provider;
+        c.model = model;
+        c.apiKey = apiKey;
+        c.endpoint = endpoint;
+        c.historyMessages = historyMessages;
+        c.smartRouting = smartRouting;
+        c.maxToolCalls = maxToolCalls;
+        return c;
+    }
+
     // --- getters / setters ---
 
     public boolean isShowIcon() { return showIcon; }

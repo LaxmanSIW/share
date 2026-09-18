@@ -247,6 +247,13 @@ public final class McpToolRegistry {
                         "scope", str("fixed | table")), true, false));
         t.add(new ToolDef("delete_variable", "Delete a custom variable. Requires user confirmation.",
                 obj("key", str("Variable key")), true, true));
+        t.add(new ToolDef("update_variable", "Edit a custom template variable (label, type, scope, defaultValue, choices) — same as the Variables editor. Fixed/builtin variables are read-only. Requires user confirmation.",
+                obj("key", str("Existing variable key"),
+                        "label", str("New human label"),
+                        "type", str("text | number | date"),
+                        "scope", str("fixed | table"),
+                        "defaultValue", str("New default value"),
+                        "choices", str("Comma-separated possible values (optional)")), true, true));
         t.add(new ToolDef("create_transport", "Add a transport (logistics) partner. Idempotent by name: returns the existing transport (existed=true) instead of duplicating.",
                 obj("name", str("Transport name"),
                         "phone", str("Phone"),
@@ -287,6 +294,12 @@ public final class McpToolRegistry {
                         "status", str("UNPAID | PAID | CANCELLED")), true, true));
         t.add(new ToolDef("delete_bill", "Delete an invoice; stock ledger rows are reversed. Requires user confirmation.",
                 obj("id", str("Bill id")), true, true));
+        t.add(new ToolDef("pay_bill", "Record a RECEIPT from the buyer against a sales invoice (partial payments allowed) — mirrors the Record Payment dialog in History. Auto-marks the invoice PAID when the grand total is covered. Prefer this over update_bill_status when money actually moved.",
+                obj("id", str("Bill id (from list_bills)"),
+                        "amount", num("Amount received (default: full remaining balance)"),
+                        "mode", str("Cash | UPI | Bank Transfer | Cheque | Card (default Cash)"),
+                        "reference", str("UPI txn / cheque no / txn id"),
+                        "date", str("ISO date (default today)")), true, false));
 
         // --- Purchases & payments ---
         t.add(new ToolDef("list_purchases", "List purchase bills with supplier, totals, ITC and paid amounts.",
@@ -402,6 +415,44 @@ public final class McpToolRegistry {
                         "printer", str("Printer name (default: system default)"),
                         "test", bool("true = one test label, no charge")),
                 false, false));
+        t.add(new ToolDef("list_label_prints",
+                "Label print history (Label History view): every bulk label run — when, which template/printer, label size, pages, total labels and the printed queue summary. Newest first. Read-only.",
+                obj("limit", num("Max rows (default 50)")), false, false));
+
+        // --- Knowledge Hub (assistant self-knowledge: read BEFORE acting) ---
+        t.add(new ToolDef("list_knowledge",
+                "List Knowledge Hub documentation articles (id, category path, title, subtitle, author, size). Filter by query text and/or category path. THE app documents its own chatbot, MCP tools and printer workflows here — list/get the relevant articles BEFORE complex tasks so your plan follows the app's own best practices.",
+                obj(
+                        "query", str("Optional search text matched against path/title/subtitle/body"),
+                        "path", str("Optional category path filter (e.g. 'AI Chatbot')"),
+                        "limit", num("Max rows (default 40)")), false, false));
+        t.add(new ToolDef("get_knowledge",
+                "Get ONE Knowledge Hub article in full (markdown body). Use after list_knowledge. Best practice: read the relevant chapter before multi-step work (billing flows, template design, label printing, chatbot/MCP behavior).",
+                obj("id", str("Article id (from list_knowledge)")), false, false));
+        t.add(new ToolDef("create_knowledge",
+                "Create a NEW Knowledge Hub article. Check-then-create: an article with the same title in the same category path already exists → it is returned unchanged (existed=true) — use update_knowledge or append_knowledge to change it instead of stacking duplicates. Follow the house style: title without the chapter number (the path carries it), markdown body, subtitle = one-line summary.",
+                obj(
+                        "path", str("Category path, '/'-separated, e.g. 'AI Chatbot / 09. Team Notes' (required)"),
+                        "title", str("Article title (required)"),
+                        "subtitle", str("One-line summary"),
+                        "markdown", str("Full markdown body (required)"),
+                        "author", str("Author (default 'InvoiceStudio Assistant')")), true, false));
+        t.add(new ToolDef("update_knowledge",
+                "Replace fields of an EXISTING Knowledge Hub article (path, title, subtitle, markdown, author). Read the article with get_knowledge first and send the FULL new markdown (this replaces the body, it does not merge). For additive changes prefer append_knowledge. Requires user confirmation.",
+                obj(
+                        "id", str("Article id (from list_knowledge)"),
+                        "path", str("New category path"),
+                        "title", str("New title"),
+                        "subtitle", str("New one-line summary"),
+                        "markdown", str("FULL replacement markdown body"),
+                        "author", str("New author")), true, true));
+        t.add(new ToolDef("append_knowledge",
+                "APPEND markdown to the END of an existing Knowledge Hub article (keeps everything already there — add new sections, extra steps, dated notes). Idempotent guard: if the exact same block is already the article's tail, nothing is appended (alreadyAppended=true). Requires user confirmation.",
+                obj(
+                        "id", str("Article id (from list_knowledge)"),
+                        "markdown", str("Markdown block to append at the end (required)")), true, true));
+        t.add(new ToolDef("delete_knowledge", "Delete a Knowledge Hub article permanently. Prefer update/append unless the article is truly obsolete. Requires user confirmation.",
+                obj("id", str("Article id (from list_knowledge)")), true, true));
 
         // --- Expense account lifecycle (parity with the Accounts dialog) ---
         t.add(new ToolDef("update_expense_account",
@@ -564,6 +615,17 @@ public final class McpToolRegistry {
                     .collect(java.util.stream.Collectors.toList());
             case "create_variable": return createVariable(dm, args);
             case "delete_variable": return confirmable("delete_variable", args, () -> dm.variables().deleteVariable(str(args, "key")));
+            case "update_variable": {
+                // Fail fast: unknown keys and builtin variables never queue.
+                VariableDef probe = dm.variables().getAllVariables().stream()
+                        .filter(x -> x.getKey().equalsIgnoreCase(str(args, "key")))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalArgumentException("Variable not found: " + str(args, "key")
+                                + " — call list_variables for valid keys"));
+                if (probe.isBuiltin())
+                    throw new IllegalArgumentException("'" + probe.getKey() + "' is a fixed app variable and cannot be edited.");
+                return confirmable("update_variable", args, () -> updateVariable(dm, args));
+            }
             case "create_transport": return createTransport(dm, args);
             case "update_transport": return confirmable("update_transport", args, () -> {
                 com.invoicestudio.model.Transport tr = requireTransport(dm, str(args, "id"));
@@ -612,6 +674,7 @@ public final class McpToolRegistry {
                 dm.saveBill(b);
             });
             case "delete_bill": return confirmable("delete_bill", args, () -> dm.deleteBill(str(args, "id")));
+            case "pay_bill": return payBill(dm, args);
 
             // Purchases
             case "list_purchases": return purchasesMap(dm, str(args, "query"), intVal(args, "limit", 50));
@@ -669,10 +732,40 @@ public final class McpToolRegistry {
             // Label (barcode) printing
             case "get_label_print_state": return labelPrintStateMap(dm, str(args, "templateId"));
             case "print_labels": return printLabels(dm, args);
+            case "list_label_prints": return new com.invoicestudio.db.LabelPrintHistoryDao(dm.getDb())
+                    .getAll().stream()
+                    .limit(intVal(args, "limit", 50))
+                    .map(h -> mapOf("id", h.getId(), "at", h.getCreatedAt(),
+                            "template", h.getTemplateName(), "printer", h.getPrinterName(),
+                            "labelSizeMm", mapOf("w", h.getLabelWidth(), "h", h.getLabelHeight()),
+                            "columns", h.getColumns(), "pages", h.getPages(), "labels", h.getLabels(),
+                            "queue", h.getSummary()))
+                    .collect(java.util.stream.Collectors.toList());
 
             case "list_transactions": return dm.getAllTransactions().stream()
                     .limit(intVal(args, "limit", 100)).map(McpToolRegistry::transactionMap)
                     .collect(java.util.stream.Collectors.toList());
+
+            // Knowledge Hub (assistant self-knowledge)
+            case "list_knowledge": return knowledgeList(args);
+            case "get_knowledge": return knowledgeGet(str(args, "id"));
+            case "create_knowledge": return knowledgeCreate(args);
+            // Fail fast BEFORE the gate (like rebind_shortcut): an unknown id
+            // must error immediately, never queue a dead pending operation.
+            case "update_knowledge": {
+                requireKnowledgeArticle(str(args, "id"));
+                return confirmable("update_knowledge", args, () -> knowledgeUpdate(args));
+            }
+            case "append_knowledge": {
+                requireKnowledgeArticle(str(args, "id"));
+                if (strOr(args, "markdown", "").isBlank())
+                    throw new IllegalArgumentException("markdown is required");
+                return confirmable("append_knowledge", args, () -> knowledgeAppend(args));
+            }
+            case "delete_knowledge": {
+                requireKnowledgeArticle(str(args, "id"));
+                return confirmable("delete_knowledge", args, () -> knowledgeDelete(args));
+            }
 
             // Reports
             case "stock_report": return stockReport(dm);
@@ -732,6 +825,22 @@ public final class McpToolRegistry {
             case "delete_buyer": return "Permanently delete buyer " + str(args, "id");
             case "delete_supplier": return "Permanently delete supplier " + str(args, "id");
             case "delete_item": return "Permanently delete catalog item " + str(args, "id");
+            case "update_variable": {
+                StringBuilder sb = new StringBuilder("Update variable '").append(str(args, "key")).append("'");
+                List<String> changes = new ArrayList<>();
+                if (args.containsKey("label")) changes.add("label → " + str(args, "label"));
+                if (args.containsKey("type")) changes.add("type → " + str(args, "type"));
+                if (args.containsKey("scope")) changes.add("scope → " + str(args, "scope"));
+                if (args.containsKey("defaultValue")) changes.add("defaultValue → " + str(args, "defaultValue"));
+                if (args.containsKey("choices")) changes.add("choices → " + str(args, "choices"));
+                if (!changes.isEmpty()) sb.append(": ").append(String.join(", ", changes));
+                return sb.toString();
+            }
+            case "update_knowledge": return "Update Knowledge Hub article " + str(args, "id")
+                    + (args.containsKey("title") ? " (title → " + str(args, "title") + ")" : "")
+                    + (args.containsKey("markdown") ? " — body REPLACED" : "");
+            case "append_knowledge": return "Append a markdown block to the end of Knowledge Hub article " + str(args, "id");
+            case "delete_knowledge": return "Permanently delete Knowledge Hub article " + str(args, "id");
             case "update_transport": {
                 StringBuilder sb = new StringBuilder("Update transport ").append(str(args, "id"));
                 List<String> changes = new ArrayList<>();
@@ -1204,6 +1313,182 @@ public final class McpToolRegistry {
         return mapOf("ok", true, "paid", amount, "remaining",
                 PurchaseService.round2(pb.getAmountPayable() - pb.getPaidAmount()),
                 "fullySettled", pb.isPaid());
+    }
+
+    /**
+     * Buyer receipt against a SALES invoice — the MCP counterpart of the
+     * Record Payment dialog in History (payments list grows, PAID status +
+     * paidAt are set automatically once the grand total is covered). Same
+     * semantics as {@link #payPurchase}: partial payments allowed, additive
+     * (non-destructive), so no confirmation gate.
+     */
+    private static Map<String, Object> payBill(DataManager dm, Map<String, Object> args) throws Exception {
+        Bill b = requireBill(dm, str(args, "id"));
+        double grand = b.getTotals() != null ? b.getTotals().getGrandTotal() : 0.0;
+        double alreadyPaid = b.getPayments() == null ? 0.0
+                : b.getPayments().stream().mapToDouble(BillPayment::getAmount).sum();
+        double remaining = Math.max(0.0, grand - alreadyPaid);
+        if (remaining <= 0)
+            throw new IllegalArgumentException("Invoice " + b.getBillNo() + " is already fully paid.");
+        double amount = args.containsKey("amount") ? dbl(args, "amount", remaining) : remaining;
+        if (amount <= 0) throw new IllegalArgumentException("Amount must be positive.");
+        amount = Math.min(amount, remaining);
+
+        BillPayment p = new BillPayment();
+        p.setId("pmt_" + UUID.randomUUID().toString().substring(0, 8));
+        p.setDate(args.containsKey("date") && !strOr(args, "date", "").isBlank()
+                ? str(args, "date") : LocalDate.now().toString());
+        p.setAmount(amount);
+        p.setMethod(parseMethod(strOr(args, "mode", "Cash")));
+        p.setReference(strOr(args, "reference", ""));
+        List<BillPayment> payments = new ArrayList<>(b.getPayments() == null ? List.of() : b.getPayments());
+        payments.add(p);
+        b.setPayments(payments);
+        double totalPaid = payments.stream().mapToDouble(BillPayment::getAmount).sum();
+        boolean settled = totalPaid >= grand - 0.01;
+        if (settled) {
+            b.setStatus(BillStatus.PAID);
+            b.setPaidAt(p.getDate());
+        }
+        dm.saveBill(b);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("billNo", b.getBillNo());
+        out.put("paid", amount);
+        out.put("method", p.getMethod());
+        out.put("totalPaid", PurchaseService.round2(totalPaid));
+        out.put("remaining", PurchaseService.round2(Math.max(0.0, grand - totalPaid)));
+        out.put("fullySettled", settled);
+        if (settled) out.put("status", "PAID");
+        return out;
+    }
+
+    /** Edit an existing custom variable (Variables editor parity). Builtin
+     *  variables are read-only — the app itself never rebinds them. */
+    private static void updateVariable(DataManager dm, Map<String, Object> args) {
+        String key = str(args, "key");
+        VariableDef v = dm.variables().getAllVariables().stream()
+                .filter(x -> x.getKey().equalsIgnoreCase(key))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Variable not found: " + key
+                        + " — call list_variables for valid keys"));
+        if (v.isBuiltin())
+            throw new IllegalArgumentException("'" + key + "' is a fixed app variable and cannot be edited.");
+        if (args.containsKey("label") && !strOr(args, "label", "").isBlank()) v.setLabel(str(args, "label").trim());
+        if (args.containsKey("type") && !strOr(args, "type", "").isBlank()) v.setType(str(args, "type").trim());
+        if (args.containsKey("scope") && !strOr(args, "scope", "").isBlank()) v.setScope(str(args, "scope").trim());
+        if (args.containsKey("defaultValue")) v.setDefaultValue(strOr(args, "defaultValue", ""));
+        if (args.containsKey("choices")) v.setChoices(strOr(args, "choices", ""));
+        dm.variables().saveVariable(v);
+    }
+
+    // ------------------------------------------------------------------
+    // Knowledge Hub (assistant self-knowledge CRUD)
+    // ------------------------------------------------------------------
+
+    private static com.invoicestudio.service.KnowledgeRepository knowledge() {
+        return com.invoicestudio.service.KnowledgeRepository.getInstance();
+    }
+
+    private static Object knowledgeList(Map<String, Object> args) {
+        String query = strOr(args, "query", "").trim().toLowerCase(Locale.ROOT);
+        String pathFilter = strOr(args, "path", "").trim().toLowerCase(Locale.ROOT);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (com.invoicestudio.model.KnowledgeArticle a : knowledge().getAllArticles()) {
+            String p = (a.path() == null ? "" : a.path());
+            if (!pathFilter.isEmpty() && !p.toLowerCase(Locale.ROOT).contains(pathFilter)) continue;
+            if (!query.isEmpty()
+                    && !a.title().toLowerCase(Locale.ROOT).contains(query)
+                    && !a.subtitle().toLowerCase(Locale.ROOT).contains(query)
+                    && !a.markdown().toLowerCase(Locale.ROOT).contains(query)
+                    && !p.toLowerCase(Locale.ROOT).contains(query)) continue;
+            out.add(mapOf("id", a.id(), "path", p, "title", a.title(),
+                    "subtitle", a.subtitle(), "author", a.author(),
+                    "updatedAt", a.updatedAt(), "markdownChars", a.markdown().length()));
+        }
+        return out.size() > intVal(args, "limit", 40) ? out.subList(0, intVal(args, "limit", 40)) : out;
+    }
+
+    private static Object knowledgeGet(String id) {
+        com.invoicestudio.model.KnowledgeArticle a = knowledge().getArticleById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Article not found: " + id
+                        + " — call list_knowledge for valid ids"));
+        return mapOf("id", a.id(), "path", a.path(), "title", a.title(),
+                "subtitle", a.subtitle(), "author", a.author(), "updatedAt", a.updatedAt(),
+                "markdown", a.markdown());
+    }
+
+    private static Object knowledgeCreate(Map<String, Object> args) {
+        String path = str(args, "path");
+        String title = str(args, "title");
+        String markdown = str(args, "markdown");
+        if (path == null || path.isBlank()) throw new IllegalArgumentException("path is required");
+        if (title == null || title.isBlank()) throw new IllegalArgumentException("title is required");
+        if (markdown == null || markdown.isBlank()) throw new IllegalArgumentException("markdown is required");
+        // Idempotent by (path, title) — never stack duplicate chapters when a
+        // create retried or the same note already exists.
+        for (com.invoicestudio.model.KnowledgeArticle a : knowledge().getAllArticles()) {
+            if (a.title().equalsIgnoreCase(title.trim())
+                    && a.path() != null && a.path().equalsIgnoreCase(path.trim())) {
+                return mapOf("ok", true, "id", a.id(), "existed", true, "matchedBy", "path+title",
+                        "note", "An article with this title already exists in this path; returned unchanged. "
+                                + "Use update_knowledge or append_knowledge to change it.");
+            }
+        }
+        com.invoicestudio.model.KnowledgeArticle art = new com.invoicestudio.model.KnowledgeArticle(
+                "art_mcp_" + UUID.randomUUID().toString().substring(0, 8),
+                path.trim(), title.trim(),
+                strOr(args, "subtitle", ""),
+                markdown,
+                System.currentTimeMillis(),
+                strOr(args, "author", "InvoiceStudio Assistant"));
+        knowledge().saveArticle(art);
+        return mapOf("ok", true, "id", art.id(), "existed", false,
+                "path", art.path(), "title", art.title());
+    }
+
+    /** Shared fail-fast loader for the three confirm-gated mutations. */
+    private static com.invoicestudio.model.KnowledgeArticle requireKnowledgeArticle(String id) {
+        com.invoicestudio.model.KnowledgeArticle a = knowledge().getArticleById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Article not found: " + id
+                        + " — call list_knowledge for valid ids"));
+        return a;
+    }
+
+    private static void knowledgeUpdate(Map<String, Object> args) {
+        com.invoicestudio.model.KnowledgeArticle a = requireKnowledgeArticle(str(args, "id"));
+        String newPath = args.containsKey("path") && !strOr(args, "path", "").isBlank()
+                ? str(args, "path").trim() : a.path();
+        String newTitle = args.containsKey("title") && !strOr(args, "title", "").isBlank()
+                ? str(args, "title").trim() : a.title();
+        String newSub = args.containsKey("subtitle") ? strOr(args, "subtitle", "") : a.subtitle();
+        String newBody = args.containsKey("markdown") && !strOr(args, "markdown", "").isBlank()
+                ? str(args, "markdown") : a.markdown();
+        String newAuthor = args.containsKey("author") && !strOr(args, "author", "").isBlank()
+                ? str(args, "author").trim() : a.author();
+        knowledge().saveArticle(a.withUpdates(newPath, newTitle, newSub, newBody, newAuthor));
+    }
+
+    private static void knowledgeAppend(Map<String, Object> args) {
+        com.invoicestudio.model.KnowledgeArticle a = requireKnowledgeArticle(str(args, "id"));
+        String block = str(args, "markdown");
+        if (block == null || block.isBlank()) throw new IllegalArgumentException("markdown is required");
+        String current = a.markdown() == null ? "" : a.markdown();
+        // Idempotent guard: appending the exact tail block twice must not
+        // duplicate it (retries happen).
+        if (current.stripTrailing().endsWith(block.strip())) {
+            return; // already appended — nothing to do
+        }
+        String joined = current.endsWith("\n") || current.isEmpty()
+                ? current + "\n" + block : current + "\n\n" + block;
+        knowledge().saveArticle(a.withUpdates(a.path(), a.title(), a.subtitle(), joined, a.author()));
+    }
+
+    private static void knowledgeDelete(Map<String, Object> args) {
+        boolean removed = knowledge().deleteArticle(str(args, "id"));
+        if (!removed)
+            throw new IllegalArgumentException("Article not found: " + str(args, "id")
+                    + " — call list_knowledge for valid ids");
     }
 
     // ------------------------------------------------------------------

@@ -1190,6 +1190,98 @@ public final class KnowledgeSeed {
                 "InvoiceStudio AI Core"
         ));
 
+        // Chapter 14 — Bug Playbook & Token-Light Speed (future chatbot bugs +
+        // their solutions; how to keep answers fast on the fewest tokens)
+        list.add(new KnowledgeArticle(
+                "art_ai_14_bug_playbook",
+                "AI Chatbot / 09. Bug Playbook & Token-Light Speed",
+                "Future Chatbot Bugs & Their Solutions — Fast Answers on Fewer Tokens",
+                "The maintenance playbook: every failure class the assistant can hit (silence, confirmation loops, model drift, audit blindness, router misses, quota walls), the fix that ships for each, and the operating habits that keep the chat fast and token-cheap.",
+                """
+                This chapter is the assistant's **maintenance playbook**: the bug classes a chatbot of this \
+                design can develop, the concrete fix that ships for each one, and the habits that keep every \
+                answer fast and cheap. It is written from the operator's chair — each section starts with what \
+                a real user would see.
+
+                ---
+
+                ### 1. Bug playbook — what you'd see, what it means, what was done
+
+                | # | What the user sees | Root cause class | Fix that ships |
+                | :--- | :--- | :--- | :--- |
+                | 1 | Dots sit still for a minute, "it got stuck" | Multi-request turns (router → model → tool → model) with no visible progress | The busy dots are a **live progress line** — the chat streams each execution step ("Round 1 → …", "Model requested delete_supplier", "MCP delete_supplier executed in 210 ms") while you wait. All chat work also runs on a dedicated 3-worker executor, so one slow call can never wedge the app. |
+                | 2 | Asked to delete → nothing → late confirmation → "unknown operationId" loops | The model had to guess the queued operation's id from chat history | **PENDING APPROVALS injection**: whenever destructive ops are queued, the system prompt now carries `operationId | tool | summary` for each, so "yes" resolves in exactly one `confirm_operation` round. Duplicate queues are told apart and re-running the underlying tool is explicitly forbidden. |
+                | 3 | Header chip / Settings shows a model you never picked | Quota failover mutated the SHARED saved config (`cfg.setModel` on the live instance); some exits never restored it | Failover now runs on a **per-send copy** (`ChatbotConfig.copyForSend()`): the switch lasts exactly one send, the saved model, chip and Settings stay in sync with the user's real choice. |
+                | 4 | "It deleted my supplier but there are no logs" | Chatbot tool runs went straight to `McpToolRegistry`, bypassing the MCP audit trail; closing the chat also wiped session logs | Every chatbot tool execution is mirrored into the MCP audit (`[CHAT] tool args — ms — result`, `[CHAT-ERROR]` on failure) in Settings → MCP Server and `mcp-audit.log`; session logs are **kept on chat close** — only the explicit Clear button empties them. |
+                | 5 | Answer about the wrong entity / wrong tool picked | Router shortlisted too narrowly | **Escalation net**: if the model calls a tool outside the shortlist, the request escalates ONCE to the full catalogue — the router saves tokens when right, never costs correctness when wrong. Escalation is free (no round consumed). |
+                | 6 | 429 "daily limit" and the assistant dies for the day | A single model's free bucket empties | **Light-first failover ladder** (`flash-lite` → `flash` → versioned flashes), one attempt per candidate, per-send only; the tool-round budget is untouched by switches. |
+                | 7 | Answers degrade on giant table questions / requests get slow | Full result payloads re-sent every later round | Tool results are **capped (~4K chars)** with an explicit "narrow your query" instruction; the model is trained by its tools to pass `limit` (e.g. "top 5"). |
+                | 8 | "stopped after N tool rounds — ask me to continue" | Safety cap on model↔tool round-trips reached | By design. Say **continue** — a fresh send resumes with full history. Raise Max tool rounds in Settings only for long multi-step jobs. |
+                | 9 | One provider's errors repeat | Provider outage / key problem | The failure text is the provider's own message surfaced verbatim; MCP-related failures always carry the Settings → MCP Server pointer. Switch provider (or Ollama, local & free) in Settings. |
+                | 10 | Weird 400s on new Gemini versions | Schema strictness (arrays without `items`, empty tool lists, thought signatures) | All handled at the builder layer: `items` injection for array schemas, zero-schema requests OMIT the tools field entirely, thought signatures round-trip on the part — each fix was live-verified, not guessed. |
+
+                #### When you hit something NEW (the debugging ritual that works)
+                1. Open the terminal icon in the chat header — **Assistant Live Execution Logs** show every \
+                router decision, dispatch, tool call, duration and error, in order, live.
+                2. Reproduce with the smallest possible phrasing of the same task.
+                3. Check the three usual suspects in order: **MCP server on?** (Settings → MCP Server), \
+                **daily quota** (try again on a light model), **pending approvals** (the banner in Settings → MCP Server).
+                4. Only then change settings — Max tool rounds up for genuinely multi-step tasks, history \
+                window up only when the model clearly lacks context.
+                5. Log everything via Copy All before reporting — the log contains the failing request's \
+                round, tool, args and elapsed time.
+
+                ---
+
+                ### 2. Where the tokens actually go (and the caps that hold them)
+
+                Every request pays for four payloads; each is engineered down:
+
+                | Payload | Typical size | What keeps it small |
+                | :--- | :--- | :--- |
+                | Tool schemas | ~7–10K tokens if everything is sent | Smart router shortlist (~1K), zero-schema small talk, MCP-off fast path sends none |
+                | Conversation history | Grows with the chat | History window setting (default 12), oldest-first trim, text-only tail on failover |
+                | Tool results | Up to 4K chars per result | Hard cap + "narrow your query" guidance; `limit` params on every list tool |
+                | System prompt | ~250 tokens, +pending-ops list only while approvals wait | Static, cached by providers, only grows when confirmation state exists |
+
+                #### Token-speed habits that compound
+                - **One topic per message.** "Create 10 suppliers named A1..A10 and delete the last one" \
+                forces sequential rounds; two messages resolve each in one.
+                - **Say "top 5" / "this month"** — bounded questions get short answers and small tool results.
+                - **Keep Smart tool routing ON.** It is the single biggest saver: chat-only messages carry \
+                zero schemas, data questions carry a handful.
+                - **Stay on the light model** for daily Q&A; heavy models for genuinely hard analysis.
+                - **Trim the history window** (Settings → Chatbot) if sessions run long — 8–12 turns is the \
+                sweet spot for this assistant's work.
+                - **Ask follow-ups, don't re-paste.** The model already holds the last exchanges; re-describing \
+                the same data burns tokens twice.
+                - **Images are expensive** — attach screenshots only when text can't describe the problem.
+
+                ---
+
+                ### 3. The user-perspective QA checklist
+
+                Run through these when validating a build — each maps to a fixed path above:
+
+                1. **Greeting** ("hi") → instant one-shot reply, zero tool schemas, no router spend.
+                2. **Read** ("top 5 buyers by outstanding") → router shortlist → one tool round → markdown table.
+                3. **Bulk create** ("create 10 suppliers") → idempotent creates, `autoCreated`-style responses, \
+                progress line visible the whole time.
+                4. **Destructive** ("delete the last one") → queued with `requiresConfirmation` → model asks \
+                using the injected operationId → "yes" → `confirm_operation` executes → **audit shows [CHAT] \
+                rows and they survive closing the chat**.
+                5. **Money** ("record 5000 received against INV-x") → `pay_bill` (not a status flip) → ledger + \
+                History both show the receipt.
+                6. **Documentation** ("what do you know about tool rounds?") → `list_knowledge` → `get_knowledge` \
+                → answer cites the app's own chapter.
+                7. **Quota wall** (model 429s) → light-first failover in the same send → trace line "switched to …" \
+                → your chosen model unchanged in Settings afterwards.
+                8. **MCP off** → instant conversational reply pointing at Settings → MCP Server — never silence.
+                """,
+                now,
+                "InvoiceStudio AI Core"
+        ));
+
         return list;
     }
 }

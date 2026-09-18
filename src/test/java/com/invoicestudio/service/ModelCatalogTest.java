@@ -43,7 +43,8 @@ class ModelCatalogTest {
     void failoverSkipsExhaustedAndCurrent() {
         var exhausted = new java.util.HashSet<>(java.util.Set.of("gemini-flash-latest", "gemini-3.8-flash"));
         String next = ModelCatalog.nextFailover("gemini-flash-latest", exhausted);
-        assertEquals("gemini-3.7-flash", next);
+        // Light-first ladder: the LIGHTEST candidate with quota left wins.
+        assertEquals("gemini-flash-lite-latest", next);
         // Everything exhausted → null (honest failure)
         var all = new java.util.HashSet<>(ModelCatalog.failoverCandidates());
         assertNull(ModelCatalog.nextFailover("not-a-candidate", all));

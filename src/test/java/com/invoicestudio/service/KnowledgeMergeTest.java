@@ -81,7 +81,9 @@ class KnowledgeMergeTest {
                     "bundled resource must contain the tool-limit chapter");
             assertTrue(bundled.stream().anyMatch(a -> "art_ai_13_speed_optimization".equals(a.id())),
                     "bundled resource must contain the speed-optimization chapter");
-            assertEquals(26, bundled.size(), "seed and bundled resource must stay in sync");
+            assertTrue(bundled.stream().anyMatch(a -> "art_ai_14_bug_playbook".equals(a.id())),
+                    "bundled resource must contain the bug-playbook chapter");
+            assertEquals(27, bundled.size(), "seed and bundled resource must stay in sync");
         }
         assertTrue(Files.exists(tempDir), "tempdir sanity");
     }

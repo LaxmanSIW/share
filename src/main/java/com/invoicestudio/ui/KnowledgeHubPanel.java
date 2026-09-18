@@ -108,6 +108,19 @@ public class KnowledgeHubPanel extends VBox {
         if (!all.isEmpty()) {
             showArticle(all.get(0));
         }
+
+        // Refresh when articles change OUTSIDE this panel (the assistant's
+        // knowledge_* MCP tools mutate on worker threads) — the sidebar tree
+        // and count chip must not go stale until reopen.
+        KnowledgeRepository.addChangeListener(() -> Platform.runLater(() -> {
+            rebuildTree();
+            if (currentArticle != null) {
+                KnowledgeArticle fresh = repo.getArticleById(currentArticle.id()).orElse(null);
+                if (fresh != null && fresh != currentArticle) {
+                    showArticle(fresh);
+                }
+            }
+        }));
     }
 
     /**

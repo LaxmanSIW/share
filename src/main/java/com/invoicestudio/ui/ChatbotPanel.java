@@ -82,6 +82,10 @@ public class ChatbotPanel extends VBox {
     private final ChatbotConfig cfg;
     private final Runnable closeAction;
     private final List<AiChatClient.ChatTurn> history = new ArrayList<>();
+    /** Registered once; removed when this panel closes (toggleChatbot creates
+     *  a fresh panel each open — without removal the static listener list grew). */
+    private final java.util.function.Consumer<ChatbotConfig> configListener =
+            c -> javafx.application.Platform.runLater(this::refreshConfig);
 
     private final VBox messages = new VBox(12);
     private final ScrollPane scroll = new ScrollPane(messages);
@@ -109,7 +113,7 @@ public class ChatbotPanel extends VBox {
 
         providerLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #97A3B6;");
         refreshProviderLabel();
-        ChatbotConfig.addChangeListener(c -> Platform.runLater(this::refreshConfig));
+        ChatbotConfig.addChangeListener(configListener);
 
         messages.setPadding(new Insets(6, 4, 6, 2));
         scroll.setFitToWidth(true);
@@ -230,7 +234,11 @@ public class ChatbotPanel extends VBox {
 
         Button closeBtn = iconBtn("chat-close", SVG_CLOSE, "Close chat");
         closeBtn.setOnAction(e -> {
-            com.invoicestudio.service.ChatbotLogManager.clear();
+            // Session logs are KEPT when the panel closes (they are the only
+            // forensic trail of what the assistant executed — wiping them on
+            // close is why "no logs" were found after a deletion). Only the
+            // explicit Clear button empties them.
+            ChatbotConfig.removeChangeListener(configListener);
             closeAction.run();
         });
 
@@ -558,11 +566,22 @@ public class ChatbotPanel extends VBox {
         }
 
         // Busy indicator (thinking dots) + network call off the FX thread.
+        // The dots double as a LIVE progress line: while the tool loop runs
+        // (router → model → MCP tools → model …) the latest execution step is
+        // streamed into the label, so a slow multi-request turn never looks
+        // like a silent hang ("asked to delete — it got stuck, no logs").
         Label busy = new Label("●  ●  ●");
         busy.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0; -fx-padding: 8 0 0 36;");
         messages.getChildren().add(busy);
         scrollToBottom();
         sendBtn.setDisable(true);
+
+        java.util.function.Consumer<com.invoicestudio.service.ChatbotLogManager.LogEntry> progress =
+                entry -> {
+                    String step = progressText(entry);
+                    if (!step.isEmpty()) busy.setText(step);
+                };
+        com.invoicestudio.service.ChatbotLogManager.addListener(progress);
 
         List<AiChatClient.ChatTurn> snapshot = new ArrayList<>(history);
         Task<AiChatClient.ChatResult> task = new Task<>() {
@@ -574,6 +593,7 @@ public class ChatbotPanel extends VBox {
             }
         };
         task.setOnSucceeded(e -> AppExecutors.runOnFx(() -> {
+            com.invoicestudio.service.ChatbotLogManager.removeListener(progress);
             messages.getChildren().remove(busy);
             sendBtn.setDisable(false);
             AiChatClient.ChatResult r = task.getValue();
@@ -587,12 +607,33 @@ public class ChatbotPanel extends VBox {
             history.add(AiChatClient.ChatTurn.assistant(r.text()));
         }));
         task.setOnFailed(e -> AppExecutors.runOnFx(() -> {
+            com.invoicestudio.service.ChatbotLogManager.removeListener(progress);
             messages.getChildren().remove(busy);
             sendBtn.setDisable(false);
             Throwable ex = task.getException();
             addAiBubble(friendlyError(ex), null);
         }));
         AppExecutors.chat().execute(task);
+    }
+
+    /** One-line busy-label text for a log step (empty = keep previous). */
+    private static String progressText(com.invoicestudio.service.ChatbotLogManager.LogEntry e) {
+        if (e == null || e.tag() == null) return "";
+        return switch (e.tag()) {
+            case "ROUTER" -> "●  Thinking…";
+            case "DISPATCH" -> "●  " + shortenProgress(e.message(), 52);
+            case "TOOL-CALL" -> "●  " + shortenProgress(e.message(), 52);
+            case "MCP-EXEC" -> "●  " + shortenProgress(e.message(), 52);
+            case "SUCCESS" -> "●  Finishing…";
+            case "WARN", "ERROR" -> "●  " + shortenProgress(e.message(), 52);
+            default -> "";
+        };
+    }
+
+    private static String shortenProgress(String s, int max) {
+        if (s == null) return "";
+        String flat = s.replaceAll("\\s+", " ").trim();
+        return flat.length() > max ? flat.substring(0, max) + "…" : flat;
     }
 
     /**
