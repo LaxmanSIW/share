@@ -4,6 +4,8 @@ import com.invoicestudio.service.AiChatClient;
 import com.invoicestudio.service.AppExecutors;
 import com.invoicestudio.service.ChatbotConfig;
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.DoubleBinding;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -92,6 +94,7 @@ public class ChatbotPanel extends VBox {
     private final VBox chipsRow = new VBox(6);
     private boolean expanded = false;
     private com.invoicestudio.ui.chat.ChatbotLogDialog logDialog;
+    private final DoubleBinding maxBubbleWidth;
 
     public ChatbotPanel(StudioApp app, ChatbotConfig cfg, Runnable closeAction) {
         this.app = app;
@@ -114,6 +117,12 @@ public class ChatbotPanel extends VBox {
         scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         scroll.setStyle("-fx-background-color: transparent;");
         VBox.setVgrow(scroll, Priority.ALWAYS);
+
+        maxBubbleWidth = Bindings.createDoubleBinding(() -> {
+            double w = scroll.getWidth();
+            if (w <= 0) return expanded ? 760.0 : 360.0;
+            return Math.max(340.0, w - 70.0);
+        }, scroll.widthProperty());
 
         getChildren().addAll(buildHeader(), new Separator(), scroll, buildInputArea());
         greeting();
@@ -516,7 +525,8 @@ public class ChatbotPanel extends VBox {
             Label l = new Label(text);
             l.setWrapText(true);
             l.setStyle(USER_BUBBLE);
-            l.setMaxWidth(expanded ? 620 : 340);
+            l.setMinHeight(Region.USE_PREF_SIZE);
+            l.maxWidthProperty().bind(maxBubbleWidth);
 
             Button copyBtn = copyButton(text);
             HBox actionRow = new HBox(copyBtn);
@@ -602,7 +612,8 @@ public class ChatbotPanel extends VBox {
         Node contentNode = com.invoicestudio.ui.chat.ChatMarkdownRenderer.render(text, isError);
         VBox bubble = new VBox(contentNode);
         bubble.setStyle(isError ? ERROR_BUBBLE : AI_BUBBLE);
-        bubble.setMaxWidth(expanded ? 620 : 340);
+        bubble.setMinHeight(Region.USE_PREF_SIZE);
+        bubble.maxWidthProperty().bind(maxBubbleWidth);
 
         Button copyBtn = copyButton(text);
         HBox actionRow = new HBox(copyBtn);

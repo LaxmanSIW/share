@@ -3,6 +3,7 @@ package com.invoicestudio.ui;
 import com.invoicestudio.service.AiChatClient;
 import com.invoicestudio.service.AppExecutors;
 import com.invoicestudio.service.ChatbotConfig;
+import com.invoicestudio.ui.chat.ChatbotModelPickerDialog;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -301,50 +302,16 @@ public class ChatbotSettingsPanel extends VBox {
             }
             javafx.application.Platform.runLater(() -> {
                 status.setText(models.size() + " chat-capable models found.");
-                javafx.scene.control.ListView<com.invoicestudio.service.ModelCatalog.ModelInfo> lv =
-                        new javafx.scene.control.ListView<>(javafx.collections.FXCollections
-                                .observableArrayList(models));
-                lv.setPrefHeight(360);
-                lv.setCellFactory(v -> new javafx.scene.control.ListCell<>() {
-                    @Override protected void updateItem(com.invoicestudio.service.ModelCatalog.ModelInfo mi,
-                                                        boolean empty) {
-                        super.updateItem(mi, empty);
-                        if (empty || mi == null) { setText(null); setGraphic(null); return; }
-                        String current = modelField.getText() == null ? "" : modelField.getText().trim();
-                        String defaultM = AiChatClient.defaultModel(provider);
-                        boolean active = mi.id().equals(current)
-                                || (current.isEmpty() && mi.id().equals(defaultM));
-                        setText((active ? "✓  " : "") + mi.displayName()
-                                + "  —  " + mi.id()
-                                + (mi.inputTokenLimit() > 0 ? "  ·  "
-                                    + (mi.inputTokenLimit() / 1000) + "K context" : ""));
-                        setStyle("-fx-text-fill: " + (active ? "#D9A13B" : "#C7D0DE") + ";"
-                                + "-fx-font-size: 12px;");
-                    }
-                });
-                javafx.scene.control.Button pick = new javafx.scene.control.Button("Use this model");
-                pick.getStyleClass().addAll("button-sm", "button-primary");
-                pick.setDisable(true);
-                lv.getSelectionModel().selectedItemProperty().addListener((o, a, sel) ->
-                        pick.setDisable(sel == null));
-                pick.setOnAction(ev -> {
-                    var sel = lv.getSelectionModel().getSelectedItem();
-                    if (sel != null) {
-                        modelField.setText(sel.id());
-                        dialog.close();
-                    }
-                });
-                javafx.scene.layout.VBox root = new javafx.scene.layout.VBox(10, lv, pick);
-                root.setStyle("-fx-background-color: #10161F; -fx-padding: 12;");
-                root.setPrefWidth(560);
-                dialog.setTitle("Pick a model (live from " + AiChatClient.providerLabel(provider) + ")");
-                dialog.getDialogPane().setContent(root);
-                dialog.getDialogPane().getButtonTypes().setAll(javafx.scene.control.ButtonType.CLOSE);
-                dialog.getDialogPane().setStyle("-fx-background-color: #10161F;");
-                dialog.showAndWait();
+                String curModel = modelField.getText() == null ? "" : modelField.getText().trim();
+                ChatbotModelPickerDialog picker = new ChatbotModelPickerDialog(
+                        app != null ? app.getPrimaryStage() : null,
+                        provider,
+                        models,
+                        curModel,
+                        sel -> modelField.setText(sel.id())
+                );
+                picker.showAndWait();
             });
         });
     }
-
-    private final javafx.scene.control.Dialog<Void> dialog = new javafx.scene.control.Dialog<>();
 }

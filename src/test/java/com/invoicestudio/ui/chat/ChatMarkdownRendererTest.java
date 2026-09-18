@@ -53,6 +53,44 @@ class ChatMarkdownRendererTest {
         GridPane grid = (GridPane) card.getChildren().get(0);
         // 4 cols * (1 header + 2 data rows) = 12 cells
         assertEquals(12, grid.getChildren().size());
+        assertEquals(4, grid.getColumnConstraints().size());
+        for (var cc : grid.getColumnConstraints()) {
+            assertEquals(javafx.scene.layout.Region.USE_PREF_SIZE, cc.getMinWidth());
+        }
+    }
+
+    @Test
+    void cleansMarkdownBoldInTableCellsAndSetsBoldStyle() {
+        String md = """
+                | Item | Stock | Total |
+                |---|---|---|
+                | **Probe Denim Jeans** | 15 pcs | **₹13,500.00** |
+                | **Total** | 15 pcs | **₹13,500.00** |
+                """;
+        Node root = ChatMarkdownRenderer.render(md, false);
+        assertTrue(root instanceof VBox);
+        ScrollPane sp = (ScrollPane) ((VBox) root).getChildren().get(0);
+        VBox card = (VBox) sp.getContent();
+        GridPane grid = (GridPane) card.getChildren().get(0);
+
+        // Find cell labels and verify asterisks are stripped and bold styling applied
+        boolean foundJeans = false;
+        boolean foundTotal = false;
+        for (Node n : grid.getChildren()) {
+            if (n instanceof javafx.scene.control.Label l) {
+                if ("Probe Denim Jeans".equals(l.getText())) {
+                    foundJeans = true;
+                    assertTrue(l.getStyle().contains("-fx-font-weight: bold;"), "Cell should have bold style");
+                    assertEquals(javafx.scene.layout.Region.USE_PREF_SIZE, l.getMinWidth());
+                }
+                if ("Total".equals(l.getText())) {
+                    foundTotal = true;
+                    assertTrue(l.getStyle().contains("-fx-font-weight: bold;"));
+                }
+            }
+        }
+        assertTrue(foundJeans, "Should strip ** from **Probe Denim Jeans**");
+        assertTrue(foundTotal, "Should strip ** from **Total**");
     }
 
     @Test

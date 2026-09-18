@@ -9,9 +9,11 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
@@ -232,13 +234,23 @@ public final class ChatMarkdownRenderer {
         grid.setHgap(0);
         grid.setVgap(0);
 
+        // Explicit ColumnConstraints to ensure columns never collapse below text pref size
+        grid.getColumnConstraints().clear();
+        for (int c = 0; c < cols; c++) {
+            ColumnConstraints cc = new ColumnConstraints();
+            cc.setHgrow(Priority.ALWAYS);
+            cc.setMinWidth(Region.USE_PREF_SIZE);
+            grid.getColumnConstraints().add(cc);
+        }
+
         // Header row
         for (int c = 0; c < cols; c++) {
-            String hText = headers.get(c);
+            String hText = cleanCellText(headers.get(c));
             Label hLbl = new Label(hText);
             hLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #F1F5F9; -fx-font-size: 12px; "
-                    + "-fx-padding: 7 12 7 12; -fx-background-color: #192333;");
+                    + "-fx-padding: 7 14 7 14; -fx-background-color: #192333;");
             hLbl.setAlignment(alignments.get(c));
+            hLbl.setMinWidth(Region.USE_PREF_SIZE);
             hLbl.setMaxWidth(Double.MAX_VALUE);
             GridPane.setHgrow(hLbl, Priority.ALWAYS);
             grid.add(hLbl, c, 0);
@@ -250,12 +262,17 @@ public final class ChatMarkdownRenderer {
             List<String> cells = splitRow(tableLines.get(r));
             String rowBg = (rowIndex % 2 == 0) ? "transparent" : "rgba(255, 255, 255, 0.02)";
             for (int c = 0; c < cols; c++) {
-                String val = c < cells.size() ? cells.get(c) : "";
-                Label cellLbl = new Label(val);
-                cellLbl.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 12px; "
-                        + "-fx-padding: 6 12 6 12; -fx-background-color: " + rowBg + ";"
+                String rawVal = c < cells.size() ? cells.get(c) : "";
+                CellFormatted cf = formatCell(rawVal);
+                Label cellLbl = new Label(cf.text);
+                String boldStyle = cf.bold
+                        ? "-fx-font-weight: bold; -fx-text-fill: #F1F5F9; "
+                        : "-fx-text-fill: #CBD5E1; ";
+                cellLbl.setStyle(boldStyle + "-fx-font-size: 12px; "
+                        + "-fx-padding: 6 14 6 14; -fx-background-color: " + rowBg + ";"
                         + "-fx-border-color: #1F2C3F; -fx-border-width: 1 0 0 0;");
                 cellLbl.setAlignment(alignments.get(c));
+                cellLbl.setMinWidth(Region.USE_PREF_SIZE);
                 cellLbl.setMaxWidth(Double.MAX_VALUE);
                 GridPane.setHgrow(cellLbl, Priority.ALWAYS);
                 grid.add(cellLbl, c, rowIndex);
@@ -263,18 +280,54 @@ public final class ChatMarkdownRenderer {
             rowIndex++;
         }
 
+        grid.setMinWidth(Region.USE_PREF_SIZE);
+        grid.setMaxWidth(Double.MAX_VALUE);
+
         VBox card = new VBox(grid);
         card.setStyle("-fx-background-color: #0E1520; -fx-border-color: #28374D; "
                 + "-fx-border-radius: 8; -fx-background-radius: 8; -fx-border-width: 1; -fx-overflow: hidden;");
+        card.setMinWidth(Region.USE_PREF_SIZE);
+        card.setMinHeight(Region.USE_PREF_SIZE);
+        card.setMaxWidth(Double.MAX_VALUE);
 
         ScrollPane sp = new ScrollPane(card);
         sp.setFitToWidth(true);
+        sp.setFitToHeight(false);
         sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         sp.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         sp.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
         sp.setPadding(new Insets(4, 0, 4, 0));
+        sp.setMinHeight(Region.USE_PREF_SIZE);
+        sp.setPrefHeight(Region.USE_COMPUTED_SIZE);
 
         return sp;
+    }
+
+    private record CellFormatted(String text, boolean bold) {}
+
+    private static CellFormatted formatCell(String raw) {
+        if (raw == null || raw.isBlank()) return new CellFormatted("", false);
+        String t = raw.trim();
+        boolean bold = false;
+        if (t.startsWith("**") && t.endsWith("**") && t.length() >= 4) {
+            t = t.substring(2, t.length() - 2).trim();
+            bold = true;
+        } else if (t.startsWith("__") && t.endsWith("__") && t.length() >= 4) {
+            t = t.substring(2, t.length() - 2).trim();
+            bold = true;
+        } else if (t.contains("**")) {
+            t = t.replace("**", "").trim();
+            bold = true;
+        }
+        if (t.startsWith("`") && t.endsWith("`") && t.length() >= 2) {
+            t = t.substring(1, t.length() - 1).trim();
+        }
+        return new CellFormatted(t, bold);
+    }
+
+    private static String cleanCellText(String raw) {
+        if (raw == null) return "";
+        return formatCell(raw).text();
     }
 
     private static List<String> splitRow(String row) {
@@ -289,7 +342,8 @@ public final class ChatMarkdownRenderer {
     }
 
     private static boolean isNumericValue(String s) {
-        String clean = s.replace("₹", "").replace("$", "").replace("€", "")
+        String clean = formatCell(s).text()
+                .replace("₹", "").replace("$", "").replace("€", "")
                 .replace("%", "").replace(",", "").trim();
         if (clean.isEmpty()) return false;
         try {
