@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * Built-in documentation articles for InvoiceStudio:
  * 1. TSC Printer & Hardware Reference Library (13 articles)
- * 2. Complete AI Chatbot Architecture, Optimization & Build-From-Scratch Encyclopedia (16 chapters)
+ * 2. Complete AI Chatbot Architecture, Optimization & Build-From-Scratch Encyclopedia (17 chapters)
  */
 public final class KnowledgeSeed {
 
@@ -1469,6 +1469,79 @@ public final class KnowledgeSeed {
                 by code (window icon, dialogs, watermark) — they must stay.
                 - Everything here is covered by automated tests: the full-surface harness (§4), the
                 updated journey checklist, the /new parser tests, and the existing designer suites.
+                """,
+                now,
+                "InvoiceStudio AI Core"
+        ));
+
+        list.add(new KnowledgeArticle(
+                "art_ai_17_round5_logs_vault_stock_dropdown",
+                "AI Chatbot / 17. Round-5 Change Log",
+                "Round 5: Execution Logs That Keep Working, the API Key Vault & Cleaner Stock Dropdowns",
+                "What changed in this round: the live log window stays alive after every reopen and reads top-down per message, provider API keys live in a named vault with dropdown assignment, and the Label Stock dropdowns got real descriptions instead of cramped strings.",
+                """
+                ### 1. Live execution logs — why they went silent, and the fix
+
+                **The bug:** the log window registered its live listener once, removed it when the window
+                closed, and never re-registered on reopen. The window instance is cached, so the FIRST
+                open worked, and every open after that was frozen — no matter whether you were chatting,
+                starting a new conversation, or running tools. An unexpected exception in any single log
+                listener could also break the whole notification chain (one broken listener stopped the
+                others and could even kill a running chat turn).
+
+                | Fix | What you get |
+                |---|---|
+                | Listener re-attached on every open | The log window is live again EVERY time you open it — first, second, tenth |
+                | Catch-up rebuild on open | Entries logged while the window was closed are there when you open it |
+                | Per-listener exception isolation | One broken listener can no longer break the others or the chat |
+
+                ### 2. Reading the logs — organised per message
+
+                The stream is now structured so a top-down read tells you exactly what happened and where:
+
+                - **Gold turn dividers** — every new message opens a “◆ MESSAGE #n” block with its own
+                timestamp and the (truncated) prompt text. Each ROUTER / HTTP / TOOL step below it
+                belongs to that message.
+                - **Filter chips** — ALL · ROUTING · HTTP · TOOLS · RESULTS · ISSUES collapse the stream
+                to one concern. Message dividers stay visible in every filter so you never lose your place.
+                - **Color bar per row** — one glance tells the kind of step (router blue, dispatch violet,
+                tool amber, MCP green, tokens purple, issues red/orange).
+                - **Smart auto-scroll** — the view follows the tail only while you are already at the
+                bottom; scrolling up to read history is never yanked away.
+                - **Count line** — “N events · M issues” in the header, updated live.
+
+                ### 3. The API Key Vault (Settings → Chatbot)
+
+                Save every provider key once under a name — “Gemini free tier”, “Z.ai GLM”, “Work OpenAI” —
+                then stop re-pasting keys:
+
+                - **Assign by dropdown** — pick a vault key and it fills the API key field; press
+                Save settings to apply. Rows show the name, a masked key (first 5 + last 4 characters),
+                and a provider chip; the chip of the CURRENT provider carries a gold ●.
+                - **Auto-fill on provider switch** — switching providers fills the key saved for that
+                provider automatically (only on a genuine switch; your saved key is never clobbered on load).
+                - **Save / Delete immediately** — the vault is its own store (`api-vault.json` in the app
+                data dir, same machine-local posture as `chatbot.json`); it does not wait for Save settings.
+                - Re-saving the same provider + key renames it instead of duplicating.
+
+                ### 4. Label Stock dropdowns — presentable at last
+
+                The two plain dropdowns in Label Stock Settings now speak plainly:
+
+                - **Stock type** rows show a mini strip diagram — three die-cut labels with gaps vs one
+                continuous receipt-style strip — plus a title and a one-line “what the printer does”:
+                Gap (“Sensor finds each label end”) vs Continuous (“The printer cuts by length”).
+                - **Artwork direction** rows show the angle as a gold chip (0° / 90° / 180° / 270°), a
+                short title, and what the rotation means for your design.
+                - Selection logic is untouched — index-to-code mapping, validation, presets, and the live
+                diagram all behave exactly as before. Presentation only.
+
+                ### 5. Tests
+
+                New suites: vault persistence roundtrip / idempotent re-save / provider lookup / masking /
+                corrupt-file tolerance (8 tests), log filter matrix incl. the always-visible USER divider
+                (7 tests), log manager turn marker + listener-isolation probe (2 tests added). Impacted
+                suites all green: 58 tests across 11 classes.
                 """,
                 now,
                 "InvoiceStudio AI Core"

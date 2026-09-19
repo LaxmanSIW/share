@@ -114,7 +114,10 @@ public final class AiChatClient {
         turns.add(new ChatTurn("user", userText == null ? "" : userText, attachment));
 
         Usage usage = new Usage();
-        ChatbotLogManager.info("User prompt received: \"" + shorten(userText, 80) + "\"",
+        // USER level = the log's turn separator: every new message opens a
+        // clearly visible block in the execution log, so reading it top-down
+        // tells exactly which request each step belongs to.
+        ChatbotLogManager.user("New message: \"" + shorten(userText, 80) + "\"",
                 attachment != null ? "Image attached (" + attachment.mimeType() + ", " + attachment.data().length + " bytes)" : null);
 
         // ── Token & request optimization pipeline ────────────────────

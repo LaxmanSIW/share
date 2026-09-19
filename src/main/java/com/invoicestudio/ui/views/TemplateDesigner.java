@@ -6195,19 +6195,110 @@ public class TemplateDesigner extends BorderPane {
         autoPaper.setSelected(auto0);
 
         // Human labels for the print-time artwork rotation (codes 0/90/180/270).
+        // Presented as rich rows: a monospace angle chip + title + what it does
+        // (the old single-line strings truncated and were hard to tell apart).
         final String[] orientLabels = {
-                "Prints as designed (no rotation)",
+                "Prints as designed",
                 "Rotates 90° clockwise at print",
                 "Rotates 180° at print",
                 "Rotates 270° clockwise at print"};
+        final String[] orientSubs = {
+                "No rotation — artwork prints exactly as drawn",
+                "Tall designs land sideways on a wide label",
+                "Upside-down — for rolls fed from the other end",
+                "90° counter-clockwise — wide designs on a tall label"};
         final String[] orientCodes = {"0", "90", "180", "270"};
+        final String[] orientChips = {"0°", "90°", "180°", "270°"};
         ComboBox<String> orientCb = new ComboBox<>(FXCollections.observableArrayList(orientLabels));
+        orientCb.setMaxWidth(Double.MAX_VALUE);
+        orientCb.setCellFactory(lv -> new ListCell<>() {
+            private final Label chip = new Label();
+            private final VBox box = new VBox(1);
+            {
+                chip.setStyle("-fx-font-family: 'Consolas','Courier New',monospace; -fx-font-size: 11px; "
+                        + "-fx-font-weight: bold; -fx-text-fill: #D9A13B; -fx-background-color: rgba(217,161,59,0.12);"
+                        + "-fx-background-radius: 5; -fx-border-color: rgba(217,161,59,0.4); -fx-border-radius: 5;"
+                        + "-fx-border-width: 1; -fx-padding: 3 7; -fx-alignment: center;");
+                box.setStyle("-fx-background-color: transparent;");
+            }
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setGraphic(null); setText(null); return; }
+                int i = getIndex() < 0 ? 0 : getIndex();
+                chip.setText(i >= 0 && i < orientChips.length ? orientChips[i] : "");
+                Label t = new Label(item);
+                t.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #E6EAF0;");
+                Label s = new Label(i >= 0 && i < orientSubs.length ? orientSubs[i] : "");
+                s.setStyle("-fx-font-size: 10px; -fx-text-fill: #97A3B6;");
+                s.setWrapText(true);
+                box.getChildren().setAll(new HBox(8, chip, t), s);
+                setText(null);
+                setGraphic(box);
+            }
+        });
+        orientCb.setButtonCell(new ListCell<>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item);
+                setStyle("-fx-font-size: 12px; -fx-text-fill: #E6EAF0;");
+            }
+        });
         int oi = Arrays.asList(orientCodes).indexOf(theta[0]);
         orientCb.getSelectionModel().select(Math.max(0, oi));
 
-        ComboBox<String> stockCb = new ComboBox<>(FXCollections.observableArrayList(
-                "Gap (die-cut roll — sensor finds each label)",
-                "Continuous (receipt-style, no gaps)"));
+        // Stock type — the physical roll. Rich rows: a mini strip-diagram glyph
+        // (three die-cut labels vs one continuous strip) + title + what the
+        // printer does with it. Selection stays INDEX-based exactly as before.
+        final String[] stockTitles = {
+                "Gap — die-cut roll",
+                "Continuous — no gaps"};
+        final String[] stockSubs = {
+                "Sensor finds each label end · standard pre-cut labels",
+                "Receipt-style strip · the printer cuts by length"};
+        final String[] stockGlyphs = {
+                "M5 2 h14 v5.2 h-14 z M5 9.4 h14 v5.2 h-14 z M5 16.6 h14 v5.2 h-14 z", // three labels + gaps
+                "M5 2 h14 v20 h-14 z"};                                                 // one endless strip
+        ComboBox<String> stockCb = new ComboBox<>(FXCollections.observableArrayList(stockTitles));
+        stockCb.setMaxWidth(Double.MAX_VALUE);
+        stockCb.setCellFactory(lv -> new ListCell<>() {
+            private final SVGPath glyph = new SVGPath();
+            private final VBox box = new VBox(1);
+            {
+                glyph.setFill(Color.web("#D9A13B"));
+                glyph.setStyle("-fx-scale-x: 0.75; -fx-scale-y: 0.75;");
+                box.setStyle("-fx-background-color: transparent;");
+            }
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setGraphic(null); setText(null); return; }
+                int i = getIndex() < 0 ? 0 : getIndex();
+                glyph.setContent(i >= 0 && i < stockGlyphs.length ? stockGlyphs[i] : "");
+                Label t = new Label(item);
+                t.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #E6EAF0;");
+                Label s = new Label(i >= 0 && i < stockSubs.length ? stockSubs[i] : "");
+                s.setStyle("-fx-font-size: 10px; -fx-text-fill: #97A3B6;");
+                s.setWrapText(true);
+                box.getChildren().setAll(new HBox(9, glyph, t), s);
+                setText(null);
+                setGraphic(box);
+            }
+        });
+        stockCb.setButtonCell(new ListCell<>() {
+            private final SVGPath glyph = new SVGPath();
+            {
+                glyph.setFill(Color.web("#D9A13B"));
+                glyph.setStyle("-fx-scale-x: 0.7; -fx-scale-y: 0.7;");
+            }
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setGraphic(null); setText(null); return; }
+                int i = Math.max(0, getIndex()); // button cell index = selected index
+                glyph.setContent(i < stockGlyphs.length ? stockGlyphs[i] : "");
+                setText(item);
+                setStyle("-fx-font-size: 12px; -fx-text-fill: #E6EAF0;");
+                setGraphic(glyph);
+            }
+        });
         stockCb.getSelectionModel().select("continuous".equalsIgnoreCase(cfg.getStockType()) ? 1 : 0);
 
         Label needLbl = new Label();

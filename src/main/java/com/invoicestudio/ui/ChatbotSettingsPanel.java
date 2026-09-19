@@ -1,6 +1,7 @@
 package com.invoicestudio.ui;
 
 import com.invoicestudio.service.AiChatClient;
+import com.invoicestudio.service.ApiKeysVault;
 import com.invoicestudio.service.AppExecutors;
 import com.invoicestudio.service.ChatbotConfig;
 import com.invoicestudio.ui.chat.ChatbotModelPickerDialog;
@@ -16,8 +17,10 @@ import javafx.scene.control.Spinner;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -45,6 +48,16 @@ public class ChatbotSettingsPanel extends VBox {
     private final javafx.scene.control.Button browseBtn = new javafx.scene.control.Button("Browse…");
     private final PasswordField keyField = new PasswordField();
     private final TextField endpointField = new TextField();
+
+    // API-key vault: stored keys + assignment dropdown (see vaultCard()).
+    private final ComboBox<ApiKeysVault.VaultEntry> vaultCb = new ComboBox<>();
+    private final TextField vaultLabelField = new TextField();
+    private final javafx.scene.control.Button vaultSaveBtn = new javafx.scene.control.Button("Save current key");
+    private final javafx.scene.control.Button vaultDeleteBtn = new javafx.scene.control.Button("Delete");
+    private final Label vaultNote = new Label();
+    /** Guards the vault combo listener while the list is being rebuilt. */
+    private boolean syncingVault;
+
     private final Spinner<Integer> historySpin = new Spinner<>(4, 80, 12, 2);
     private final CheckBox showIconCb = new CheckBox("Show the floating chat icon (bottom-right)");
     private final CheckBox smartRouteCb = new CheckBox("Smart tool routing (recommended — fewer tokens & requests)");
@@ -60,10 +73,12 @@ public class ChatbotSettingsPanel extends VBox {
         getChildren().addAll(
                 heroCard(),
                 providerCard(),
+                vaultCard(),
                 behaviourCard(),
                 statusCard());
         loadFromConfig();
         ChatbotConfig.addChangeListener(c -> javafx.application.Platform.runLater(this::loadFromConfig));
+        ApiKeysVault.addChangeListener(l -> javafx.application.Platform.runLater(this::refreshVault));
     }
 
     // ── Cards ─────────────────────────────────────────────────────────
@@ -99,21 +114,27 @@ public class ChatbotSettingsPanel extends VBox {
                 setText(empty || p == null ? null : AiChatClient.providerLabel(p));
             }
         });
-        providerCb.valueProperty().addListener((o, a, b) -> {
-            if (b != null) {
-                modelField.setPromptText(AiChatClient.defaultModel(b) + "  (default)");
-                boolean customEndpoint = ChatbotConfig.CUSTOM.equals(b) || ChatbotConfig.OLLAMA.equals(b);
+        providerCb.valueProperty().addListener((o, oldP, newP) -> {
+            if (newP != null) {
+                modelField.setPromptText(AiChatClient.defaultModel(newP) + "  (default)");
+                boolean customEndpoint = ChatbotConfig.CUSTOM.equals(newP) || ChatbotConfig.OLLAMA.equals(newP);
                 endpointField.setPromptText(customEndpoint
-                        ? (ChatbotConfig.OLLAMA.equals(b)
+                        ? (ChatbotConfig.OLLAMA.equals(newP)
                             ? "Defaults to http://localhost:11434/v1 — override if Ollama runs elsewhere"
                             : "Required, e.g. https://your-host/v1/chat/completions")
                         : "Leave blank for the official endpoint (custom/proxied endpoints welcome)");
+                // Vault assignment: switching providers fills the key saved for
+                // that provider — no manual re-pasting per provider. Only on a
+                // genuine switch (initial load must not clobber the saved key).
+                if (oldP != null && !oldP.equals(newP)) {
+                    autoFillKeyFromVault(newP);
+                }
             }
         });
 
         modelField.setPromptText(AiChatClient.defaultModel(cfg.getProvider()) + "  (default)");
         styleField(modelField);
-        keyField.setPromptText("Paste your API key — stored locally on this machine only");
+        keyField.setPromptText("Pick from the vault below or paste a new key — stored locally on this machine only");
         styleField(keyField);
         endpointField.setPromptText("Leave blank for the official endpoint (custom/proxied endpoints welcome)");
         styleField(endpointField);
@@ -144,6 +165,193 @@ public class ChatbotSettingsPanel extends VBox {
                 keyNote, testBtn);
         box.setStyle(CARD);
         return box;
+    }
+
+    // ── API Key Vault ──────────────────────────────────────────────
+
+    private static final String KEY_GLYPH =
+            "M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 "
+                    + "c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2 "
+                    + "s.9-2 2-2 2 .9 2 2-.9 2-2 2z";
+
+    /**
+     * The vault card: every saved key in one dropdown. Selecting an entry
+     * assigns it to the key field; saving/deleting happens immediately (the
+     * vault is its own store — independent of the main Save settings). A
+     * provider switch auto-fills the key saved for that provider.
+     */
+    private VBox vaultCard() {
+        Label head = sectionHead("API KEY VAULT");
+        Label desc = new Label("Save each provider key once, under a name — then assign keys with the dropdown "
+                + "instead of re-pasting when you switch providers. Switching the provider above fills the key "
+                + "saved for it automatically. Keys stay in api-vault.json on this machine only.");
+        desc.setWrapText(true);
+        desc.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0;");
+
+        vaultCb.setMaxWidth(Double.MAX_VALUE);
+        vaultCb.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(ApiKeysVault.VaultEntry e, boolean empty) {
+                super.updateItem(e, empty);
+                setGraphic(empty || e == null ? null : vaultRow(e));
+                setText(null);
+            }
+        });
+        vaultCb.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(ApiKeysVault.VaultEntry e, boolean empty) {
+                super.updateItem(e, empty);
+                setGraphic(empty || e == null ? null : vaultRow(e));
+                setText(null);
+            }
+        });
+        vaultCb.setPromptText(vaultCb.getItems().isEmpty() ? "No keys in the vault yet — save one below…" : "Assign a key…");
+        vaultCb.valueProperty().addListener((o, a, e) -> {
+            if (syncingVault || e == null) return;
+            // Assignment = fill the key field; applied on Save settings like a hand-typed key.
+            keyField.setText(e.key());
+            note(vaultNote, "Assigned “" + e.label() + "” — press Save settings to use it.", "#D9A13B");
+        });
+
+        vaultLabelField.setPromptText("Name this key — e.g. \"Gemini free tier\"");
+        styleField(vaultLabelField);
+        HBox.setHgrow(vaultLabelField, Priority.ALWAYS);
+
+        vaultSaveBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        vaultSaveBtn.setTooltip(new javafx.scene.control.Tooltip("Store the key currently in the API key field"));
+        vaultSaveBtn.setOnAction(e -> saveCurrentKeyToVault());
+
+        vaultDeleteBtn.getStyleClass().add("button-sm");
+        vaultDeleteBtn.setStyle("-fx-text-fill: #FCA5A5; -fx-background-color: #2A1720;"
+                + "-fx-background-radius: 6; -fx-cursor: hand; -fx-padding: 4 10;");
+        vaultDeleteBtn.setTooltip(new javafx.scene.control.Tooltip("Remove the selected key from the vault"));
+        vaultDeleteBtn.setOnAction(e -> deleteSelectedVaultKey());
+
+        note(vaultNote, "", "#7C8AA0");
+
+        VBox box = new VBox(8, head, desc, vaultCb,
+                new HBox(8, vaultLabelField, vaultSaveBtn, vaultDeleteBtn),
+                vaultNote);
+        box.setStyle(CARD);
+        return box;
+    }
+
+    /** One vault row: gold key glyph, name, masked key, provider chip. */
+    private HBox vaultRow(ApiKeysVault.VaultEntry e) {
+        javafx.scene.shape.SVGPath key = new javafx.scene.shape.SVGPath();
+        key.setContent(KEY_GLYPH);
+        key.setFill(javafx.scene.paint.Color.web("#D9A13B"));
+        key.setStyle("-fx-scale-x: 0.8; -fx-scale-y: 0.8;");
+
+        Label name = new Label(e.label());
+        name.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #E6EAF0;");
+        Label masked = new Label(ApiKeysVault.mask(e.key()));
+        masked.setStyle("-fx-font-family: 'Consolas','Courier New',monospace; -fx-font-size: 10.5px; -fx-text-fill: #97A3B6;");
+        VBox text = new VBox(1, name, masked);
+
+        boolean forCurrentProvider = e.provider() != null
+                && e.provider().equalsIgnoreCase(providerCb.getValue());
+        Label prov = new Label(AiChatClient.providerLabel(e.provider()).toUpperCase()
+                + (forCurrentProvider ? "  ●" : ""));
+        prov.setStyle("-fx-font-size: 9.5px; -fx-font-weight: bold; -fx-text-fill: "
+                + (forCurrentProvider ? "#D9A13B;" : "#7C8AA0;")
+                + "-fx-background-color: rgba(217,161,59,0.10); -fx-background-radius: 999;"
+                + "-fx-border-color: rgba(217,161,59,0.35); -fx-border-radius: 999; -fx-border-width: 1;"
+                + "-fx-padding: 2 8;");
+
+        Region spring = new Region();
+        HBox.setHgrow(spring, Priority.ALWAYS);
+        HBox row = new HBox(9, key, text, spring, prov);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.setStyle("-fx-background-color: transparent;");
+        return row;
+    }
+
+    /** Rebuilds the vault dropdown; keys for the current provider first. */
+    private void refreshVault() {
+        syncingVault = true;
+        try {
+            ApiKeysVault.VaultEntry keep = vaultCb.getValue();
+            String currentKey = keyField.getText() == null ? "" : keyField.getText().trim();
+            String provider = providerCb.getValue();
+
+            List<ApiKeysVault.VaultEntry> all = new ArrayList<>(ApiKeysVault.list());
+            all.sort((x, y) -> {
+                boolean xp = x.provider() != null && x.provider().equalsIgnoreCase(provider);
+                boolean yp = y.provider() != null && y.provider().equalsIgnoreCase(provider);
+                if (xp != yp) return xp ? -1 : 1;           // current provider first
+                return x.label().compareToIgnoreCase(y.label());
+            });
+            vaultCb.setItems(javafx.collections.FXCollections.observableArrayList(all));
+            vaultCb.setPromptText(all.isEmpty()
+                    ? "No keys in the vault yet — save one below…"
+                    : (provider == null ? "Assign a key…"
+                        : "Assign a key…  (" + all.stream().filter(e -> e.provider() != null
+                            && e.provider().equalsIgnoreCase(provider)).count() + " for "
+                            + AiChatClient.providerLabel(provider) + ")"));
+
+            // Re-select: previously chosen entry, else the key already in use.
+            ApiKeysVault.VaultEntry match = null;
+            if (keep != null) {
+                for (ApiKeysVault.VaultEntry e : all) {
+                    if (e.id().equals(keep.id())) { match = e; break; }
+                }
+            }
+            if (match == null && !currentKey.isBlank()) {
+                for (ApiKeysVault.VaultEntry e : all) {
+                    if (e.key().equals(currentKey)) { match = e; break; }
+                }
+            }
+            vaultCb.setValue(match);
+        } finally {
+            syncingVault = false;
+        }
+    }
+
+    /** Provider switched → fill the key saved for it (the no-repaste promise). */
+    private void autoFillKeyFromVault(String provider) {
+        java.util.Optional<ApiKeysVault.VaultEntry> entry = ApiKeysVault.findForProvider(provider);
+        String current = keyField.getText() == null ? "" : keyField.getText().trim();
+        if (entry.isPresent()) {
+            if (!entry.get().key().equals(current)) {
+                keyField.setText(entry.get().key());
+                note(vaultNote, "Provider switched — key “" + entry.get().label()
+                        + "” filled from the vault. Press Save settings to apply.", "#D9A13B");
+            }
+        } else {
+            note(vaultNote, "No vault key for " + AiChatClient.providerLabel(provider)
+                    + " yet — paste one and press \"Save current key\".", "#7C8AA0");
+        }
+    }
+
+    private void saveCurrentKeyToVault() {
+        String key = keyField.getText() == null ? "" : keyField.getText().trim();
+        if (key.isBlank()) {
+            note(vaultNote, "Type or paste the key in the API key field first — nothing to save.", "#dc2626");
+            return;
+        }
+        String provider = providerCb.getValue() == null ? cfg.getProvider() : providerCb.getValue();
+        String label = vaultLabelField.getText();
+        ApiKeysVault.VaultEntry entry = ApiKeysVault.add(label, provider, key);
+        refreshVault();
+        vaultCb.setValue(entry);
+        vaultLabelField.clear();
+        note(vaultNote, "Saved “" + entry.label() + "” to the vault (" + AiChatClient.providerLabel(provider) + ").", "#16a34a");
+    }
+
+    private void deleteSelectedVaultKey() {
+        ApiKeysVault.VaultEntry sel = vaultCb.getValue();
+        if (sel == null) {
+            note(vaultNote, "Pick a key from the dropdown to delete it.", "#dc2626");
+            return;
+        }
+        ApiKeysVault.remove(sel.id());
+        refreshVault();
+        note(vaultNote, "Removed “" + sel.label() + "” from the vault. The API key field was left untouched.", "#16a34a");
+    }
+
+    private static void note(Label l, String text, String colorHex) {
+        l.setText(text);
+        l.setStyle("-fx-font-size: 11px; -fx-text-fill: " + colorHex + ";");
+        l.setWrapText(true);
     }
 
     private VBox behaviourCard() {
@@ -200,6 +408,8 @@ public class ChatbotSettingsPanel extends VBox {
         maxToolSpin.getValueFactory().setValue(cfg.getMaxToolCalls());
         showIconCb.setSelected(cfg.isShowIcon());
         smartRouteCb.setSelected(cfg.isSmartRouting());
+        // Vault dropdown tracks the key actually in use (gold ● marks its provider).
+        refreshVault();
     }
 
     private void save() {

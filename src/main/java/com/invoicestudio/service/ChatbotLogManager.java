@@ -25,6 +25,8 @@ public final class ChatbotLogManager {
 
     public enum LogLevel {
         INFO,
+        /** Marks the start of a new user message — the log's turn separator. */
+        USER,
         ROUTER,
         DISPATCH,
         HTTP,
@@ -72,16 +74,35 @@ public final class ChatbotLogManager {
             ENTRIES.add(entry);
         }
 
+        // Exception isolation: one misbehaving listener must never break the
+        // notification chain for the others, nor propagate into the emitter's
+        // thread (a chat turn could die mid-flight — the reported "logs stop
+        // working after some unexpected result"). Each listener is on its own.
         for (Consumer<LogEntry> listener : LISTENERS) {
-            if (Platform.isFxApplicationThread()) {
-                listener.accept(entry);
-            } else {
-                Platform.runLater(() -> listener.accept(entry));
+            try {
+                if (Platform.isFxApplicationThread()) {
+                    listener.accept(entry);
+                } else {
+                    Platform.runLater(() -> {
+                        try {
+                            listener.accept(entry);
+                        } catch (Exception ignored) {
+                            // keep the pulse alive — a UI listener must never kill it
+                        }
+                    });
+                }
+            } catch (Exception ignored) {
+                // same guard for direct (FX-thread) delivery
             }
         }
     }
 
     // Convenience logging helpers
+    /** Turn separator: marks the start of a new user message in the log. */
+    public static void user(String message, String details) {
+        log(LogLevel.USER, "USER", message, details);
+    }
+
     public static void router(String message, String details) {
         log(LogLevel.ROUTER, "ROUTER", message, details);
     }

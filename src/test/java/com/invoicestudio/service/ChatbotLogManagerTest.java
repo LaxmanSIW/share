@@ -73,4 +73,42 @@ class ChatbotLogManagerTest {
         assertEquals(1, entries.size(), "Clear should reset buffer leaving only the system cleared notification");
         assertEquals("SYSTEM", entries.get(0).tag());
     }
+
+    @Test
+    void userLevelMarksTheStartOfANewMessageTurn() {
+        ChatbotLogManager.user("New message: \"hi\"", null);
+        List<ChatbotLogManager.LogEntry> entries = ChatbotLogManager.getEntries();
+        ChatbotLogManager.LogEntry last = entries.get(entries.size() - 1);
+        assertEquals(ChatbotLogManager.LogLevel.USER, last.level());
+        assertEquals("USER", last.tag());
+        assertTrue(last.message().contains("hi"));
+    }
+
+    @Test
+    void throwingListenerDoesNotBreakOthersOrTheLogger() throws Exception {
+        // A misbehaving UI listener must never poison the notification chain
+        // for the others, nor propagate into the chat's background threads —
+        // that was the "logs stop working after an unexpected result" class
+        // of failure.
+        java.util.concurrent.CountDownLatch goodGotIt = new java.util.concurrent.CountDownLatch(1);
+        List<String> seen = new ArrayList<>();
+        java.util.function.Consumer<ChatbotLogManager.LogEntry> bad = e -> {
+            throw new IllegalStateException("simulated broken UI listener");
+        };
+        java.util.function.Consumer<ChatbotLogManager.LogEntry> good = e -> {
+            seen.add(e.message());
+            goodGotIt.countDown();
+        };
+        ChatbotLogManager.addListener(bad);
+        ChatbotLogManager.addListener(good);
+        try {
+            assertDoesNotThrow(() -> ChatbotLogManager.info("isolation-probe", null));
+            assertTrue(goodGotIt.await(5, java.util.concurrent.TimeUnit.SECONDS),
+                    "the healthy listener must still receive entries after a broken one throws");
+            assertTrue(seen.contains("isolation-probe"));
+        } finally {
+            ChatbotLogManager.removeListener(bad);
+            ChatbotLogManager.removeListener(good);
+        }
+    }
 }
