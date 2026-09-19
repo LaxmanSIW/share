@@ -116,6 +116,11 @@ public final class ChatbotLogDialog {
         filterBar.setPadding(new Insets(8, 14, 8, 14));
         filterBar.setStyle("-fx-background-color: #0F172A; -fx-border-color: #1E293B; -fx-border-width: 0 0 1 0;");
 
+        // Only the chips live here — the filter bar itself also holds a
+        // spacer Region and a hint Label, so it can never be iterated as
+        // ToggleButtons (that cast was the crash on every chip click).
+        List<ToggleButton> chips = new ArrayList<>();
+
         ToggleGroup group = new ToggleGroup();
         for (String chip : List.of("ALL", "ROUTING", "HTTP", "TOOLS", "RESULTS", "ISSUES")) {
             ToggleButton b = new ToggleButton(chip);
@@ -133,12 +138,13 @@ public final class ChatbotLogDialog {
             b.setTooltip(new Tooltip(tip));
             b.setOnAction(e -> {
                 activeFilter = chip;
-                for (javafx.scene.Node n : filterBar.getChildren()) {
-                    styleChip((ToggleButton) n, ((ToggleButton) n).getText().equals(activeFilter));
+                for (ToggleButton chipBtn : chips) {
+                    styleChip(chipBtn, chipBtn.getText().equals(activeFilter));
                 }
                 applyFilter();
             });
             filterBar.getChildren().add(b);
+            chips.add(b);
         }
         Label filterHint = new Label("message dividers stay visible in every filter");
         filterHint.setStyle("-fx-font-size: 10px; -fx-text-fill: #475569;");
@@ -212,7 +218,9 @@ public final class ChatbotLogDialog {
     private void appendRow(ChatbotLogManager.LogEntry entry) {
         if (entry.level() == ChatbotLogManager.LogLevel.USER) {
             turnCounter++;
-            blocks.add(new Block(entry, turnDivider(entry, turnCounter)));
+            javafx.scene.Node divider = turnDivider(entry, turnCounter);
+            logRows.getChildren().add(divider);
+            blocks.add(new Block(entry, divider));
             return;
         }
 
@@ -248,8 +256,10 @@ public final class ChatbotLogDialog {
             detLbl.setStyle("-fx-font-family: " + MONO_FONT + "; -fx-font-size: 11px; -fx-text-fill: #94A3B8; -fx-padding: 0 0 2 97;");
             detLbl.setWrapText(true);
             VBox block = new VBox(2, row, detLbl);
+            logRows.getChildren().add(block);
             blocks.add(new Block(entry, block));
         } else {
+            logRows.getChildren().add(row);
             blocks.add(new Block(entry, row));
         }
     }

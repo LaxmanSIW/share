@@ -50,13 +50,17 @@ public class ChatbotSettingsPanel extends VBox {
     private final TextField endpointField = new TextField();
 
     // API-key vault: stored keys + assignment dropdown (see vaultCard()).
-    private final ComboBox<ApiKeysVault.VaultEntry> vaultCb = new ComboBox<>();
+    // A BUTTON + custom popup, not a ComboBox: combo skins install event
+    // filters on their popup list that consume MOUSE_RELEASED, which kills
+    // every embedded Button (the copy icons silently never fired). Real
+    // buttons in a plain Popup fire normally.
+    private final javafx.scene.control.Button vaultPickerBtn = new javafx.scene.control.Button();
+    private javafx.stage.Popup vaultPopup;
+    private ApiKeysVault.VaultEntry selectedVaultEntry;
     private final TextField vaultLabelField = new TextField();
     private final javafx.scene.control.Button vaultSaveBtn = new javafx.scene.control.Button("Save current key");
     private final javafx.scene.control.Button vaultDeleteBtn = new javafx.scene.control.Button("Delete");
     private final Label vaultNote = new Label();
-    /** Guards the vault combo listener while the list is being rebuilt. */
-    private boolean syncingVault;
 
     private final Spinner<Integer> historySpin = new Spinner<>(4, 80, 12, 2);
     private final CheckBox showIconCb = new CheckBox("Show the floating chat icon (bottom-right)");
@@ -188,28 +192,12 @@ public class ChatbotSettingsPanel extends VBox {
         desc.setWrapText(true);
         desc.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0;");
 
-        vaultCb.setMaxWidth(Double.MAX_VALUE);
-        vaultCb.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
-            @Override protected void updateItem(ApiKeysVault.VaultEntry e, boolean empty) {
-                super.updateItem(e, empty);
-                setGraphic(empty || e == null ? null : vaultRow(e));
-                setText(null);
-            }
-        });
-        vaultCb.setButtonCell(new javafx.scene.control.ListCell<>() {
-            @Override protected void updateItem(ApiKeysVault.VaultEntry e, boolean empty) {
-                super.updateItem(e, empty);
-                setGraphic(empty || e == null ? null : vaultRow(e));
-                setText(null);
-            }
-        });
-        vaultCb.setPromptText(vaultCb.getItems().isEmpty() ? "No keys in the vault yet — save one below…" : "Assign a key…");
-        vaultCb.valueProperty().addListener((o, a, e) -> {
-            if (syncingVault || e == null) return;
-            // Assignment = fill the key field; applied on Save settings like a hand-typed key.
-            keyField.setText(e.key());
-            note(vaultNote, "Assigned “" + e.label() + "” — press Save settings to use it.", "#D9A13B");
-        });
+        vaultPickerBtn.setMaxWidth(Double.MAX_VALUE);
+        vaultPickerBtn.setStyle("-fx-background-color: #0F1520; -fx-text-fill: #E6EAF0;"
+                + "-fx-background-radius: 6; -fx-border-color: #273245; -fx-border-radius: 6;"
+                + "-fx-border-width: 1; -fx-padding: 6 10 6 10; -fx-font-size: 12px; -fx-cursor: hand;"
+                + "-fx-alignment: CENTER_LEFT;");
+        vaultPickerBtn.setOnAction(e -> showVaultPopup());
 
         vaultLabelField.setPromptText("Name this key — e.g. \"Gemini free tier\"");
         styleField(vaultLabelField);
@@ -227,7 +215,7 @@ public class ChatbotSettingsPanel extends VBox {
 
         note(vaultNote, "", "#7C8AA0");
 
-        VBox box = new VBox(8, head, desc, vaultCb,
+        VBox box = new VBox(8, head, desc, vaultPickerBtn,
                 new HBox(8, vaultLabelField, vaultSaveBtn, vaultDeleteBtn),
                 vaultNote);
         box.setStyle(CARD);
@@ -259,50 +247,124 @@ public class ChatbotSettingsPanel extends VBox {
 
         Region spring = new Region();
         HBox.setHgrow(spring, Priority.ALWAYS);
-        HBox row = new HBox(9, key, text, spring, prov);
+        // Copy icon per row — copies the FULL key (the masked text is
+        // display-only) so assigning a key elsewhere is one click.
+        javafx.scene.Node copyBtn = CopyButtonFactory.create(e.key(),
+                "Copy " + e.label() + " key");
+        HBox row = new HBox(9, key, text, spring, prov, copyBtn);
         row.setAlignment(Pos.CENTER_LEFT);
         row.setStyle("-fx-background-color: transparent;");
         return row;
     }
 
-    /** Rebuilds the vault dropdown; keys for the current provider first. */
-    private void refreshVault() {
-        syncingVault = true;
-        try {
-            ApiKeysVault.VaultEntry keep = vaultCb.getValue();
-            String currentKey = keyField.getText() == null ? "" : keyField.getText().trim();
-            String provider = providerCb.getValue();
+    /**
+     * The popup listing vault keys as REAL buttons — this is the fix for the
+     * copy icons: inside a ComboBox popup the skin consumes MOUSE_RELEASED,
+     * so embedded buttons never fired. Buttons in a plain Popup fire freely,
+     * so Copy copies and the row assigns.
+     */
+    private void showVaultPopup() {
+        if (vaultPopup != null && vaultPopup.isShowing()) {
+            vaultPopup.hide();
+            return;
+        }
+        Label head = new Label("Assign a key…  (click a row to fill the API key field)");
+        head.setStyle("-fx-font-size: 10.5px; -fx-text-fill: #7C8AA0; -fx-padding: 8 12 4 12;");
+        VBox list = new VBox(2, head);
+        list.setStyle("-fx-background-color: #131B28; -fx-border-color: #273245;"
+                + "-fx-border-width: 1; -fx-background-radius: 8; -fx-border-radius: 8;");
+        list.setPrefWidth(420);
 
-            List<ApiKeysVault.VaultEntry> all = new ArrayList<>(ApiKeysVault.list());
-            all.sort((x, y) -> {
-                boolean xp = x.provider() != null && x.provider().equalsIgnoreCase(provider);
-                boolean yp = y.provider() != null && y.provider().equalsIgnoreCase(provider);
-                if (xp != yp) return xp ? -1 : 1;           // current provider first
-                return x.label().compareToIgnoreCase(y.label());
+        List<ApiKeysVault.VaultEntry> all = sortedVaultEntries();
+        if (all.isEmpty()) {
+            Label empty = new Label("No keys in the vault yet — save one below…");
+            empty.setStyle("-fx-text-fill: #7C8AA0; -fx-padding: 6 12 10 12;");
+            list.getChildren().add(empty);
+        }
+        for (ApiKeysVault.VaultEntry e : all) {
+            javafx.scene.control.Button rowBtn = new javafx.scene.control.Button();
+            rowBtn.setGraphic(vaultRow(e));
+            rowBtn.setStyle("-fx-background-color: transparent; -fx-cursor: hand;"
+                    + "-fx-padding: 4 8 4 8; -fx-max-width: 9999; -fx-background-radius: 6;");
+            rowBtn.setOnMouseEntered(ev -> rowBtn.setStyle(rowBtn.getStyle()
+                    .replace("transparent", "#1E2A3C")));
+            rowBtn.setOnMouseExited(ev -> rowBtn.setStyle(rowBtn.getStyle()
+                    .replace("#1E2A3C", "transparent")));
+            rowBtn.setOnAction(ev -> {
+                selectedVaultEntry = e;
+                keyField.setText(e.key());
+                note(vaultNote, "Assigned “" + e.label() + "” — press Save settings to use it.", "#D9A13B");
+                refreshVault();
+                vaultPopup.hide();
             });
-            vaultCb.setItems(javafx.collections.FXCollections.observableArrayList(all));
-            vaultCb.setPromptText(all.isEmpty()
-                    ? "No keys in the vault yet — save one below…"
-                    : (provider == null ? "Assign a key…"
-                        : "Assign a key…  (" + all.stream().filter(e -> e.provider() != null
-                            && e.provider().equalsIgnoreCase(provider)).count() + " for "
-                            + AiChatClient.providerLabel(provider) + ")"));
+            list.getChildren().add(rowBtn);
+        }
 
-            // Re-select: previously chosen entry, else the key already in use.
-            ApiKeysVault.VaultEntry match = null;
-            if (keep != null) {
+        javafx.scene.control.ScrollPane sp = new javafx.scene.control.ScrollPane(list);
+        sp.setFitToWidth(true);
+        sp.setPrefHeight(Math.min(320, 40 + all.size() * 48));
+        sp.setStyle("-fx-background-color: transparent; -fx-border-color: transparent;");
+        vaultPopup = new javafx.stage.Popup();
+        vaultPopup.getContent().add(new javafx.scene.layout.StackPane(sp));
+        vaultPopup.setAutoHide(true);
+        // Anchor directly under the picker button.
+        var anchor = vaultPickerBtn.localToScreen(0, vaultPickerBtn.getHeight() + 4);
+        if (anchor != null) {
+            vaultPopup.show(vaultPickerBtn.getScene() != null
+                    ? vaultPickerBtn.getScene().getWindow() : app.getPrimaryStage(),
+                    Math.max(8, anchor.getX()), anchor.getY());
+        } else {
+            vaultPopup.show(vaultPickerBtn.getScene() != null
+                    ? vaultPickerBtn.getScene().getWindow() : app.getPrimaryStage());
+        }
+    }
+
+    /** Vault entries, keys for the current provider first, then by name. */
+    private List<ApiKeysVault.VaultEntry> sortedVaultEntries() {
+        String provider = providerCb.getValue();
+        List<ApiKeysVault.VaultEntry> all = new ArrayList<>(ApiKeysVault.list());
+        all.sort((x, y) -> {
+            boolean xp = x.provider() != null && x.provider().equalsIgnoreCase(provider);
+            boolean yp = y.provider() != null && y.provider().equalsIgnoreCase(provider);
+            if (xp != yp) return xp ? -1 : 1;           // current provider first
+            return x.label().compareToIgnoreCase(y.label());
+        });
+        return all;
+    }
+
+    /** Rebuilds the vault picker label; assignment/selection tracked separately. */
+    private void refreshVault() {
+        String provider = providerCb.getValue();
+        List<ApiKeysVault.VaultEntry> all = sortedVaultEntries();
+
+        // Keep the tracked selection valid across saves/deletes.
+        if (selectedVaultEntry != null) {
+            boolean stillThere = false;
+            for (ApiKeysVault.VaultEntry e : all) {
+                if (e.id().equals(selectedVaultEntry.id())) { selectedVaultEntry = e; stillThere = true; break; }
+            }
+            if (!stillThere) selectedVaultEntry = null;
+        }
+        // Otherwise adopt the entry matching the key already in use.
+        if (selectedVaultEntry == null) {
+            String currentKey = keyField.getText() == null ? "" : keyField.getText().trim();
+            if (!currentKey.isBlank()) {
                 for (ApiKeysVault.VaultEntry e : all) {
-                    if (e.id().equals(keep.id())) { match = e; break; }
+                    if (e.key().equals(currentKey)) { selectedVaultEntry = e; break; }
                 }
             }
-            if (match == null && !currentKey.isBlank()) {
-                for (ApiKeysVault.VaultEntry e : all) {
-                    if (e.key().equals(currentKey)) { match = e; break; }
-                }
-            }
-            vaultCb.setValue(match);
-        } finally {
-            syncingVault = false;
+        }
+
+        long forProvider = all.stream().filter(e -> e.provider() != null
+                && e.provider().equalsIgnoreCase(provider)).count();
+        if (selectedVaultEntry != null) {
+            vaultPickerBtn.setText("🔑  " + selectedVaultEntry.label() + "   ("
+                    + AiChatClient.providerLabel(selectedVaultEntry.provider()) + ")");
+        } else if (all.isEmpty()) {
+            vaultPickerBtn.setText("No keys in the vault yet — save one below…");
+        } else {
+            vaultPickerBtn.setText("Assign a key…  (" + forProvider + " for "
+                    + (provider == null ? "—" : AiChatClient.providerLabel(provider)) + ")");
         }
     }
 
@@ -331,19 +393,20 @@ public class ChatbotSettingsPanel extends VBox {
         String provider = providerCb.getValue() == null ? cfg.getProvider() : providerCb.getValue();
         String label = vaultLabelField.getText();
         ApiKeysVault.VaultEntry entry = ApiKeysVault.add(label, provider, key);
+        selectedVaultEntry = entry;
         refreshVault();
-        vaultCb.setValue(entry);
         vaultLabelField.clear();
         note(vaultNote, "Saved “" + entry.label() + "” to the vault (" + AiChatClient.providerLabel(provider) + ").", "#16a34a");
     }
 
     private void deleteSelectedVaultKey() {
-        ApiKeysVault.VaultEntry sel = vaultCb.getValue();
+        ApiKeysVault.VaultEntry sel = selectedVaultEntry;
         if (sel == null) {
             note(vaultNote, "Pick a key from the dropdown to delete it.", "#dc2626");
             return;
         }
         ApiKeysVault.remove(sel.id());
+        selectedVaultEntry = null;
         refreshVault();
         note(vaultNote, "Removed “" + sel.label() + "” from the vault. The API key field was left untouched.", "#16a34a");
     }
@@ -535,6 +598,10 @@ public class ChatbotSettingsPanel extends VBox {
                         curModel,
                         sel -> modelField.setText(sel.id())
                 );
+                // Learned red/green status from real usage (balance/quota
+                // walls vs. successful requests) — see ModelStatusStore.
+                picker.setStatusLookup((modelId) ->
+                        com.invoicestudio.ui.ModelStatusDot.forModel(provider, modelId));
                 picker.showAndWait();
             });
         });

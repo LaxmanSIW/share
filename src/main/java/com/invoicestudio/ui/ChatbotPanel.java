@@ -134,7 +134,57 @@ public class ChatbotPanel extends VBox {
         }, scroll.widthProperty());
 
         getChildren().addAll(buildHeader(), new Separator(), scroll, buildInputArea());
+        restoreTranscript();
         greeting();
+    }
+
+    /**
+     * Restores the persisted conversation. Closing the panel used to wipe
+     * history (a fresh ChatbotPanel is built per open) — now the transcript
+     * survives close/reopen and even an app restart; only the explicit
+     * Clear button (or a /new thread reset) empties it.
+     */
+    private void restoreTranscript() {
+        List<com.invoicestudio.service.ChatTranscriptStore.TranscriptTurn> saved =
+                com.invoicestudio.service.ChatTranscriptStore.load();
+        for (com.invoicestudio.service.ChatTranscriptStore.TranscriptTurn t : saved) {
+            // Rebuild the in-memory context the provider sees on the next
+            // request, so follow-up questions keep working after a reopen.
+            history.add("user".equals(t.role())
+                    ? AiChatClient.ChatTurn.user(t.text())
+                    : AiChatClient.ChatTurn.assistant(t.text()));
+            if ("user".equals(t.role())) {
+                VBox box = new VBox(2);
+                Label l = new Label(t.text());
+                l.setWrapText(true);
+                l.setStyle(USER_BUBBLE);
+                l.setMinHeight(Region.USE_PREF_SIZE);
+                l.maxWidthProperty().bind(maxBubbleWidth);
+                Button copyBtn = copyButton(t.text());
+                HBox actionRow = new HBox(5, metaLabel(""), copyBtn);
+                actionRow.setAlignment(Pos.CENTER_RIGHT);
+                box.getChildren().addAll(l, actionRow);
+                HBox row = new HBox(8, box, avatar(false, 26));
+                row.setAlignment(Pos.TOP_RIGHT);
+                messages.getChildren().add(row);
+            } else {
+                Node contentNode = com.invoicestudio.ui.chat.ChatMarkdownRenderer.render(t.text(), false);
+                VBox bubble = new VBox(contentNode);
+                bubble.setStyle(AI_BUBBLE);
+                bubble.setMinHeight(Region.USE_PREF_SIZE);
+                bubble.maxWidthProperty().bind(maxBubbleWidth);
+                Button copyBtn = copyButton(t.text());
+                HBox actionRow = new HBox(5, metaLabel(""), copyBtn);
+                actionRow.setAlignment(Pos.CENTER_LEFT);
+                VBox box = new VBox(2, bubble, actionRow);
+                HBox row = new HBox(8, avatar(true, 26), box);
+                row.setAlignment(Pos.TOP_LEFT);
+                messages.getChildren().add(row);
+            }
+        }
+        if (!saved.isEmpty()) {
+            scrollToBottom();
+        }
     }
 
     // ── Small builders ────────────────────────────────────────────────
@@ -234,6 +284,9 @@ public class ChatbotPanel extends VBox {
             history.clear();
             messages.getChildren().clear();
             com.invoicestudio.service.ChatbotLogManager.clear();
+            // The ONLY paths that empty the transcript: this trash button and
+            // a /new thread reset. Closing the panel never clears it anymore.
+            com.invoicestudio.service.ChatTranscriptStore.clear();
             greeting();
         });
 
@@ -422,6 +475,7 @@ public class ChatbotPanel extends VBox {
                     boolean active = mi.id().equals(current);
                     javafx.scene.control.Button b = new javafx.scene.control.Button(
                             (active ? "✓  " : "     ") + mi.displayName());
+                    b.setGraphic(com.invoicestudio.ui.ModelStatusDot.forModel(cfg.getProvider(), mi.id()));
                     b.setStyle("-fx-background-color: transparent; -fx-text-fill: "
                             + (active ? GOLD : "#C7D0DE") + "; -fx-alignment: CENTER_LEFT;"
                             + "-fx-padding: 6 12 6 12; -fx-font-size: 12.5px; -fx-cursor: hand;"
@@ -535,13 +589,19 @@ public class ChatbotPanel extends VBox {
         // with an empty history so no old tokens ride along.
         String newQuestion = parseNewCommand(typed);
         boolean newThread = newQuestion != null;
-        if (newThread) history.clear();
+        if (newThread) {
+            history.clear();
+            // A thread reset is a transcript reset — the earlier turns are
+            // dropped from the provider context AND from the saved history.
+            com.invoicestudio.service.ChatTranscriptStore.clear();
+        }
         String text = newThread && !newQuestion.isEmpty() ? newQuestion : typed;
 
         if (!cfg.getApiKey().isBlank()) {
             history.add(pendingImage != null
                     ? AiChatClient.ChatTurn.userImage(text, pendingImage)
                     : AiChatClient.ChatTurn.user(text));
+            com.invoicestudio.service.ChatTranscriptStore.append("user", text);
         }
 
         // Echo the user's message (with attachment thumbnail) into the chat.
@@ -634,6 +694,7 @@ public class ChatbotPanel extends VBox {
             }
             addAiBubble(r.text(), null, false, resultMeta(r));
             history.add(AiChatClient.ChatTurn.assistant(r.text()));
+            com.invoicestudio.service.ChatTranscriptStore.append("assistant", r.text());
         }));
         task.setOnFailed(e -> AppExecutors.runOnFx(() -> {
             com.invoicestudio.service.ChatbotLogManager.removeListener(progress);

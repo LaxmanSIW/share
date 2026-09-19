@@ -44,6 +44,8 @@ public final class ChatbotModelPickerDialog {
     private final ListView<ModelCatalog.ModelInfo> listView = new ListView<>();
     private final Label countLabel = new Label();
     private final Button selectBtn = new Button("Use Selected Model");
+    /** Optional per-model status dot (learned red/green from real usage). */
+    private java.util.function.Function<String, javafx.scene.Node> statusLookup;
 
     public ChatbotModelPickerDialog(Window owner, String provider, List<ModelCatalog.ModelInfo> models,
                                    String currentModelId, Consumer<ModelCatalog.ModelInfo> onSelect) {
@@ -142,9 +144,19 @@ public final class ChatbotModelPickerDialog {
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                // Right chips: Context window + Active badge
+                // Right chips: Context window + status dot + Active badge
                 HBox rightBox = new HBox(6);
                 rightBox.setAlignment(Pos.CENTER_RIGHT);
+
+                // Learned usability: green = last request worked, red =
+                // balance/quota/access wall stored from real usage. Nothing
+                // renders when the app has no history for the model.
+                if (statusLookup != null) {
+                    javafx.scene.Node dot = statusLookup.apply(mi.id());
+                    if (dot != null) {
+                        rightBox.getChildren().add(dot);
+                    }
+                }
 
                 if (mi.inputTokenLimit() > 0) {
                     long k = mi.inputTokenLimit() / 1000;
@@ -258,6 +270,14 @@ public final class ChatbotModelPickerDialog {
         } else {
             countLabel.setText("Showing " + showing + " of " + total + " models");
         }
+    }
+
+    /**
+     * Supplies the learned status dot for a model id (null = unknown —
+     * no dot). Optional: without it the dialog renders exactly as before.
+     */
+    public void setStatusLookup(java.util.function.Function<String, javafx.scene.Node> lookup) {
+        this.statusLookup = lookup;
     }
 
     public void showAndWait() {

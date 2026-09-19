@@ -172,6 +172,8 @@ public final class AiChatClient {
             return result(canned, List.of(), usage, t0, "local");
         }
 
+        String firstModel = activeModel(cfg);
+
         if (cfg.isSmartRouting() && attachment == null) {
             ChatbotLogManager.router("Evaluating tools via smart router...", first);
             ToolRoute route = routeTools(cfg, turns, first, confirmCtx, usage);
@@ -220,6 +222,12 @@ public final class AiChatClient {
             } catch (IllegalStateException ex) {
                 ChatbotLogManager.error("Provider call failed: " + ex.getMessage(), null);
                 String msg = String.valueOf(ex.getMessage());
+                // ── Model-status memory (red/green dots) ─────────────────
+                // Real usage is the only signal (no provider exposes a
+                // balance API), so record the wall against the model that
+                // hit it — the pickers show these as red dots until a
+                // success flips them green or the daily window ages out.
+                ModelStatusStore.markBlocked(cfg.getProvider(), firstModel, msg);
                 // ── Quota / daily-limit failover ──────────────────────────────
                 // When a Gemini model hits its daily free-tier bucket ("Daily
                 // free-tier limit") or any provider returns a hard quota error,
@@ -260,6 +268,11 @@ public final class AiChatClient {
             }
             usage.add(resp.promptTokens(), resp.completionTokens());
             if (resp.toolCalls().isEmpty()) {
+                // The pair that actually answered — post-failover this is the
+                // failover model, not the configured one. GREEN: a real
+                // request just succeeded through it.
+                String answeredBy = cfg.getModel().isBlank() ? defaultModel(cfg.getProvider()) : cfg.getModel();
+                ModelStatusStore.markOk(cfg.getProvider(), answeredBy);
                 ChatbotLogManager.success("Completed in " + round + " tool round(s)",
                         trace.isEmpty() ? "Direct response" : "Tools executed: " + String.join(" -> ", trace));
                 logUsage(usage, "Final (" + round + " tool round(s), model "
