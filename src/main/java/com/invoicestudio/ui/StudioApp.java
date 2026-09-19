@@ -57,11 +57,17 @@ public class StudioApp extends Application {
 
     private final Map<String, Node> viewCache = new HashMap<>();
 
-    /** Data generation the visible cached views were last built against (stale-while-revalidate). */
-    private long lastDataEpoch = Long.MIN_VALUE;
+    /**
+     * Per-view freshness (stale-while-revalidate): each view remembers the
+     * data epoch it last read at, so a refresh of view A can never mark
+     * view B fresh — the stale-after-edit-elsewhere bug the single global
+     * lastDataEpoch used to have.
+     */
+    private final ViewEpochTracker viewEpochs = new ViewEpochTracker();
     private Label refreshPill;
     private boolean refreshInProgress;
-    private final java.util.List<Runnable> pendingRefreshers = new ArrayList<>();
+    /** Refreshes queued while another was mid-flight: view id → its refresher. */
+    private final java.util.Map<String, Runnable> pendingRefreshers = new java.util.LinkedHashMap<>();
 
     private final SidebarController sidebarController = new SidebarController(this);
     private final AppShortcuts shortcuts = new AppShortcuts(this);
@@ -175,8 +181,10 @@ public class StudioApp extends Application {
                         com.invoicestudio.service.ExpenseAccountService.backfillFromHistoryAsync(null);
                         // Pre-load every cached collection in the background so
                         // the first navigation to each view paints instantly.
-                        data.warmCachesAsync(dbExecutor, () -> Platform.runLater(() ->
-                                lastDataEpoch = data.dataEpoch()));
+                        // (No epoch bookkeeping needed here: each view records
+                        // its own epoch when it is built, and cache warming is
+                        // read-only so it never bumps the epoch.)
+                        data.warmCachesAsync(dbExecutor, () -> { });
                     } else {
                         showAuthScreen(AuthView.AuthState.SIGN_IN);
                     }
@@ -354,8 +362,11 @@ public class StudioApp extends Application {
         if (view == null) {
             view = factory.get();
             viewCache.put(id, view);
-        } else if (refresher != null && data != null && data.dataEpoch() != lastDataEpoch) {
-            refreshViewAsync(refresher);
+            // Freshly built = freshly read.
+            viewEpochs.markRefreshed(id, data != null ? data.dataEpoch() : Long.MIN_VALUE);
+        } else if (refresher != null && data != null
+                && viewEpochs.needsRefresh(id, data.dataEpoch())) {
+            refreshViewAsync(id, refresher);
         }
         return view;
     }
@@ -366,11 +377,11 @@ public class StudioApp extends Application {
     }
 
     /** Warms caches off the FX thread, then re-reads data into the live view with a small pill indicator. */
-    private void refreshViewAsync(Runnable refresher) {
+    private void refreshViewAsync(String viewId, Runnable refresher) {
         if (refreshInProgress) {
             // Another refresh is mid-flight; queue this view so it is never
             // left stale (fast A→B navigation before A's refresh lands).
-            pendingRefreshers.add(refresher);
+            pendingRefreshers.put(viewId, refresher);
             return;
         }
         refreshInProgress = true;
@@ -384,15 +395,16 @@ public class StudioApp extends Application {
             Platform.runLater(() -> {
                 try {
                     refresher.run();
-                    for (Runnable queued : pendingRefreshers) {
+                    viewEpochs.markRefreshed(viewId, data.dataEpoch());
+                    for (var entry : pendingRefreshers.entrySet()) {
                         try {
-                            queued.run();
+                            entry.getValue().run();
+                            viewEpochs.markRefreshed(entry.getKey(), data.dataEpoch());
                         } catch (Exception e) {
                             AppLog.error("Queued view refresh failed", e);
                         }
                     }
                     pendingRefreshers.clear();
-                    lastDataEpoch = data.dataEpoch();
                 } catch (Exception e) {
                     AppLog.error("View refresh failed", e);
                 } finally {
@@ -763,6 +775,7 @@ public class StudioApp extends Application {
             AuthSessionManager.clear();
             Platform.runLater(() -> {
                 viewCache.clear();
+                viewEpochs.clear();
                 showAuthScreen(AuthView.AuthState.LOGGED_OUT);
             });
         });
