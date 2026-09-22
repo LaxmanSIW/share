@@ -20,6 +20,8 @@ Open **Graph View** (Ctrl+G) to see how everything connects.
 - [[05 Domain Models]] — model classes grouped by feature
 - [[06 Build Packaging CI]] — Maven, jar, Windows installer, smoke tests
 - [[07 Branches and Versions]] — branch topology, version history, recent fixes
+- [[08 MCP Server]] — MCP tool surface
+- [[09 Template Download & Upload]] — decision record: exporting/importing templates (one, several, all)
 
 ## Quick find — "where do I change X?"
 
@@ -31,6 +33,7 @@ Open **Graph View** (Ctrl+G) to see how everything connects.
 | A field on Bill / Item / Buyer … | [[05 Domain Models]] |
 | Build version, installer, CI | [[06 Build Packaging CI]] |
 | Item saved with null id (fixed) | [[07 Branches and Versions]] |
+| Template download / upload (export / import) | [[09 Template Download & Upload]] |
 
 ## Feature map (screen → code path)
 

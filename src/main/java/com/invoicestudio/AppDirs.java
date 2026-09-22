@@ -30,6 +30,7 @@ import java.nio.file.StandardCopyOption;
 public final class AppDirs {
 
     private static final String DIR_OVERRIDE_PROPERTY = "invoicestudio.data.dir";
+    private static final String DOWNLOADS_OVERRIDE_PROPERTY = "invoicestudio.downloads.dir";
     private static final String DB_FILE = "invoicestudio.db";
 
     private AppDirs() {
@@ -63,6 +64,32 @@ public final class AppDirs {
         } catch (IOException | SecurityException ex) {
             return Path.of("").toAbsolutePath(); // legacy behaviour as last resort
         }
+    }
+
+    /**
+     * The user's Downloads folder — where exported files (templates, reports,
+     * CSV/PDF) are offered first and where imports start browsing.
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>{@code -Dinvoicestudio.downloads.dir=...} — tests / portable setups</li>
+     *   <li>{@code <user.home>/Downloads} — the Windows and macOS default,
+     *       and what every major Linux desktop uses too</li>
+     *   <li>the home folder itself, then the working directory, when no
+     *       Downloads folder exists (headless/server accounts)</li>
+     * </ol>
+     */
+    public static Path downloadsDir() {
+        String override = System.getProperty(DOWNLOADS_OVERRIDE_PROPERTY);
+        if (override != null && !override.isBlank()) {
+            return Path.of(override);
+        }
+        Path home = Path.of(System.getProperty("user.home", "")).toAbsolutePath();
+        Path downloads = home.resolve("Downloads");
+        if (Files.isDirectory(downloads)) {
+            return downloads;
+        }
+        return Files.isDirectory(home) ? home : Path.of("").toAbsolutePath();
     }
 
     /**

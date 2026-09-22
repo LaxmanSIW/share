@@ -1,5 +1,6 @@
 package com.invoicestudio.ui.views;
 
+import com.invoicestudio.AppDirs;
 import com.invoicestudio.db.SettingsDao;
 import com.invoicestudio.db.TemplateDao;
 import com.invoicestudio.model.PageSizeName;
@@ -7,6 +8,7 @@ import com.invoicestudio.model.PresetTemplates;
 import com.invoicestudio.model.Settings;
 import com.invoicestudio.model.Template;
 import com.invoicestudio.service.PrintingService;
+import com.invoicestudio.service.TemplatePackageService;
 import com.invoicestudio.ui.BillPreviewPane;
 import com.invoicestudio.ui.DialogHelper;
 import com.invoicestudio.ui.StudioApp;
@@ -18,22 +20,30 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
+import javafx.stage.FileChooser;
 
+import java.io.File;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public class TemplatesView extends BorderPane {
 
     private final StudioApp app;
     private final TemplateDao templateDao;
     private final SettingsDao settingsDao;
+    private final TemplatePackageService packageService;
     private final VBox contentBox = new VBox(24);
 
     public TemplatesView(StudioApp app) {
         this.app = app;
         this.templateDao = new TemplateDao(app.getDb());
         this.settingsDao = new SettingsDao(app.getDb());
+        this.packageService = new TemplatePackageService(app.getDb());
 
         setPadding(new Insets(24));
         getStyleClass().add("bg-app");
@@ -97,7 +107,14 @@ public class TemplatesView extends BorderPane {
             app.showTemplateDesigner(lbl);
         });
 
-        topBar.getChildren().addAll(titleBox, sp, calibBtn, newLabelBtn, newBtn);
+        Button importBtn = new Button("Import");
+        importBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        importBtn.setTooltip(new Tooltip("Upload a template file (.json) shared by another InvoiceStudio user — existing templates are never overwritten"));
+        importBtn.setOnAction(e -> handleImportTemplates());
+
+        MenuButton exportMenu = buildExportMenu(templates);
+
+        topBar.getChildren().addAll(titleBox, sp, importBtn, exportMenu, calibBtn, newLabelBtn, newBtn);
         contentBox.getChildren().add(topBar);
 
         // 2. Built-in Preset Library
@@ -263,6 +280,142 @@ public class TemplatesView extends BorderPane {
 
         card.getChildren().addAll(top, meta, actions);
         return card;
+    }
+
+    /** Multi-select dropdown: download one, several or all saved templates. */
+    private MenuButton buildExportMenu(List<Template> templates) {
+        return buildExportMenu(templates, this::downloadTemplates);
+    }
+
+    /**
+     * Builds the "Export" multi-select dropdown: one themed checkbox per saved
+     * template (the dropdown stays open so several can be ticked), plus
+     * Select all / Clear and the two download actions.
+     *
+     * <p>Static and callback-driven on purpose — the multi-select behaviour is
+     * covered by {@code TemplatesExportMenuTest} without booting the whole app,
+     * while {@link #downloadTemplates(List)} stays the only place that touches
+     * the file system.</p>
+     */
+    static MenuButton buildExportMenu(List<Template> templates, Consumer<List<Template>> onDownload) {
+        MenuButton menu = new MenuButton("Export");
+        // menu-button-sm = light caption + the same box as the "Import" .button-sm beside it
+        menu.getStyleClass().addAll("button-sm", "button-secondary", "menu-button-sm");
+        menu.setTooltip(new Tooltip("Download one, several or all templates as a portable .json file"));
+
+        if (templates.isEmpty()) {
+            MenuItem none = new MenuItem("No saved templates to download yet");
+            none.setDisable(true);
+            menu.getItems().add(none);
+            return menu;
+        }
+
+        Set<String> selectedIds = new LinkedHashSet<>();
+        List<CheckBox> boxes = new ArrayList<>();
+
+        MenuItem exportSelectedItem = new MenuItem("Download Selected (0)");
+        exportSelectedItem.setDisable(true);
+        exportSelectedItem.setOnAction(e -> onDownload.accept(
+                templates.stream().filter(t -> selectedIds.contains(t.getId())).toList()));
+
+        MenuItem exportAllItem = new MenuItem("Download All (" + templates.size() + ")");
+        exportAllItem.setOnAction(e -> onDownload.accept(templates));
+
+        Runnable syncCount = () -> {
+            int n = selectedIds.size();
+            exportSelectedItem.setText("Download Selected (" + n + ")");
+            exportSelectedItem.setDisable(n == 0);
+        };
+
+        for (Template t : templates) {
+            CheckBox box = new CheckBox(t.getName());
+            boxes.add(box);
+            box.selectedProperty().addListener((obs, was, now) -> {
+                if (now) selectedIds.add(t.getId()); else selectedIds.remove(t.getId());
+                syncCount.run();
+            });
+            CustomMenuItem item = new CustomMenuItem(box);
+            item.setHideOnClick(false); // keep the dropdown open so several templates can be ticked
+            menu.getItems().add(item);
+        }
+
+        Button selectAllBtn = new Button("Select all");
+        selectAllBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        selectAllBtn.setOnAction(e -> boxes.forEach(b -> b.setSelected(true)));
+
+        Button clearBtn = new Button("Clear");
+        clearBtn.getStyleClass().addAll("button-sm", "button-secondary");
+        clearBtn.setOnAction(e -> boxes.forEach(b -> b.setSelected(false)));
+
+        HBox selectRow = new HBox(8, selectAllBtn, clearBtn);
+        selectRow.setAlignment(Pos.CENTER_LEFT);
+        CustomMenuItem selectAllItem = new CustomMenuItem(selectRow);
+        selectAllItem.setHideOnClick(false);
+
+        menu.getItems().addAll(new SeparatorMenuItem(), selectAllItem, exportSelectedItem, exportAllItem);
+        return menu;
+    }
+
+    /** Save dialog + portable JSON write for one or many templates. */
+    private void downloadTemplates(List<Template> selected) {
+        if (selected == null || selected.isEmpty()) {
+            Toast.show(app.getRootPane(), "Nothing Selected", "Pick at least one template to download.", true);
+            return;
+        }
+
+        FileChooser fc = new FileChooser();
+        fc.setTitle(selected.size() == 1 ? "Download Template" : "Download " + selected.size() + " Templates");
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("InvoiceStudio Template (*.json)", "*.json"));
+        defaultToDownloadsFolder(fc);
+        fc.setInitialFileName(TemplatePackageService.suggestedFileName(selected));
+
+        File dest = fc.showSaveDialog(getScene() != null ? getScene().getWindow() : app.getPrimaryStage());
+        if (dest == null) return;
+        if (!dest.getName().toLowerCase().endsWith(".json")) {
+            dest = new File(dest.getParentFile(), dest.getName() + ".json");
+        }
+
+        try {
+            int count = packageService.exportTemplates(selected, dest);
+            Toast.show(app.getRootPane(), "Templates Downloaded",
+                    count + (count == 1 ? " template" : " templates") + " saved to " + dest.getName(), false);
+        } catch (Exception ex) {
+            com.invoicestudio.service.AppLog.error(ex);
+            Toast.show(app.getRootPane(), "Download Failed", ex.getMessage(), true);
+        }
+    }
+
+    /** Upload dialog + import for one or many templates. */
+    private void handleImportTemplates() {
+        FileChooser fc = new FileChooser();
+        fc.setTitle("Upload Template File");
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("InvoiceStudio Template (*.json)", "*.json"));
+        defaultToDownloadsFolder(fc);
+
+        File file = fc.showOpenDialog(getScene() != null ? getScene().getWindow() : app.getPrimaryStage());
+        if (file == null) return;
+
+        try {
+            TemplatePackageService.ImportResult result = packageService.importTemplates(file);
+            refresh();
+            Toast.show(app.getRootPane(), "Templates Uploaded", result.summary(), false);
+        } catch (Exception ex) {
+            com.invoicestudio.service.AppLog.error(ex);
+            Toast.show(app.getRootPane(), "Upload Failed", ex.getMessage(), true);
+        }
+    }
+
+    /**
+     * Both template dialogs open in the user's Downloads folder: a downloaded
+     * .json lands where the user expects to find it, and the next upload starts
+     * from the same place. Best-effort — if the folder is missing we leave the
+     * chooser's own default alone rather than risk an illegal initial directory.
+     */
+    private static void defaultToDownloadsFolder(FileChooser fc) {
+        File downloads = AppDirs.downloadsDir().toFile();
+        if (downloads.isDirectory()) {
+            fc.setInitialDirectory(downloads);
+        }
     }
 
     private void loadPreset(Template preset) {

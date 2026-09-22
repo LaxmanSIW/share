@@ -3772,3 +3772,37 @@ Label {
     -fx-font-size: 11.5px;
     -fx-font-weight: 600;
 }
+
+/* ---------------------------------------------------------------------------
+   Compact MenuButton — a dropdown that has to sit in a *.button-sm* row
+   (Templates Gallery "Export" next to "Import").
+
+   Modena wraps the caption in its own inner Label and pads it, so three of its
+   defaults break the alignment with a plain Button and are corrected here:
+     1. that Label carries Modena's own dark -fx-text-fill, so the caption
+        renders black instead of the light text of the buttons beside it —
+        "inherit" hands it the MenuButton's -fx-text-fill (the same idiom as
+        ".button .label" above);
+     2. it also carries a 0.333em/0.667em padding (padding INSIDE the control's
+        own -fx-padding), which alone makes the menu ~8px taller and wider than
+        an identically padded Button;
+     3. the arrow-button keeps Modena's 0.5em vertical em-padding, so it is
+        flattened to the arrow glyph plus a small gap from the text.
+
+   Scoped to this class on purpose: the bare ".menu-button" rule stays the
+   shared look for the "..." row-action menus, which have no caption and must
+   keep their current size.
+--------------------------------------------------------------------------- */
+.menu-button-sm {
+    -fx-padding: 4 11 4 11;
+    -fx-font-size: 11px;
+}
+
+.menu-button-sm .label {
+    -fx-text-fill: inherit;
+    -fx-padding: 0;
+}
+
+.menu-button-sm > .arrow-button {
+    -fx-padding: 0 0 0 4;
+}

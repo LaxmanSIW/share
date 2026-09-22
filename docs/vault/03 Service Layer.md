@@ -29,7 +29,8 @@ flowchart TB
   subgraph Platform
     AUTH["AuthSessionManager + FirebaseAuthService (Identity Toolkit REST, Google loopback)"]
     CSV["CsvService — import/export"]
-    BR["BackupRestoreService"]
+    BR["BackupRestoreService — whole-account JSON"]
+    TPS["TemplatePackageService — per-selection template JSON download/upload"]
     CCM["CustomComponentManager + presets"]
   end
 ```
@@ -38,6 +39,7 @@ flowchart TB
 
 - **Printing correctness** — `PrintingService` must build the `PrinterJob.PageLayout` from the template's paper (`PageConfig`/`PageSizeName`) so printed output matches the designer exactly (v3.0.0 fix, see [[07 Branches and Versions]]).
 - **Renderer parity** — one element model ([[05 Domain Models]] → `TemplateElement`) is drawn three ways: screen (JavaFX), PDF (Java2D), print (PageLayout). Change `DesignObjectRenderer`/`SvgVectorParser` together with the designer.
+- **Template exchange** — `TemplatePackageService` moves ONLY the templates a user picked (one, several, all) to a small JSON file; `BackupRestoreService` stays the whole-account path. Import never overwrites existing work (fresh id + " (imported)" name). See [[09 Template Download & Upload]].
 - **Auth** — Firebase REST for email/password + Google sign-in; session lives in `AuthSessionManager`; every DAO call then partitions by user (see [[02 Database Layer]]).
 
 Related: [[01 Architecture]] · [[04 UI Layer]] · [[05 Domain Models]]

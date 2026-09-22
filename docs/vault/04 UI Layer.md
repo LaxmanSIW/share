@@ -27,11 +27,14 @@ flowchart TB
 ## Designer-heavy screens
 
 - **TemplateDesigner** — canvas + layers panel (eye/lock/rename), mm rulers, help dialog (`ShortcutsDialog`), 6 resize handles incl. left-side scaling, magnet snapping to other object borders, per-side stroke editor, shapes (ellipse/star/arrow…). Backspace inside text fields is consumed by the field, never deletes canvas objects (v3.0.0).
+- **TemplatesView** — the gallery toolbar holds `Import` plus an `Export` multi-select dropdown (`MenuButton` + one themed `CheckBox` per saved template, `hideOnClick = false`). Choose one or several templates and download them as `.json`; `Import` uploads them back without overwriting anything. Both dialogs open in the user's Downloads folder (`AppDirs.downloadsDir()`). The dropdown carries the extra class `menu-button-sm` — a `MenuButton` sitting in a `button-sm` row needs three small Modena overrides (caption colour, inner padding, arrow padding) to match a plain `Button` box. Implementation + rationale: [[09 Template Download & Upload]].
 - **CustomColorChooserDialog** — in-app themed colour picker replacing the stock JavaFX dialog (which crashed on custom colours), used by designer property fields.
 
 ## Conventions
 
 - **No inline `setStyle`** — theme via CSS classes only; new `.accent-*` rules go at the **end** of `globalfile.css` (cascade wins).
+- **File dialogs** — exports/imports default to `AppDirs.downloadsDir()` (Downloads, overridable with `-Dinvoicestudio.downloads.dir`); `setInitialDirectory` only when the folder exists.
+- **`MenuButton` in a button row** — add `menu-button-sm`; Modena pads the inner `.label` and the arrow-button, so an unmodified menu renders taller and with dark text.
 - Dialogs/helpers keep views thin; `DataManager` is the single data hub the views bind to.
 - Keyboard map lives in `ShortcutsDialog` — keep it in sync when adding shortcuts.
 

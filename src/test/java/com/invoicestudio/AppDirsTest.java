@@ -78,4 +78,30 @@ class AppDirsTest {
             }
         }
     }
+
+    /**
+     * The file dialogs for template download/upload open here, so the override
+     * must win verbatim — that is what the UI tests rely on to stay sandboxed.
+     */
+    @Test
+    void downloadsOverridePropertyWins() {
+        System.setProperty("invoicestudio.downloads.dir", overrideDir.toString());
+        try {
+            assertEquals(overrideDir, AppDirs.downloadsDir());
+        } finally {
+            System.clearProperty("invoicestudio.downloads.dir");
+        }
+    }
+
+    /**
+     * Without the override the helper must still hand back a folder that really
+     * exists — a FileChooser throws on a bogus initial directory, which would
+     * break the download/upload buttons on accounts without a ~/Downloads.
+     */
+    @Test
+    void downloadsDirIsAlwaysAnExistingFolder() {
+        Path downloads = AppDirs.downloadsDir();
+        assertTrue(Files.isDirectory(downloads), "not a real folder: " + downloads);
+        assertTrue(downloads.isAbsolute(), "chooser needs an absolute path: " + downloads);
+    }
 }
