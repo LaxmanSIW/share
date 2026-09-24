@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock &amp; Profitability | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="stock">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">INSIGHTS · STOCK &amp; PROFITABILITY</span>
+      <h1>Stock &amp; Profit</h1>
+      <div class="sub">Item-wise movement (opening → in → out → closing) at cost, with profitability and reorder alerts.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <input class="input mono" style="width:130px" value="01/04/2026">
+      <input class="input mono" style="width:130px" value="24/09/2026">
+      <button class="btn ghost" onclick="toast('Refreshed','Stock & profitability re-computed.','ok')"><i data-icon="refresh" data-size="sm"></i>Refresh</button>
+      <button class="btn" onclick="toast('Exported','stock-summary-2026-09.csv saved.','ok')"><i data-icon="download" data-size="sm"></i>Export</button>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi lead"><div class="k-label">Closing stock value</div><div class="k-value">₹2,42,160</div><span class="k-delta muted">at cost (purchase rate)</span></div>
+    <div class="kpi"><div class="k-label">Tracked SKUs</div><div class="k-value">12</div><span class="k-delta muted">items in catalog · 12 tracked</span></div>
+    <div class="kpi"><div class="k-label">COGS</div><div class="k-value">₹9,88,410</div><span class="k-delta muted">sales at cost this period</span></div>
+    <div class="kpi gold"><div class="k-label">Low stock</div><div class="k-value">3</div><span class="k-delta neg">at or below reorder point</span></div>
+  </div>
+
+  <div class="section-label">Stock summary — item-wise movement</div>
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="input-wrap" style="min-width:220px"><i data-icon="search" data-size="sm"></i><input class="input" placeholder="Filter items…"></div>
+      <select class="input"><option>All categories</option><option>Fabric</option><option>Packaging</option><option>Services</option></select>
+      <span class="spacer"></span>
+      <span class="faint" style="font-size:12px">Valuation: at cost (purchase rate)</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th>Item</th><th>Unit</th><th class="right">Opening</th><th class="right">In (Purchases)</th><th class="right">Out (Sales)</th>
+          <th class="right">Closing</th><th class="right">Avg Cost</th><th class="right">Closing Value</th><th>Health</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Cotton shirting — 120 GSM</b></td><td>MTR</td><td class="num right">180</td><td class="num right">520</td><td class="num right">412</td>
+            <td class="num right"><b>288</b></td><td class="num right">₹126.40</td><td class="num right">₹36,403</td>
+            <td><span class="stock-badge pos"><span class="sq" style="background:var(--ok)"></span>Healthy</span></td>
+          </tr>
+          <tr>
+            <td><b>Polyester blend — charcoal</b></td><td>MTR</td><td class="num right">60</td><td class="num right">120</td><td class="num right">162</td>
+            <td class="num right"><b>18</b></td><td class="num right">₹96.00</td><td class="num right">₹1,728</td>
+            <td><span class="stock-badge neg"><span class="sq" style="background:var(--vermilion)"></span>Low · reorder 25</span></td>
+          </tr>
+          <tr>
+            <td><b>Corrugated carton 5-ply</b></td><td>PCS</td><td class="num right">400</td><td class="num right">1,100</td><td class="num right">1,240</td>
+            <td class="num right"><b>260</b></td><td class="num right">₹38.20</td><td class="num right">₹9,932</td>
+            <td><span class="stock-badge pos"><span class="sq" style="background:var(--ok)"></span>Healthy</span></td>
+          </tr>
+          <tr>
+            <td><b>Velvet ribbon — maroon</b></td><td>ROLL</td><td class="num right">24</td><td class="num right">0</td><td class="num right">21</td>
+            <td class="num right"><b>3</b></td><td class="num right">₹54.00</td><td class="num right">₹162</td>
+            <td><span class="stock-badge neg"><span class="sq" style="background:var(--vermilion)"></span>Low · reorder 10</span></td>
+          </tr>
+          <tr>
+            <td><b>Stitching service</b></td><td>—</td><td class="num right">—</td><td class="num right">—</td><td class="num right">310</td>
+            <td class="num right">—</td><td class="num right">—</td><td class="num right">—</td>
+            <td><span class="stock-badge muted"><span class="sq" style="background:var(--grey-400)"></span>Service (untracked)</span></td>
+          </tr>
+        </tbody>
+        <tfoot><tr><td colspan="7">Total closing value (12 tracked items)</td><td class="num right">₹2,42,160</td><td></td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid g23" style="margin-top:18px">
+    <div>
+      <div class="section-label" style="margin-top:0">Item profitability</div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Item</th><th class="right">Sales value</th><th class="right">COGS</th><th class="right">Gross profit</th><th class="right">GP %</th></tr></thead>
+          <tbody>
+            <tr><td><b>Cotton shirting — 120 GSM</b></td><td class="num right">₹7,41,600</td><td class="num right">₹5,30,768</td><td class="num right pos">₹2,10,832</td><td class="num right"><b>28.4%</b></td></tr>
+            <tr><td><b>Polyester blend — charcoal</b></td><td class="num right">₹3,55,200</td><td class="num right">₹2,84,736</td><td class="num right pos">₹70,464</td><td class="num right"><b>19.8%</b></td></tr>
+            <tr><td><b>Corrugated carton 5-ply</b></td><td class="num right">₹52,080</td><td class="num right">₹45,727</td><td class="num right pos">₹6,353</td><td class="num right"><b>12.2%</b></td></tr>
+            <tr><td><b>Stitching service</b></td><td class="num right">₹1,08,500</td><td class="num right">₹39,060</td><td class="num right pos">₹69,440</td><td class="num right"><b>64.0%</b></td></tr>
+          </tbody>
+          <tfoot><tr><td>Portfolio</td><td class="num right">₹12,57,380</td><td class="num right">₹9,00,291</td><td class="num right pos">₹3,57,089</td><td class="num right">28.4%</td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div class="section-label" style="margin-top:0">Items at or below reorder level</div>
+      <div class="card alt" style="padding:14px">
+        <div class="stack" style="gap:10px">
+          <div class="row" style="border:1px solid var(--border);background:var(--white);padding:12px">
+            <span class="mic danger" style="width:34px;height:34px"><i data-icon="alert" data-size="sm"></i></span>
+            <div style="flex:1;min-width:0"><b style="font-size:13px">Polyester blend — charcoal</b><div class="faint" style="font-size:11.5px">18 MTR left · reorder at 25 · avg cost ₹96</div></div>
+            <button class="rbtn accent" onclick="reorder('Polyester blend')">Reorder Now</button>
+          </div>
+          <div class="row" style="border:1px solid var(--border);background:var(--white);padding:12px">
+            <span class="mic danger" style="width:34px;height:34px"><i data-icon="alert" data-size="sm"></i></span>
+            <div style="flex:1;min-width:0"><b style="font-size:13px">Velvet ribbon — maroon</b><div class="faint" style="font-size:11.5px">3 rolls left · reorder at 10 · avg cost ₹54</div></div>
+            <button class="rbtn accent" onclick="reorder('Velvet ribbon')">Reorder Now</button>
+          </div>
+          <div class="row" style="border:1px solid var(--border);background:var(--white);padding:12px">
+            <span class="mic warn" style="width:34px;height:34px"><i data-icon="clock" data-size="sm"></i></span>
+            <div style="flex:1;min-width:0"><b style="font-size:13px">GST invoice books — A5</b><div class="faint" style="font-size:11.5px">10 left · reorder at 10 · avg cost ₹210</div></div>
+            <button class="rbtn accent" onclick="reorder('GST invoice books')">Reorder Now</button>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <a class="cta-link" href="create-purchase.html" data-goto="create-purchase.html">Open purchase form <span class="arr">→</span></a>
+      </div>
+    </div>
+  </div>
+
+  <p class="faint" style="margin-top:18px;font-size:11.5px;line-height:1.6">"Add items under Items to track stock, purchases and sales" — items with an opening stock or reorder level are tracked automatically once purchased or sold. Reorder Now pre-fills the purchase form with the item, average cost and reorder quantity.</p>
+</main></div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  function reorder(item) {
+    toast('Reorder drafted', item + ' added to a new purchase bill at avg cost.', 'ok');
+    setTimeout(() => location.href = 'create-purchase.html', 800);
+  }
+</script>
+</body>
+</html>

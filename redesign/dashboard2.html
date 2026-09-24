@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financial &amp; Logistics (Dashboard 2) | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="dashboard2">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">WORKSPACE · SECOND OVERVIEW</span>
+      <h1>Financial &amp; Logistics</h1>
+      <div class="sub">Sales vs payments, parcel movement and ledger activity — the trader's second screen.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Range applied','Aggregates re-queried for the selected period.','ok')"><i data-icon="calendar" data-size="sm"></i>This financial year</button>
+      <a class="btn accent" href="create-bill.html"><i data-icon="plus" data-size="sm"></i>New Bill</a>
+    </div>
+  </div>
+
+  <div class="bento" style="margin-bottom:16px">
+    <div class="kpi b-kpi lead">
+      <div class="k-label"><span class="kic"><i data-icon="invoices" data-size="sm"></i></span>Monthly sales</div>
+      <div class="k-value">₹4,82,650</div>
+      <span class="k-delta pos"><i data-icon="trendup" data-size="sm"></i>+12.4%</span>
+      <div class="spark" id="sp-sales"></div>
+    </div>
+    <div class="kpi b-kpi">
+      <div class="k-label"><span class="kic ok"><i data-icon="wallet" data-size="sm"></i></span>Payments received</div>
+      <div class="k-value">₹3,61,940</div>
+      <span class="k-delta muted">75% of invoiced</span>
+      <div class="spark" id="sp-pay"></div>
+    </div>
+    <div class="kpi b-kpi">
+      <div class="k-label"><span class="kic cyan"><i data-icon="truck" data-size="sm"></i></span>Parcels this month</div>
+      <div class="k-value">342</div>
+      <span class="k-delta pos">+26 vs Aug</span>
+      <div class="spark" id="sp-parcel"></div>
+    </div>
+    <div class="kpi b-kpi gold">
+      <div class="k-label"><span class="kic warn"><i data-icon="swap" data-size="sm"></i></span>Ledger entries</div>
+      <div class="k-value">86</div>
+      <span class="k-delta muted">CC 42 · CS 44</span>
+      <div class="spark" id="sp-ledger"></div>
+    </div>
+  </div>
+
+  <div class="bento">
+    <div class="card b-8">
+      <div class="card-head">
+        <div><h3 class="card-title">Monthly sales vs payments</h3><p class="card-sub">Grouped by month — invoiced value against money actually received</p></div>
+        <span class="spacer"></span>
+        <div class="chart-legend"><span><i style="background:var(--vermilion)"></i>Sales</span><span><i style="background:var(--black)"></i>Payments</span></div>
+      </div>
+      <div class="chart-box" id="chart-salespay"></div>
+    </div>
+
+    <div class="card b-4">
+      <div class="card-head"><div><h3 class="card-title">Parcel counts analysis</h3><p class="card-sub">Cartons dispatched per transport agency</p></div></div>
+      <div class="row" style="gap:18px;align-items:center">
+        <div class="chart-box" style="width:168px;flex:none" id="chart-parcels"></div>
+        <div style="flex:1;min-width:0">
+          <div class="stat-row"><span class="muted">VRL Logistics</span><span class="v">142</span></div>
+          <div class="stat-row"><span class="muted">Gati KWE</span><span class="v">96</span></div>
+          <div class="stat-row"><span class="muted">DTDC</span><span class="v">64</span></div>
+          <div class="stat-row"><span class="muted">Safexpress</span><span class="v">40</span></div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <a class="cta-link" href="transports.html" data-goto="transports.html">Manage transport directory <span class="arr">→</span></a>
+    </div>
+
+    <div class="card b-6">
+      <div class="card-head">
+        <div><h3 class="card-title">Monthly trouser movement</h3><p class="card-sub">Units in vs units out, per month (garment trade metric)</p></div>
+        <span class="spacer"></span>
+        <div class="chart-legend"><span><i style="background:var(--vermilion)"></i>Out (sales)</span><span><i style="background:var(--grey-400)"></i>In (purchases)</span></div>
+      </div>
+      <div class="chart-box" id="chart-trouser"></div>
+    </div>
+
+    <div class="card b-6">
+      <div class="card-head">
+        <div><h3 class="card-title">Recent bills</h3><p class="card-sub">Across all document types</p></div>
+        <span class="spacer"></span>
+        <a class="cta-link" href="invoices.html" data-goto="invoices.html">Open history <span class="arr">→</span></a>
+      </div>
+      <div class="mini-inv">
+        <a class="mi-row" href="invoices.html"><span class="mi-no">INV-0013</span><span class="mi-buyer">Acme Industries · Invoice</span><span class="badge warn">Unpaid</span><span class="mi-amt">₹582.75</span></a>
+        <a class="mi-row" href="invoices.html"><span class="mi-no">CHL-0042</span><span class="mi-buyer">Krishna Textiles · Challan</span><span class="badge neutral">Open</span><span class="mi-amt">₹9,860.00</span></a>
+        <a class="mi-row" href="invoices.html"><span class="mi-no">INV-0012</span><span class="mi-buyer">Acme Industries · Invoice</span><span class="badge warn">Unpaid</span><span class="mi-amt">₹582.75</span></a>
+        <a class="mi-row" href="invoices.html"><span class="mi-no">CRN-0007</span><span class="mi-buyer">Beta Engineers · Credit note</span><span class="badge info">Adjusts INV-0008</span><span class="mi-amt">−₹210.00</span></a>
+        <div class="empty" style="padding:18px"><span>No more recent bills found.</span></div>
+      </div>
+    </div>
+
+    <div class="card b-6 alt">
+      <div class="card-head">
+        <div><h3 class="card-title">Recent transactions</h3><p class="card-sub">CC (credit book) &amp; CS (cash book) entries</p></div>
+        <span class="spacer"></span>
+        <a class="cta-link" href="transactions.html" data-goto="transactions.html">Open ledger <span class="arr">→</span></a>
+      </div>
+      <div class="mini-inv">
+        <a class="mi-row" href="transactions.html"><span class="mi-no">TXN-311</span><span class="mi-buyer">Acme Industries · Payment · UTR 8841</span><span class="book-pill cs">CS ₹1,20,000</span></a>
+        <a class="mi-row" href="transactions.html"><span class="mi-no">TXN-310</span><span class="mi-buyer">Gamma Constructions · Sale · 18 bales</span><span class="book-pill cc">CC ₹86,500</span></a>
+        <a class="mi-row" href="transactions.html"><span class="mi-no">TXN-309</span><span class="mi-buyer">Krishna Textiles · Payment · Cash</span><span class="book-pill cs">CS ₹22,400</span></a>
+        <a class="mi-row" href="transactions.html"><span class="mi-no">TXN-308</span><span class="mi-buyer">Beta Engineers · Sale · 6 bales</span><span class="book-pill cc">CC ₹41,200</span></a>
+      </div>
+    </div>
+  </div>
+
+</main></div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  AuroraCharts.spark('sp-sales',  { values: [3.1,3.4,3.2,3.9,4.3,4.8], color: 'signal' });
+  AuroraCharts.spark('sp-pay',    { values: [2.8,2.9,3.0,3.2,3.4,3.6], color: 'black' });
+  AuroraCharts.spark('sp-parcel', { values: [260,290,275,310,316,342], color: 'grey' });
+  AuroraCharts.spark('sp-ledger', { values: [58,64,71,69,80,86], color: 'gold' });
+
+  AuroraCharts.bars('chart-salespay', {
+    labels: ['Apr','May','Jun','Jul','Aug','Sep'],
+    series: [
+      { name: 'Sales',    color: 'signal', values: [312000, 358000, 341000, 402000, 429000, 482650] },
+      { name: 'Payments', color: 'black',  values: [286000, 301000, 322000, 348000, 335000, 361940] }
+    ],
+    w: 640, h: 250
+  });
+
+  AuroraCharts.donut('chart-parcels', {
+    values: [142, 96, 64, 40],
+    colors: ['signal', 'black', 'grey', 'muted'],
+    center: '342', sub: 'parcels', size: 168
+  });
+
+  AuroraCharts.line('chart-trouser', {
+    labels: ['Apr','May','Jun','Jul','Aug','Sep'],
+    series: [
+      { name: 'Out', color: 'signal', values: [1240, 1310, 1180, 1420, 1395, 1508] },
+      { name: 'In',  color: 'grey',   values: [900, 1100, 1000, 1200, 1150, 1240] }
+    ],
+    w: 560, h: 230
+  });
+</script>
+</body>
+</html>

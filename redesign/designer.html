@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Template Designer | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+<style>
+  .canvas-note { position:absolute; top:10px; left:14px; font-size:11px; color:var(--text-2); background:var(--white); border:1px solid var(--border); padding:3px 9px; border-radius:var(--r-sm); }
+  .bc-bars { display:flex; gap:1.5px; align-items:flex-end; height:34px; }
+  .bc-bars i { width:2.5px; background:var(--black); display:block; }
+</style>
+</head>
+<body data-page="designer">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content flush"><main id="body" class="designer">
+
+  <!-- ===== top toolbar ===== -->
+  <div class="d-toolbar">
+    <div class="dgroup">
+      <a class="d-btn" href="templates.html"><i data-icon="chevleft" data-size="sm"></i>Back</a>
+      <button class="d-btn" onclick="toast('Template saved','label leelamani · layout JSON written.','ok')"><i data-icon="save" data-size="sm"></i>Save</button>
+      <span class="d-btn" style="cursor:default;font-weight:700">Label leelamani</span>
+      <span class="badge hl" style="cursor:default" title="Label mode">Barcode Mode ✓</span>
+    </div>
+    <div class="dgroup">
+      <button class="d-btn" data-popmenu="tb-insert"><i data-icon="text" data-size="sm"></i>Text <span class="d-caret">▼</span></button>
+      <button class="d-btn" data-popmenu="tb-table"><i data-icon="table" data-size="sm"></i>Table <span class="d-caret">▼</span></button>
+      <button class="d-btn" data-popmenu="tb-shapes"><i data-icon="shapes" data-size="sm"></i>Shapes <span class="d-caret">▼</span></button>
+      <button class="d-btn" data-popmenu="tb-media"><i data-icon="image" data-size="sm"></i>Media <span class="d-caret">▼</span></button>
+      <button class="d-btn" data-popmenu="tb-components"><i data-icon="components" data-size="sm"></i>Components <span class="d-caret">▼</span></button>
+      <button class="d-btn" data-popmenu="tb-code"><i data-icon="barcode" data-size="sm"></i>Code <span class="d-caret">▼</span></button>
+    </div>
+    <div class="dgroup">
+      <button class="d-btn on" data-tool="select" title="Select"><i data-icon="cursor" data-size="sm"></i>Select</button>
+      <button class="d-btn" data-tool="pan" title="Pan"><i data-icon="hand" data-size="sm"></i>Pan</button>
+      <button class="d-btn" data-tool="pen" title="Pen"><i data-icon="pen" data-size="sm"></i>Pen</button>
+      <button class="d-btn" data-tool="straight" title="Straight"><i data-icon="straight" data-size="sm"></i>Straight</button>
+    </div>
+    <div class="dgroup">
+      <button class="d-btn" data-modal-open="modal-page" title="Configure page dimensions, paper size &amp; margins"><i data-icon="page" data-size="sm"></i>Page</button>
+      <button class="d-btn" data-modal-open="modal-stock" title="Label stock &amp; strip layout"><i data-icon="labels" data-size="sm"></i>Label Stock</button>
+      <button class="d-btn" data-modal-open="modal-strip" title="How the strip looks"><i data-icon="grid" data-size="sm"></i>Strip Preview</button>
+      <button class="d-btn" data-modal-open="modal-bulk" title="Bulk Label Print window"><i data-icon="printer" data-size="sm"></i>Bulk Print</button>
+    </div>
+    <div class="dgroup">
+      <button class="d-btn toggled" aria-pressed="true" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed')!=='true')"><i data-icon="grid" data-size="sm"></i>Grid</button>
+      <button class="d-btn toggled" aria-pressed="true"><i data-icon="magnet" data-size="sm"></i>Snap</button>
+      <button class="d-btn" onclick="toast('Magnet off','Element snapping disabled for this session.')"><i data-icon="magnet" data-size="sm"></i>Magnet</button>
+      <button class="d-btn" data-modal-open="modal-keys" title="Help"><i data-icon="help" data-size="sm"></i>Help</button>
+    </div>
+    <div class="dgroup">
+      <button class="d-btn" onclick="toast('Action undone.','Designer history stepped back.')"><i data-icon="undo" data-size="sm"></i>Undo</button>
+      <button class="d-btn" onclick="toast('Action redone.','Designer history stepped forward.')"><i data-icon="redo" data-size="sm"></i>Redo</button>
+    </div>
+    <span class="spacer" style="flex:1"></span>
+    <button class="btn sm" onclick="toast('Barcode Mode off','Switched to full-page invoice canvas (one page, margins).')">Exit Barcode Mode</button>
+  </div>
+
+  <div class="d-body">
+    <!-- ===== left tool rail ===== -->
+    <div class="d-left">
+      <button class="d-tool on" data-tool="select"><i data-icon="cursor"></i><span>Select</span></button>
+      <button class="d-tool" data-tool="text"><i data-icon="text"></i><span>Text</span></button>
+      <button class="d-tool" data-tool="table"><i data-icon="table"></i><span>Table</span></button>
+      <button class="d-tool" data-tool="rect"><i data-icon="shapes"></i><span>Shape</span></button>
+      <button class="d-tool" data-tool="image"><i data-icon="image"></i><span>Image</span></button>
+      <button class="d-tool" data-tool="barcode"><i data-icon="barcode"></i><span>Barcode</span></button>
+      <button class="d-tool" data-tool="qr"><i data-icon="qr"></i><span>QR</span></button>
+      <button class="d-tool" data-tool="pen"><i data-icon="pen"></i><span>Pen</span></button>
+      <button class="d-tool" data-tool="group"><i data-icon="layers"></i><span>Group</span></button>
+      <button class="d-tool" data-tool="layers"><i data-icon="layers"></i><span>Layers</span></button>
+    </div>
+
+    <!-- ===== canvas ===== -->
+    <div class="d-canvas-wrap" id="canvasWrap">
+      <div class="ruler-x"></div>
+      <div class="ruler-y"></div>
+      <div class="d-canvas-zone">
+        <div class="d-canvas" id="canvas" style="width:318px;height:570px" title="Label 20×50 mm · 3 across · zoom 400%">
+          <div class="canvas-note">Printable 20×50 mm · Margin T:0 B:0 L:0 R:0 · Stock L:0 R:0 · 1 across</div>
+          <!-- label cell content -->
+          <div class="canvas-elm sel" style="left:10px;top:12px;right:10px;height:26px;background:var(--springwood)">
+            <div style="padding:4px 8px;font-weight:800;font-size:10px;letter-spacing:.04em">SHREE TRADERS</div>
+            <span class="h"></span>
+          </div>
+          <div class="canvas-elm" style="left:24px;top:52px">
+            <div class="bc-bars"><i style="height:26px"></i><i style="height:34px"></i><i style="height:20px"></i><i style="height:30px"></i><i style="height:34px"></i><i style="height:22px"></i><i style="height:34px"></i><i style="height:26px"></i><i style="height:32px"></i><i style="height:18px"></i><i style="height:34px"></i><i style="height:24px"></i><i style="height:30px"></i><i style="height:34px"></i><i style="height:20px"></i><i style="height:32px"></i><i style="height:26px"></i><i style="height:34px"></i></div>
+            <div class="mono" style="font-size:8px;margin-top:2px;text-align:center">8901234567890</div>
+          </div>
+          <div class="canvas-elm" style="left:10px;top:118px;width:calc(100% - 20px)">
+            <div style="font-size:8.5px;color:var(--text-2);display:flex;justify-content:space-between"><span>MRP ₹55.00</span><span>₹{{rate}}</span></div>
+          </div>
+          <div class="canvas-elm" style="left:10px;bottom:10px;width:calc(100% - 20px);border:1px dashed var(--grey-400)">
+            <div style="font-size:7.5px;color:var(--text-3);text-align:center;padding:3px">Batch No. ({{batch_label}})</div>
+          </div>
+        </div>
+      </div>
+      <!-- ghost duplicate strip beside canvas -->
+      <div style="position:absolute;left:8px;top:120px;transform:rotate(-4deg);opacity:.75">
+        <div style="background:var(--white);border:1px solid var(--grey-400);padding:8px 10px;font-size:9px;box-shadow:var(--sh-1)">
+          <span class="mono">DIE-CUT · 3 ACROSS · GAP 2mm</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== right panel ===== -->
+    <div class="d-right">
+      <div class="d-tabs" data-tabs="dprops" data-tabs-for="[data-pane=dp]">
+        <button class="on" data-tab="props">Properties</button>
+        <button data-tab="layers">Layers</button>
+      </div>
+
+      <div class="d-props" data-pane="dp" data-f="props">
+        <div class="banner warn" style="margin-bottom:14px;padding:9px 12px;font-size:12px"><i data-icon="alert" data-size="sm"></i><span>Barcode Mode active — this canvas is ONE label cell. Use <b>Page</b> (or <b>Label Stock</b>) to configure strip columns, gaps, margins, corners &amp; print orientation.</span></div>
+
+        <div class="section-label" style="margin-top:0">Text element</div>
+        <div class="field" style="margin-bottom:10px"><label>Content</label>
+          <textarea class="input" rows="2">SHREE TRADERS</textarea></div>
+        <div class="form-grid">
+          <div class="field"><label>Font</label>
+            <select class="input"><option>Arial</option><option selected>Segoe UI</option><option>Courier New</option><option>Custom — Outfit (Google)</option></select></div>
+          <div class="field"><label>Size</label><input class="input mono" value="10"></div>
+          <div class="field"><label>Weight</label>
+            <div class="seg sm"><button>400</button><button class="on">700</button><button>800</button></div></div>
+          <div class="field"><label>Align</label>
+            <div class="seg sm"><button class="on" title="Align Left"><i data-icon="alignleft" data-size="sm"></i></button><button title="Align Center"><i data-icon="aligncenter" data-size="sm"></i></button><button title="Align Right"><i data-icon="alignright" data-size="sm"></i></button></div></div>
+          <div class="field"><label>X (mm)</label><input class="input mono" value="2.4"></div>
+          <div class="field"><label>Y (mm)</label><input class="input mono" value="1.6"></div>
+          <div class="field"><label>W (mm)</label><input class="input mono" value="15.2"></div>
+          <div class="field"><label>H (mm)</label><input class="input mono" value="3.4"></div>
+          <div class="field full"><label>Color</label>
+            <div class="row">
+              <span style="width:30px;height:30px;background:var(--black);border:1px solid var(--border-2)"></span>
+              <input class="input mono" value="#000000">
+              <button class="rbtn" data-modal-open="modal-color">Choose Color…</button>
+            </div></div>
+          <div class="field full"><label>Variable insert</label>
+            <div class="row wrap">
+              <select class="input" style="flex:1;min-width:150px"><option>Choose variable to add…</option><option>{{buyer_name}}</option><option>{{rate}}</option><option>{{batch_label}}</option></select>
+              <button class="rbtn" onclick="toast('Inserted','Variable added into text at cursor position.','ok')"><i data-icon="plus" data-size="sm"></i>Add</button>
+            </div></div>
+        </div>
+
+        <div class="section-label">Arrange</div>
+        <div class="row wrap" style="gap:6px">
+          <button class="rbtn" onclick="toast('Layer order','Selected element moved up.')">Bring Forward</button>
+          <button class="rbtn" onclick="toast('Layer order','Selected element moved down.')">Send Backward</button>
+          <button class="rbtn" onclick="toast('Grouped','2 elements grouped (Ctrl+G).')">Create Group</button>
+          <button class="rbtn" onclick="toast('Clipped','Element clipped to container shape.')">Clip to Container</button>
+          <button class="rbtn danger" onclick="toast('Deleted','Element removed (undoable).')"><i data-icon="trash" data-size="sm"></i></button>
+        </div>
+
+        <div class="divider"></div>
+        <button class="btn block secondary" onclick="toast('Saved as component','Reusable component added to the Components menu.','ok')">Save selection as component</button>
+      </div>
+
+      <div class="d-props" data-pane="dp" data-f="layers" style="display:none">
+        <div class="layer-row sel"><span class="l-ic"><i data-icon="text" data-size="sm"></i></span><span class="l-name">SHREE TRADERS</span><span class="l-t">TEXT</span><i data-icon="eye" data-size="sm"></i><i data-icon="lock" data-size="sm"></i></div>
+        <div class="layer-row"><span class="l-ic"><i data-icon="barcode" data-size="sm"></i></span><span class="l-name">EAN-13 · 8901234567890</span><span class="l-t">CODE</span><i data-icon="eye" data-size="sm"></i><i data-icon="lock" data-size="sm"></i></div>
+        <div class="layer-row"><span class="l-ic"><i data-icon="text" data-size="sm"></i></span><span class="l-name">MRP line</span><span class="l-t">TEXT</span><i data-icon="eye" data-size="sm"></i><i data-icon="lock" data-size="sm"></i></div>
+        <div class="layer-row"><span class="l-ic"><i data-icon="components" data-size="sm"></i></span><span class="l-name">Batch footer</span><span class="l-t">GROUP</span><i data-icon="eye" data-size="sm"></i><i data-icon="lock" data-size="sm"></i></div>
+        <div class="divider"></div>
+        <p class="faint" style="font-size:11.5px">Eye toggles visibility · lock freezes from selection. Drag rows to reorder (prototype: click brings to front).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== footer ===== -->
+  <div class="d-foot">
+    <span><b>LABEL 20 × 50 mm</b> · 3 across · strip 105 mm</span>
+    <span>X: — mm</span><span>Y: — mm</span>
+    <span class="badge neutral" style="cursor:default">Canvas: ONE label cell</span>
+    <span class="zoom">
+      <button class="rbtn" onclick="toast('Fit to viewport','Zoom fitted &amp; centred (Ctrl+0).')">FIT</button>
+      <button class="icon-btn" style="width:26px;height:26px" onclick="zoomBy(-.1)"><i data-icon="zoomout" data-size="sm"></i></button>
+      <input type="range" min="50" max="400" value="400" id="zoomRange">
+      <button class="icon-btn" style="width:26px;height:26px" onclick="zoomBy(.1)"><i data-icon="zoomin" data-size="sm"></i></button>
+      <span class="mono" id="zoomPct">400%</span>
+    </span>
+  </div>
+</main></div>
+
+<!-- ===== Page dialog ===== -->
+<div class="modal-back" id="modal-page">
+  <div class="modal w-md" style="width:620px">
+    <div class="modal-head"><span class="mic"><i data-icon="page"></i></span>
+      <div style="flex:1"><h3>Page &amp; margin settings</h3><div class="msub">Dashed guides on canvas show the printable margin boundary. All elements respect these bounds in preview, printing and PDF export.</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="section-label" style="margin-top:0">Page dimensions</div>
+      <div class="form-grid">
+        <div class="field"><label>Paper size</label>
+          <select class="input"><option selected>Custom</option><option>A4</option><option>Letter</option><option>80 mm roll</option></select></div>
+        <div class="field"><label>Preset</label>
+          <select class="input"><option>Label 20×50 mm</option><option>Label 33×75 mm</option><option>Custom</option></select></div>
+        <div class="field"><label>W (mm)</label><input class="input mono" value="20"></div>
+        <div class="field"><label>H (mm)</label><input class="input mono" value="50"></div>
+      </div>
+      <label class="checkbox" style="margin-top:10px"><input type="checkbox"><span class="box"><i data-icon="check" data-size="sm"></i></span>Continuous roll (Auto-height for POS)</label>
+
+      <div class="section-label">Page margins (mm)</div>
+      <label class="checkbox" style="margin-bottom:10px"><input type="checkbox" checked><span class="box"><i data-icon="check" data-size="sm"></i></span>Shift elements when margins change</label>
+      <div class="form-grid">
+        <div class="field"><label>Top</label><input class="input mono" value="0"></div>
+        <div class="field"><label>Bottom</label><input class="input mono" value="0"></div>
+        <div class="field"><label>Left</label><input class="input mono" value="3.5"></div>
+        <div class="field"><label>Right</label><input class="input mono" value="0"></div>
+      </div>
+      <div class="row wrap" style="margin-top:10px">
+        <span class="faint" style="font-size:11.5px;width:100%">Quick presets:</span>
+        <button class="rbtn" onclick="toast('Margins applied','Standard 8mm set; elements shifted.','ok')">Standard (8mm)</button>
+        <button class="rbtn" onclick="toast('Margins applied','Compact 5mm set.','ok')">Compact (5mm)</button>
+        <button class="rbtn" onclick="toast('Margins applied','Wide 12mm set.','ok')">Wide (12mm)</button>
+        <button class="rbtn" onclick="toast('Margins applied','Zero margins.','ok')">Zero (0mm)</button>
+      </div>
+      <div class="row" style="margin-top:14px;gap:8px">
+        <button class="btn secondary sm" style="flex:1" onclick="toast('Elements aligned','All elements aligned to margins.','ok')">Align All Elements to Margins</button>
+        <button class="btn ghost sm" style="flex:1" onclick="toast('Full page dialog','Page dialog with live visual margin editor (prototype).')">Open Full Page Dialog…</button>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-page');toast('Page updated','Canvas re-sized; guides re-drawn.','ok')">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Label Stock dialog ===== -->
+<div class="modal-back" id="modal-stock">
+  <div class="modal w-md" style="width:640px">
+    <div class="modal-head"><span class="mic"><i data-icon="labels"></i></span>
+      <div style="flex:1"><h3>Barcode Mode — describe your label roll</h3><div class="msub">Stock geometry &amp; print orientation for the strip</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="section-label" style="margin-top:0">Stock type</div>
+      <div class="grid g2" style="gap:8px">
+        <button class="card hoverable" style="text-align:left;cursor:pointer;border-color:var(--black)">
+          <div class="row"><i data-icon="labels"></i><b>Die-cut labels</b></div>
+          <span class="faint" style="font-size:11.5px">Gaps between labels; sensor stops each one.</span>
+          <div class="strip-cells" style="padding:8px;margin-top:8px"><span class="strip-cell" style="min-width:46px;height:34px">L</span><span class="strip-cell" style="min-width:46px;height:34px">L</span><span class="strip-cell" style="min-width:46px;height:34px">L</span></div>
+        </button>
+        <button class="card hoverable" style="text-align:left;cursor:pointer">
+          <div class="row"><i data-icon="files"></i><b>Continuous — no gaps</b></div>
+          <span class="faint" style="font-size:11.5px">One long strip; cut by length or knife.</span>
+          <div class="strip-cells" style="padding:8px;margin-top:8px"><span class="strip-cell" style="min-width:170px;height:34px;border-right:1px dashed var(--grey-400);border-left:0">continuous strip</span></div>
+        </button>
+      </div>
+
+      <div class="section-label">Strip layout</div>
+      <div class="form-grid">
+        <div class="field"><label>Columns across</label><input class="input mono" value="3"></div>
+        <div class="field"><label>Gap (mm)</label><input class="input mono" value="2.0"></div>
+        <div class="field"><label>Corner radius (mm)</label><input class="input mono" value="0"></div>
+        <div class="field"><label>Auto-fit paper width</label>
+          <div class="seg" style="margin-top:2px"><button class="on">On</button><button>Off</button></div></div>
+      </div>
+
+      <div class="section-label">Print orientation</div>
+      <div class="row wrap" style="gap:8px">
+        <button class="chip on">0° — landscape feed</button>
+        <button class="chip">90°</button>
+        <button class="chip">180°</button>
+        <button class="chip">270°</button>
+      </div>
+      <p class="faint" style="font-size:11.5px;margin:10px 0 0">0° prints the strip sideways with self-rotation; 90/180/270 rotate each cell. Driver path keeps PORTRAIT-always with chooseForm transposition matching.</p>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-stock');toast('Label stock applied','Strip geometry re-computed; canvas cell re-mapped.','ok')">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Strip preview ===== -->
+<div class="modal-back" id="modal-strip">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="grid"></i></span>
+      <div style="flex:1"><h3>Strip Preview — label leelamani</h3><div class="msub">How the strip looks · first 6 of 42 cells · WYSIWYG (same renderer as print)</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body" style="background:var(--springwood)">
+      <div class="strip-cells">
+        <span class="strip-cell" style="min-width:150px;height:110px;flex-direction:column;display:flex;align-items:center;justify-content:center;gap:4px"><b style="font-size:9px;letter-spacing:.06em">SHREE TRADERS</b><span class="bc-bars" style="height:30px"><i style="height:22px"></i><i style="height:30px"></i><i style="height:16px"></i><i style="height:26px"></i><i style="height:30px"></i><i style="height:18px"></i><i style="height:28px"></i><i style="height:22px"></i></span><span class="mono" style="font-size:7px">8901234567890</span><span style="font-size:7.5px;color:var(--text-2)">MRP ₹55.00</span></span>
+        <span class="strip-cell" style="min-width:150px;height:110px;flex-direction:column;display:flex;align-items:center;justify-content:center;gap:4px"><b style="font-size:9px;letter-spacing:.06em">SHREE TRADERS</b><span class="bc-bars" style="height:30px"><i style="height:26px"></i><i style="height:18px"></i><i style="height:30px"></i><i style="height:22px"></i><i style="height:30px"></i><i style="height:16px"></i><i style="height:24px"></i><i style="height:30px"></i></span><span class="mono" style="font-size:7px">8901234567891</span><span style="font-size:7.5px;color:var(--text-2)">MRP ₹55.00</span></span>
+        <span class="strip-cell" style="min-width:150px;height:110px;flex-direction:column;display:flex;align-items:center;justify-content:center;gap:4px"><b style="font-size:9px;letter-spacing:.06em">SHREE TRADERS</b><span class="bc-bars" style="height:30px"><i style="height:20px"></i><i style="height:28px"></i><i style="height:30px"></i><i style="height:16px"></i><i style="height:26px"></i><i style="height:30px"></i><i style="height:22px"></i><i style="height:18px"></i></span><span class="mono" style="font-size:7px">8901234567892</span><span style="font-size:7.5px;color:var(--text-2)">MRP ₹55.00</span></span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <span class="badge neutral" style="cursor:default">Gap 2 mm</span>
+        <span class="badge neutral" style="cursor:default">3 across</span>
+        <span class="badge neutral" style="cursor:default">Strip 105 mm</span>
+        <span class="badge hl" style="cursor:default">Pixel-identical to TSC output</span>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Close</button>
+      <button class="btn" data-modal-open="modal-bulk">Open Bulk Print…</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Bulk print ===== -->
+<div class="modal-back" id="modal-bulk">
+  <div class="modal w-xl">
+    <div class="modal-head"><span class="mic"><i data-icon="printer"></i></span>
+      <div style="flex:1"><h3>Bulk Label Print — label leelamani</h3><div class="msub">Print many labels with different values. One row = one print line. Type values into the variable columns, set copies, then Print All. Enter moves to the next row; the last Enter adds a new row. Use ↑/← → to navigate.</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Size {{size}}</th><th>Sizea {{sizea}}</th><th>Copies</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td><div class="row" style="gap:6px"><input class="input mono" style="width:90px" value="28"><select class="input" style="width:70px"><option>▼</option></select></div></td>
+              <td><div class="row" style="gap:6px"><input class="input mono" style="width:90px" value="S"><select class="input" style="width:70px"><option>▼</option></select></div></td>
+              <td><input class="input mono" style="width:80px" value="1"></td>
+              <td class="actions"><button class="rbtn danger" onclick="toast('Row removed','Print line deleted (Ctrl+Delete).')"><i data-icon="trash" data-size="sm"></i></button></td>
+            </tr>
+            <tr>
+              <td><div class="row" style="gap:6px"><input class="input mono" style="width:90px" value="30"><select class="input" style="width:70px"><option>▼</option></select></div></td>
+              <td><div class="row" style="gap:6px"><input class="input mono" style="width:90px" value="M"><select class="input" style="width:70px"><option>▼</option></select></div></td>
+              <td><input class="input mono" style="width:80px" value="2"></td>
+              <td class="actions"><button class="rbtn danger" onclick="toast('Row removed','Print line deleted (Ctrl+Delete).')"><i data-icon="trash" data-size="sm"></i></button></td>
+            </tr>
+            <tr>
+              <td><div class="row" style="gap:6px"><input class="input mono" style="width:90px" value="32"><select class="input" style="width:70px"><option>▼</option></select></div></td>
+              <td><div class="row" style="gap:6px"><input class="input mono" style="width:90px" value="L"><select class="input" style="width:70px"><option>▼</option></select></div></td>
+              <td><input class="input mono" style="width:80px" value="1"></td>
+              <td class="actions"><button class="rbtn danger" onclick="toast('Row removed','Print line deleted (Ctrl+Delete).')"><i data-icon="trash" data-size="sm"></i></button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="row wrap" style="margin-top:12px;gap:8px">
+        <button class="btn ghost sm" onclick="toast('Row added','Insert (Alt+N) pressed.')"><i data-icon="plus" data-size="sm"></i>Add a print line (Insert / Alt+N)</button>
+        <span class="spacer"></span>
+        <span class="kbd">Insert</span><span class="kbd">Ctrl+Enter print all</span><span class="kbd">Ctrl+Delete row</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="rbtn" onclick="toast('Nothing To Print','Add at least one print line with values.')">+ Row</button>
+      <button class="rbtn" onclick="toast('Row deleted','Selected print line removed.')">Del…</button>
+      <span class="muted" style="font-size:12px">3 labels · 3 strip rows · 4 copies…</span>
+      <span class="spacer"></span>
+      <select class="input" style="width:190px"><option>Printer TSC TA210</option><option>TSC TE244</option></select>
+      <button class="btn ghost" onclick="toast('Test Label Sent','TSC TA210 · 1 label.','ok')">Test…</button>
+      <button class="btn accent" onclick="closeModal('modal-bulk');toast('Labels Sent','4 labels · 2 strip rows · TSC TA210.','ok')">Print All (Ctrl+Enter)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== color chooser ===== -->
+<div class="modal-back" id="modal-color">
+  <div class="modal w-sm">
+    <div class="modal-head"><span class="mic"><i data-icon="shapes"></i></span>
+      <div style="flex:1"><h3>Color Chooser</h3><div class="msub">RGB(0, 0, 0) · #000000</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div style="height:150px;background:linear-gradient(135deg,#fff 0%,#000 100%);border:1px solid var(--border-2);margin-bottom:12px;cursor:crosshair" title="Saturation / value field"></div>
+      <div class="form-grid">
+        <div class="field"><label>R</label><input class="input mono" value="0"></div>
+        <div class="field"><label>G</label><input class="input mono" value="0"></div>
+        <div class="field"><label>B</label><input class="input mono" value="0"></div>
+        <div class="field"><label>HEX</label><input class="input mono" value="#000000"></div>
+      </div>
+      <div class="row wrap" style="margin-top:12px;gap:6px">
+        <span class="faint" style="font-size:11px;width:100%">Swatches</span>
+        <span style="width:26px;height:26px;background:#000;border:1px solid var(--border)"></span>
+        <span style="width:26px;height:26px;background:#FF4713"></span>
+        <span style="width:26px;height:26px;background:#FFCE00"></span>
+        <span style="width:26px;height:26px;background:#F4F1EB;border:1px solid var(--border)"></span>
+        <span style="width:26px;height:26px;background:#595959"></span>
+        <span style="width:26px;height:26px;background:#fff;border:1px solid var(--border)"></span>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-color');toast('Color applied','Element fill updated.','ok')">Use Color</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  /* toolbar popovers */
+  window.POPMENUS = {
+    'tb-insert': [
+      { head: 'Insert' },
+      { ic: 'text', t: 'Add dynamic or static text label', kbd: 'T' },
+      { ic: 'table', t: 'Add line-item billing table with GST', kbd: 'B' },
+      { ic: 'page', t: 'Add pre-built or custom saved template layout blocks' },
+    ],
+    'tb-table': [
+      { head: 'Table' },
+      { ic: 'table', t: 'Add Table Column' },
+      { ic: 'code', t: 'Add Table — pick a column to add' },
+    ],
+    'tb-shapes': [
+      { head: 'Shapes & vectors' },
+      { ic: 'shapes', t: 'Rectangle / Rounded' },
+      { ic: 'shapes', t: 'Circle / Ellipse / Chord / Arc' },
+      { ic: 'pen', t: 'Curved vector path (pen)' },
+      { ic: 'straight', t: 'Line / Arrow' },
+      { ic: 'star', t: 'Star / Polygon' },
+    ],
+    'tb-media': [
+      { head: 'Media' },
+      { ic: 'image', t: 'Add image, SVG, or icons' },
+      { ic: 'image', t: 'Business Logo / Image' },
+      { ic: 'star', t: 'App Logo Applied' },
+    ],
+    'tb-components': [
+      { head: 'Components' },
+      { ic: 'components', t: 'Saved components & groups' },
+      { ic: 'layers', t: 'Pre-built layout blocks' },
+    ],
+    'tb-code': [
+      { head: 'Code & symbols' },
+      { ic: 'barcode', t: 'Add dynamic Barcode (CODE128 / EAN-13)' },
+      { ic: 'qr', t: 'Add dynamic QR or Barcode (UPI payload / URL)' },
+      { ic: 'code', t: 'Custom SVG Path' },
+    ],
+  };
+
+  /* tool selection (rail + toolbar stay in sync) */
+  document.querySelectorAll('[data-tool]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.getAttribute('data-tool');
+      document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('on'));
+      document.querySelectorAll('[data-tool="' + t + '"]').forEach(b => b.classList.add('on'));
+      if (t === 'text') toast('Text tool','Click on the canvas to place a text element.');
+      if (t === 'pen') toast('Pen tool','Click to add points; Enter commits, Esc cancels.');
+    });
+  });
+
+  /* canvas element selection */
+  document.querySelectorAll('.canvas-elm').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      document.querySelectorAll('.canvas-elm').forEach(x => x.classList.remove('sel'));
+      el.classList.add('sel');
+    });
+  });
+  document.getElementById('canvas').addEventListener('click', e => {
+    if (e.target.id === 'canvas') document.querySelectorAll('.canvas-elm').forEach(x => x.classList.remove('sel'));
+  });
+
+  /* zoom */
+  const zr = document.getElementById('zoomRange');
+  zr.addEventListener('input', () => document.getElementById('zoomPct').textContent = zr.value + '%');
+  function zoomBy(d) { zr.value = Math.max(50, Math.min(400, +zr.value + d * 100)); zr.dispatchEvent(new Event('input')); }
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Create account | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+<style>
+  .auth-form { display: grid; gap: 15px; max-width: 400px; }
+  .auth-form h1 { font-size: 30px; font-weight: 800; margin: 0 0 2px; letter-spacing: -.01em; }
+  .auth-form .lead { color: var(--text-2); margin: 0 0 10px; font-size: 14px; }
+  .strength { display: flex; gap: 5px; margin-top: 2px; }
+  .strength i { height: 4px; flex: 1; background: var(--grey-100); border-radius: 1px; }
+  .strength i.on { background: var(--black); }
+  .strength i.on.mid { background: var(--supernova); }
+  .strength i.on.weak { background: var(--vermilion); }
+  .strength-label { font-size: 11.5px; color: var(--text-3); }
+  .or-rule { display: flex; align-items: center; gap: 12px; color: var(--text-3); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+  .or-rule::before, .or-rule::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .google-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    min-height: 44px; width: 100%; border: 1px solid var(--black); border-radius: var(--r-sm);
+    background: var(--white); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+  .google-btn:hover { background: var(--springwood); }
+  .alert-err { display: none; }
+  .alert-err.show { display: flex; }
+</style>
+</head>
+<body class="auth">
+<a class="skip-link" href="#body">Skip to content</a>
+<div class="auth-wrap">
+  <main class="auth-card" id="body">
+    <div class="auth-logo-row">
+      <span class="brand-mark" style="width:38px;height:38px;font-size:15px">IS</span>
+      <span><span class="brand-name" style="font-size:16px">InvoiceStudio</span><br><span class="brand-sub">Bill design &amp; print</span></span>
+    </div>
+
+    <form class="auth-form" onsubmit="return doSignUp(event)">
+      <div>
+        <h1>Create an account</h1>
+        <p class="lead">One account runs your books: bills, purchases, stock, GST and labels.</p>
+      </div>
+
+      <div class="banner danger alert-err" id="errBox"><i data-icon="alert" data-size="sm"></i><span id="errMsg"></span></div>
+
+      <div class="field">
+        <label for="name">Full name</label>
+        <div class="input-wrap"><i data-icon="user" data-size="sm"></i>
+          <input class="input" id="name" placeholder="John Doe" autocomplete="name"></div>
+      </div>
+      <div class="field">
+        <label for="email">Email address</label>
+        <div class="input-wrap"><i data-icon="mail" data-size="sm"></i>
+          <input class="input" type="email" id="email" placeholder="you@firm.in" autocomplete="email"></div>
+      </div>
+      <div class="field">
+        <label for="pw">Create password</label>
+        <div class="input-wrap"><i data-icon="lock" data-size="sm"></i>
+          <input class="input" type="password" id="pw" placeholder="Must be at least 8 characters" autocomplete="new-password">
+          <button type="button" class="trail" onclick="togglePw(this)" title="Show password"><i data-icon="eye" data-size="sm"></i></button></div>
+        <div class="strength" id="strength"><i></i><i></i><i></i><i></i></div>
+        <span class="strength-label" id="strengthLabel">Use 8+ characters with a number and a symbol.</span>
+      </div>
+      <div class="field">
+        <label for="pw2">Confirm password</label>
+        <div class="input-wrap"><i data-icon="lock" data-size="sm"></i>
+          <input class="input" type="password" id="pw2" placeholder="Repeat password" autocomplete="new-password"></div>
+      </div>
+      <label class="checkbox"><input type="checkbox" id="terms"><span class="box"><i data-icon="check" data-size="sm"></i></span>
+        <span style="font-size:12.5px">I agree to the <a href="#" onclick="toast('Terms &amp; Conditions','Prototype: legal document viewer would open here.');return false">Terms &amp; Conditions</a> and <a href="#" onclick="toast('Privacy Notice','Prototype: privacy notice would open here.');return false">Privacy Notice</a></span></label>
+      <button class="btn block lg" type="submit" id="signupBtn">Create account</button>
+      <div class="or-rule">or</div>
+      <button class="google-btn" type="button" onclick="toast('Google Sign-Up','Firebase OAuth popup would open here.')"><i data-icon="google"></i>Sign up with Google</button>
+      <p class="center" style="margin:6px 0 0;font-size:13.5px">Already registered? <a href="index.html"><b>Sign in</b></a></p>
+    </form>
+  </main>
+
+  <aside class="auth-art" aria-hidden="true">
+    <span class="eyebrow">SET UP YOUR FIRM IN MINUTES</span>
+    <h2>Your first invoice can go out today.</h2>
+    <p>The guided first run seeds your business profile, catalog and a starter GST template — then the designer is one click away.</p>
+    <div class="auth-feats">
+      <div class="auth-feat"><span class="fic"><i data-icon="shield" data-size="sm"></i></span><span><b>Firebase-secured</b><span>Passwords are never stored locally; sessions refresh silently.</span></span></div>
+      <div class="auth-feat"><span class="fic"><i data-icon="database" data-size="sm"></i></span><span><b>Your data stays yours</b><span>SQLite lives on your machine; JSON backups anytime from Settings.</span></span></div>
+      <div class="auth-feat"><span class="fic"><i data-icon="database" data-size="sm"></i></span><span><b>Offline guest mode</b><span>No internet? Work locally and sync accounts later.</span></span></div>
+    </div>
+  </aside>
+</div>
+
+<script src="js/icons.js"></script>
+<script>
+  window.AuroraInjectIcons(document);
+  function togglePw(btn) {
+    const inp = btn.parentElement.querySelector('input');
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    btn.innerHTML = '<i data-icon="' + (show ? 'eyeoff' : 'eye') + '" data-size="sm"></i>';
+    AuroraInjectIcons(btn);
+  }
+  const pw = document.getElementById('pw');
+  pw.addEventListener('input', () => {
+    const v = pw.value;
+    let score = 0;
+    if (v.length >= 8) score++;
+    if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
+    if (/\d/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v)) score++;
+    const bars = document.querySelectorAll('#strength i');
+    bars.forEach((b, i) => { b.className = i < score ? (score <= 2 ? 'on weak' : score === 3 ? 'on mid' : 'on') : ''; });
+    document.getElementById('strengthLabel').textContent =
+      ['Use 8+ characters with a number and a symbol.', 'Weak — add length and variety.', 'Okay — add a symbol to strengthen.', 'Good password.', 'Strong password.'][score];
+  });
+  function doSignUp(ev) {
+    ev.preventDefault();
+    const err = document.getElementById('errBox'), msg = document.getElementById('errMsg');
+    const name = document.getElementById('name').value.trim();
+    const mail = document.getElementById('email').value.trim();
+    const p1 = pw.value, p2 = document.getElementById('pw2').value;
+    const fail = t => { msg.textContent = t; err.classList.add('show'); return false; };
+    if (!name) return fail('Please enter your full name.');
+    if (!mail) return fail('Please enter your email address.');
+    if (p1.length < 8) return fail('Password must be at least 8 characters.');
+    if (p1 !== p2) return fail('Passwords do not match.');
+    if (!document.getElementById('terms').checked) return fail('Please accept the Terms & Conditions.');
+    err.classList.remove('show');
+    const btn = document.getElementById('signupBtn');
+    btn.textContent = 'Creating account…'; btn.disabled = true;
+    setTimeout(() => { location.href = 'dashboard.html'; }, 700);
+    return false;
+  }
+</script>
+</body>
+</html>

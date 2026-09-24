@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preparing workspace… | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<style>
+  body { overflow: hidden; }
+  .boot { display: grid; place-items: center; height: 100vh; gap: 18px; background: var(--white); }
+  .boot .ldr { width: 44px; height: 44px; border: 3px solid var(--grey-200); border-top-color: var(--black); border-radius: 50%; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .boot h1 { font-size: 18px; font-weight: 800; margin: 0; }
+  .boot p { color: var(--text-2); font-size: 13px; margin: 0; }
+  .boot .steps { display: grid; gap: 7px; margin-top: 10px; font-size: 12.5px; color: var(--text-2); min-width: 320px; }
+  .boot .steps .st { display: flex; align-items: center; gap: 9px; }
+  .boot .steps .st.done { color: var(--ok); }
+  .boot .steps .st.now { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#body">Skip to content</a>
+<main class="boot" id="body">
+  <div class="center">
+    <span class="brand-mark" style="width:44px;height:44px;font-size:17px;margin-bottom:14px;display:inline-grid">IS</span>
+    <div class="ldr" style="margin:0 auto 16px"></div>
+    <h1>Preparing your workspace…</h1>
+    <p>Session check, seed pass and cache warm-up — the same boot order as the app.</p>
+    <div class="steps" style="text-align:left;margin-top:18px">
+      <span class="st done" id="s1"><i data-icon="check" data-size="sm"></i>Database manager &amp; services initialised</span>
+      <span class="st done" id="s2"><i data-icon="check" data-size="sm"></i>Session restored (Firebase refresh verified)</span>
+      <span class="st now" id="s3"><i data-icon="refresh" data-size="sm"></i>Seeding catalog &amp; warming view caches…</span>
+      <span class="st" id="s4"><i data-icon="clock" data-size="sm"></i>Recurring invoice sweep &amp; expense backfill</span>
+    </div>
+    <p style="margin-top:20px;font-size:12px">Redirecting to the <a href="dashboard.html">dashboard</a>…</p>
+  </div>
+</main>
+<script src="js/icons.js"></script>
+<script>
+  AuroraInjectIcons(document);
+  setTimeout(() => { document.getElementById('s3').className = 'st done'; document.getElementById('s3').innerHTML = '<i data-icon="check" data-size="sm"></i>Seeding catalog &amp; warming view caches…'; AuroraInjectIcons(document); }, 900);
+  setTimeout(() => { document.getElementById('s4').className = 'st now'; AuroraInjectIcons(document); }, 1500);
+  setTimeout(() => { location.href = 'dashboard.html'; }, 2400);
+</script>
+</body>
+</html>

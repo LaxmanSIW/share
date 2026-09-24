@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transactions &amp; Ledger | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="transactions">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">SALES · TRANSACTIONS &amp; LEDGER</span>
+      <h1>Transactions &amp; Ledger</h1>
+      <div class="sub">CC book (credit) and CS book (cash) — sales, payments and parcels in one ledger.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Export Successful','transactions-2026-09.csv · 86 rows.','ok')"><i data-icon="download" data-size="sm"></i>Export CSV</button>
+      <button class="btn accent" data-modal-open="modal-txn"><i data-icon="plus" data-size="sm"></i>Record New Transaction</button>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi lead"><div class="k-label">Total sales</div><div class="k-value">₹4,82,650</div><span class="k-delta muted">CC + CS this month</span></div>
+    <div class="kpi"><div class="k-label">Payments received</div><div class="k-value">₹3,61,940</div><span class="k-delta pos">38 payment entries</span></div>
+    <div class="kpi"><div class="k-label">Net balance</div><div class="k-value">₹1,20,710</div><span class="k-delta neg">receivable</span></div>
+    <div class="kpi gold"><div class="k-label">Total pieces</div><div class="k-value">2,408</div><span class="k-delta muted">sales entries only</span></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="seg" id="bookSeg">
+        <button class="on">All Books</button><button>CC Book (Credit)</button><button>CS Book (Cash)</button>
+      </div>
+      <select class="input"><option>All Types</option><option>Sale</option><option>Payment</option></select>
+      <select class="input" style="min-width:180px"><option>Buyer / Firm — all</option><option>Acme Industries</option><option>Gamma Constructions</option><option>Beta Engineers</option><option>Krishna Textiles</option></select>
+      <span class="spacer"></span>
+      <button class="rbtn" onclick="toast('Filters cleared','Showing the full ledger.')"><i data-icon="x" data-size="sm"></i>Clear</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th class="sortable">Date <span class="arr">▲</span></th><th>Book</th><th>Type</th><th>Buyer / Firm</th>
+          <th class="right">Amount (₹)</th><th class="right">Pieces</th><th class="right">Parcels</th><th>Check No.</th><th>Remarks</th><th class="right">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">24/09/2026</td><td><span class="book-pill cs"><i data-icon="wallet" data-size="sm"></i>CS</span></td><td><span class="badge ok">Payment</span></td><td><b>Acme Industries</b></td>
+            <td class="num right">1,20,000.00</td><td class="num right">—</td><td class="num right">—</td><td class="mono">UTR 8841</td><td class="muted">Sep account settlement</td>
+            <td class="actions"><button class="rbtn" onclick="openTxnEdit()"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-txn-del"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">23/09/2026</td><td><span class="book-pill cc"><i data-icon="invoices" data-size="sm"></i>CC</span></td><td><span class="badge brand">Sale</span></td><td><b>Gamma Constructions</b></td>
+            <td class="num right">86,500.00</td><td class="num right">620</td><td class="num right">18</td><td class="faint">—</td><td class="muted">18 bales dispatched</td>
+            <td class="actions"><button class="rbtn" onclick="openTxnEdit()"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-txn-del"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">22/09/2026</td><td><span class="book-pill cs"><i data-icon="wallet" data-size="sm"></i>CS</span></td><td><span class="badge ok">Payment</span></td><td><b>Krishna Textiles</b></td>
+            <td class="num right">22,400.00</td><td class="num right">—</td><td class="num right">—</td><td class="mono">CHQ 447120</td><td class="muted">Against CHL-0042</td>
+            <td class="actions"><button class="rbtn" onclick="openTxnEdit()"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-txn-del"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">21/09/2026</td><td><span class="book-pill cc"><i data-icon="invoices" data-size="sm"></i>CC</span></td><td><span class="badge brand">Sale</span></td><td><b>Beta Engineers</b></td>
+            <td class="num right">41,200.00</td><td class="num right">96</td><td class="num right">3</td><td class="faint">—</td><td class="muted"></td>
+            <td class="actions"><button class="rbtn" onclick="openTxnEdit()"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-txn-del"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">20/09/2026</td><td><span class="book-pill cs"><i data-icon="wallet" data-size="sm"></i>CS</span></td><td><span class="badge ok">Payment</span></td><td><b>Sunrise Traders</b></td>
+            <td class="num right">8,750.00</td><td class="num right">—</td><td class="num right">—</td><td class="faint">—</td><td class="muted">Cash</td>
+            <td class="actions"><button class="rbtn" onclick="openTxnEdit()"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-txn-del"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="sub"><td colspan="4">Filtered totals — 86 entries</td><td class="num right">4,82,650.00</td><td class="num right">2,408</td><td class="num right">74</td><td colspan="3"></td></tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="tbl-foot">
+      <span>Showing 5 of 86 entries · CC 42 · CS 44</span>
+      <div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>3</button><button>…</button><button>18</button><button>›</button></div>
+    </div>
+  </div>
+
+  <div class="banner info" style="margin-top:16px"><i data-icon="info"></i><span>"Include in sales matrix reporting" tags CC <b>sales</b> entries into the trouser-movement and sales-matrix reports (Dashboard 2 · Reports).</span></div>
+</main></div>
+
+<!-- record/edit transaction -->
+<div class="modal-back" id="modal-txn">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="swap"></i></span>
+      <div style="flex:1"><h3>Record New Transaction</h3><div class="msub">Add a financial entry to the CC (credit) or CS (cash) book.</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="seg" style="margin-bottom:16px" id="txnBook">
+        <button class="on"><i data-icon="invoices" data-size="sm"></i>CC Book (Credit)</button>
+        <button><i data-icon="wallet" data-size="sm"></i>CS Book (Cash)</button>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>Type <span class="req">*</span></label><select class="input"><option>Sale</option><option>Payment</option></select></div>
+        <div class="field"><label>Amount (₹) <span class="req">*</span></label><input class="input mono" placeholder="0.00"></div>
+        <div class="field full"><label>Buyer / Firm <span class="req">*</span></label>
+          <div class="input-wrap"><i data-icon="users" data-size="sm"></i><select class="input" style="padding-left:36px"><option>Select Buyer / Customer…</option><option>Acme Industries</option><option>Gamma Constructions</option><option>Beta Engineers</option><option>Krishna Textiles</option></select></div>
+          <span class="hint">Please select a Buyer / Firm.</span></div>
+        <div class="field"><label>Total pieces (for sales)</label><input class="input mono" placeholder="e.g. 240"></div>
+        <div class="field"><label>Parcels / Bales sent</label><input class="input mono" placeholder="e.g. 12"></div>
+        <div class="field"><label>Check No. <span class="faint">(CC payments only)</span></label><input class="input mono" placeholder="Cheque / UTR"></div>
+        <div class="field"><label>Date</label><input class="input mono" value="24/09/2026"></div>
+        <div class="field full"><label>Remarks</label><input class="input" placeholder="Remarks or payment reference"></div>
+      </div>
+      <label class="checkbox" style="margin-top:12px"><input type="checkbox" checked><span class="box"><i data-icon="check" data-size="sm"></i></span>Include in sales matrix reporting</label>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-txn');toast('Transaction Saved','Entry added to the CC book · matrix reporting updated.','ok')">Save transaction</button>
+    </div>
+  </div>
+</div>
+
+<!-- delete confirm -->
+<div class="modal-back" id="modal-txn-del">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete Transaction?</h3></div>
+    <div class="modal-body"><p style="margin:0">This removes the entry from the ledger and re-computes balances. The action is logged in the activity trail.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Keep entry</button>
+      <button class="btn danger solid" onclick="closeModal('modal-txn-del');toast('Transaction Deleted','Ledger entry removed; balances updated.','err')">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  function openTxnEdit() {
+    openModal('modal-txn');
+    const h = document.querySelector('#modal-txn h3');
+    if (h) h.textContent = 'Edit Transaction';
+    const s = document.querySelector('#modal-txn .msub');
+    if (s) s.textContent = 'Amend the ledger entry — history is preserved in the audit trail.';
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financial Statements | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="financials">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">INSIGHTS · FINANCIAL STATEMENTS</span>
+      <h1>Financials</h1>
+      <div class="sub">Balance Sheet / P&amp;L / GST reports — computed live from bills, purchases, expenses and stock.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <input class="input mono" style="width:130px" value="01/04/2026">
+      <input class="input mono" style="width:130px" value="24/09/2026">
+      <button class="btn ghost" onclick="toast('Refreshed','Statements re-computed for the range.','ok')"><i data-icon="refresh" data-size="sm"></i>Refresh</button>
+      <button class="btn" onclick="toast('Sent to printer','Statement set queued · A4 portrait.')"><i data-icon="printer" data-size="sm"></i>Print</button>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:20px">
+    <div class="kpi lead"><div class="k-label">Gross profit</div><div class="k-value">₹3,42,180</div><span class="k-delta muted">trading account b/f</span></div>
+    <div class="kpi"><div class="k-label">Net profit</div><div class="k-value">₹2,52,820</div><span class="k-delta pos">after indirect expenses</span></div>
+    <div class="kpi"><div class="k-label">Net tax payable</div><div class="k-value">₹36,880</div><span class="k-delta muted">output − ITC</span></div>
+    <div class="kpi gold"><div class="k-label">Cash in hand</div><div class="k-value">₹1,84,220</div><span class="k-delta muted">net position</span></div>
+  </div>
+
+  <div class="tabs" data-tabs="fin" data-tabs-for="[data-pane=fin]">
+    <button class="tab on" data-tab="pl"><i data-icon="financials" data-size="sm"></i>Profit &amp; Loss</button>
+    <button class="tab" data-tab="bs"><i data-icon="bank" data-size="sm"></i>Balance Sheet</button>
+    <button class="tab" data-tab="gst"><i data-icon="reports" data-size="sm"></i>GST Summary</button>
+    <button class="tab" data-tab="day"><i data-icon="clock" data-size="sm"></i>Daybook</button>
+  </div>
+
+  <!-- ===== P&L ===== -->
+  <section data-pane="fin" data-f="pl">
+    <div class="stmt" style="margin-top:18px">
+      <div class="st-head"><i data-icon="financials" data-size="sm"></i><h3>Trading Account</h3><span class="spacer"></span><span class="muted" style="font-size:12px">01/04/2026 → 24/09/2026</span></div>
+      <table>
+        <tr class="h"><td>PARTICULARS</td><td class="num">AMOUNT (₹)</td><td class="num">AMOUNT (₹)</td></tr>
+        <tr><td>Opening Stock</td><td class="num">1,84,000</td><td class="num"></td></tr>
+        <tr><td>Purchases (taxable)</td><td class="num">2,14,800</td><td class="num"></td></tr>
+        <tr><td>Direct Expenses</td><td class="num">58,240</td><td class="num"></td></tr>
+        <tr class="tot"><td></td><td></td><td class="num">4,57,040</td></tr>
+        <tr><td>Sales Revenue</td><td class="num"></td><td class="num">14,42,020</td></tr>
+        <tr><td>Closing Stock</td><td class="num"></td><td class="num">2,42,160</td></tr>
+        <tr class="tot"><td></td><td></td><td class="num">16,84,180</td></tr>
+        <tr class="grand"><td><b>GROSS PROFIT c/f</b></td><td></td><td class="num"><b>12,27,140</b></td></tr>
+      </table>
+    </div>
+
+    <div class="stmt">
+      <div class="st-head"><i data-icon="financials" data-size="sm"></i><h3>Profit &amp; Loss Account</h3><span class="spacer"></span><span class="muted" style="font-size:12px">after gross profit b/f</span></div>
+      <table>
+        <tr class="h"><td>PARTICULARS</td><td class="num">AMOUNT (₹)</td><td class="num">AMOUNT (₹)</td></tr>
+        <tr><td>Gross Profit b/f</td><td></td><td class="num">12,27,140</td></tr>
+        <tr><td>Indirect Expenses</td><td class="num">31,120</td><td></td></tr>
+        <tr><td>Wages &amp; professional fees</td><td class="num">12,400</td><td></td></tr>
+        <tr><td>Depreciation &amp; misc</td><td class="num">4,800</td><td></td></tr>
+        <tr class="grand"><td><b>NET PROFIT</b></td><td></td><td class="num"><b>2,52,820</b></td></tr>
+      </table>
+      <p class="faint" style="padding:10px 18px;font-size:11.5px;margin:0">Range with no activity shows "No Transactions in Range" — the statement renders empty rather than zero-filling.</p>
+    </div>
+  </section>
+
+  <!-- ===== Balance Sheet ===== -->
+  <section data-pane="fin" data-f="bs" style="display:none">
+    <div class="grid g2" style="margin-top:18px">
+      <div class="stmt" style="margin-bottom:0">
+        <div class="st-head"><h3>Liabilities (Sources of Funds)</h3></div>
+        <table>
+          <tr class="h"><td>PARTICULARS</td><td class="num">AMOUNT (₹)</td></tr>
+          <tr><td>Capital / Net Profit (accumulated)</td><td class="num">5,82,410</td></tr>
+          <tr><td>Sundry Creditors (Sellers)</td><td class="num">68,420</td></tr>
+          <tr><td>Duties &amp; Taxes (Net GST Payable)</td><td class="num">36,880</td></tr>
+          <tr class="grand"><td><b>TOTAL LIABILITIES</b></td><td class="num"><b>6,87,710</b></td></tr>
+        </table>
+      </div>
+      <div class="stmt" style="margin-bottom:0">
+        <div class="st-head"><h3>Assets (Application of Funds)</h3></div>
+        <table>
+          <tr class="h"><td>PARTICULARS</td><td class="num">AMOUNT (₹)</td></tr>
+          <tr><td>Cash in Hand (net position)</td><td class="num">1,84,220</td></tr>
+          <tr><td>Sundry Debtors (Buyers)</td><td class="num">3,98,855</td></tr>
+          <tr><td>Closing Stock (Inventory)</td><td class="num">2,42,160</td></tr>
+          <tr class="grand"><td><b>TOTAL ASSETS</b></td><td class="num"><b>6,87,710</b></td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="banner ok" style="margin-top:16px"><i data-icon="check"></i><span><b>Balanced.</b> Assets ₹6,87,710 = Liabilities ₹6,87,710. Eligible input tax credit ₹21,340 is netted inside Duties &amp; Taxes.</span></div>
+  </section>
+
+  <!-- ===== GST ===== -->
+  <section data-pane="fin" data-f="gst" style="display:none">
+    <div class="stmt" style="margin-top:18px">
+      <div class="st-head"><h3>GSTR-1 (Outward Supplies — Sales)</h3></div>
+      <table>
+        <tr class="h"><td>RATE</td><td class="num">TAXABLE SALES VALUE</td><td class="num">OUTPUT GST</td></tr>
+        <tr><td>5%</td><td class="num">4,12,400</td><td class="num">20,620</td></tr>
+        <tr><td>12%</td><td class="num">7,41,600</td><td class="num">88,992</td></tr>
+        <tr><td>18%</td><td class="num">2,86,220</td><td class="num">51,520</td></tr>
+        <tr class="tot"><td>Total</td><td class="num">14,42,020</td><td class="num">1,61,132</td></tr>
+      </table>
+    </div>
+    <div class="stmt">
+      <div class="st-head"><h3>Purchase Register / ITC (Inward Supplies)</h3></div>
+      <table>
+        <tr class="h"><td>RATE</td><td class="num">TAXABLE PURCHASE VALUE</td><td class="num">ELIGIBLE ITC</td></tr>
+        <tr><td>5%</td><td class="num">1,62,880</td><td class="num">8,144</td></tr>
+        <tr><td>18%</td><td class="num">51,900</td><td class="num">9,342</td></tr>
+        <tr><td>Freight (unregistered)</td><td class="num">—</td><td class="num">3,854 (RCM)</td></tr>
+        <tr class="tot"><td>Total</td><td class="num">2,14,780</td><td class="num">21,340</td></tr>
+      </table>
+    </div>
+    <div class="stmt">
+      <div class="st-head"><h3>GSTR-3B Style Computation</h3></div>
+      <table>
+        <tr><td>Output GST (CGST+SGST+IGST)</td><td class="num">1,61,132</td></tr>
+        <tr><td>Eligible Input Tax Credit</td><td class="num">− 21,340</td></tr>
+        <tr><td>Previous period credit</td><td class="num">− 1,02,912</td></tr>
+        <tr class="grand"><td><b>NET TAX PAYABLE TO GOVT</b></td><td class="num"><b>36,880</b></td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== Daybook ===== -->
+  <section data-pane="fin" data-f="day" style="display:none">
+    <div class="stmt" style="margin-top:18px">
+      <div class="st-head"><h3>Daybook — 24/09/2026</h3><span class="spacer"></span>
+        <input class="input mono" style="width:130px" value="24/09/2026"></div>
+      <table>
+        <tr class="h"><td>TYPE</td><td>PARTICULARS</td><td class="num">INFLOW (₹)</td><td class="num">OUTFLOW (₹)</td></tr>
+        <tr><td><span class="badge ok">Payment</span></td><td>Acme Industries · UTR 8841</td><td class="num">1,20,000.00</td><td></td></tr>
+        <tr><td><span class="badge brand">Sale</span></td><td>INV-0031 · Acme Industries</td><td class="num">2,637.75</td><td></td></tr>
+        <tr><td><span class="badge neutral">Expense</span></td><td>Freight &amp; Cartage · VRL</td><td></td><td class="num">4,200.00</td></tr>
+        <tr><td><span class="badge warn">Purchase</span></td><td>PUR-0032 · Shree Textile Mills</td><td></td><td class="num">67,224.00</td></tr>
+        <tr class="grand"><td><b>NET POSITION</b></td><td></td><td class="num"><b>+1,22,637.75</b></td><td class="num"></td></tr>
+      </table>
+    </div>
+  </section>
+</main></div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+</body>
+</html>

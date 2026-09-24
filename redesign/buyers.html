@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buyers &amp; Customers | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="buyers">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">DIRECTORY &amp; CATALOG · BUYER DIRECTORY</span>
+      <h1>Buyers &amp; Customers</h1>
+      <div class="sub">Active directory profiles with outstanding balances and one-click ledgers.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Sample downloaded','buyers-sample.csv — required columns: name, phone, gstin, address.','ok')"><i data-icon="files" data-size="sm"></i>Sample CSV</button>
+      <button class="btn ghost" onclick="toast('Import Complete','Detected 12 rows · 11 imported · 1 skipped (empty name).','ok')"><i data-icon="upload" data-size="sm"></i>Import CSV</button>
+      <button class="btn ghost" onclick="toast('Export Successful','buyers-directory.csv · 34 profiles with custom fields.','ok')"><i data-icon="download" data-size="sm"></i>Export CSV</button>
+      <button class="btn accent" data-modal-open="modal-buyer"><i data-icon="plus" data-size="sm"></i>Add New Customer</button>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi lead"><div class="k-label">Profiles</div><div class="k-value">34</div><span class="k-delta muted">active directory profiles</span></div>
+    <div class="kpi"><div class="k-label">GST registered</div><div class="k-value">21</div><span class="k-delta muted">with valid GSTIN on file</span></div>
+    <div class="kpi"><div class="k-label">Outstanding due</div><div class="k-value">₹3,98,855</div><span class="k-delta neg">across 14 bills</span></div>
+    <div class="kpi gold"><div class="k-label">Top buyer</div><div class="k-value" style="font-size:20px;padding-top:6px">Acme Industries</div><span class="k-delta muted">₹4.82L this FY</span></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="search-inline"><i data-icon="search"></i><input placeholder="Search buyers by name, phone, GST…"></div>
+      <select class="input"><option>All cities</option><option>Pune</option><option>Bengaluru</option><option>Surat</option></select>
+      <span class="spacer"></span>
+      <button class="rbtn" onclick="toast('Search cleared','Showing the full directory.')"><i data-icon="x" data-size="sm"></i>Clear search filter</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th class="sortable">Customer <span class="arr">▲</span></th><th>City / Town</th><th>Mobile / Phone</th><th>GSTIN</th>
+          <th class="right">Grand Total</th><th class="right">Balance Due</th><th class="right">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="person-cell"><span class="avatar">AI</span><span><b>Acme Industries</b><span>Manager: R. Sharma · Region: MIDC</span></span></div></td>
+            <td>Pune</td><td class="mono">98220 11223</td><td><span class="code-pill">27AACPA1234C1ZP</span></td>
+            <td class="num right">₹6,42,180</td><td class="num right"><b>₹84,220</b></td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-statement"><i data-icon="book" data-size="sm"></i>Ledger</button>
+              <button class="rbtn" data-modal-open="modal-buyer"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn danger" data-modal-open="modal-bdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><div class="person-cell"><span class="avatar">GC</span><span><b>Gamma Constructions</b><span>Site office · MG Road</span></span></div></td>
+            <td>Bengaluru</td><td class="mono">98450 22114</td><td><span class="code-pill">29AABCG5678D1ZK</span></td>
+            <td class="num right">₹3,41,500</td><td class="num right"><b>₹96,410</b></td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-statement"><i data-icon="book" data-size="sm"></i>Ledger</button>
+              <button class="rbtn" data-modal-open="modal-buyer"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn danger" data-modal-open="modal-bdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><div class="person-cell"><span class="avatar">BE</span><span><b>Beta Engineers</b><span>Works: GIDC Estate</span></span></div></td>
+            <td>Surat</td><td class="mono">98251 66778</td><td><span class="code-pill">24AAECB9012F1ZQ</span></td>
+            <td class="num right">₹2,96,200</td><td class="num right"><b>₹58,075</b></td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-statement"><i data-icon="book" data-size="sm"></i>Ledger</button>
+              <button class="rbtn" data-modal-open="modal-buyer"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn danger" data-modal-open="modal-bdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><div class="person-cell"><span class="avatar">KT</span><span><b>Krishna Textiles</b><span>No address specified</span></span></div></td>
+            <td>Surat</td><td class="mono">97240 99001</td><td><span class="badge neutral">Not registered</span></td>
+            <td class="num right">₹2,14,800</td><td class="num right"><b>₹41,900</b></td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-statement"><i data-icon="book" data-size="sm"></i>Ledger</button>
+              <button class="rbtn" data-modal-open="modal-buyer"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn danger" data-modal-open="modal-bdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><div class="person-cell"><span class="avatar">ST</span><span><b>Sunrise Traders</b><span>Retail counter</span></span></div></td>
+            <td>Vapi</td><td class="mono">99786 33445</td><td><span class="badge neutral">Not registered</span></td>
+            <td class="num right">₹1,32,400</td><td class="num right"><b>₹18,250</b></td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-statement"><i data-icon="book" data-size="sm"></i>Ledger</button>
+              <button class="rbtn" data-modal-open="modal-buyer"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn danger" data-modal-open="modal-bdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tbl-foot"><span>Showing 5 of 34 profiles</span><div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>…</button><button>7</button><button>›</button></div></div>
+  </div>
+
+  <p class="faint" style="margin-top:18px;font-size:11.5px;line-height:1.6">Custom buyer fields defined in Settings → Fields (Region, Manager, Agent…) appear as extra columns and export with the CSV. The import preview shows detected columns before anything is written; "Name is required." rows are skipped and reported.</p>
+</main></div>
+
+<!-- buyer add/edit modal -->
+<div class="modal-back" id="modal-buyer">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="users"></i></span>
+      <div style="flex:1"><h3>Edit Customer Profile</h3><div class="msub">Create a new buyer in directory · edit customer details &amp; custom fields</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="section-label" style="margin-top:0">Basic information</div>
+      <div class="form-grid">
+        <div class="field full"><label>Customer / Business Name <span class="req">*</span></label><input class="input" value="Acme Industries"><span class="hint">Name is required.</span></div>
+        <div class="field"><label>Mobile / Phone number</label><input class="input mono" value="98220 11223"></div>
+        <div class="field"><label>Manager / Owner contact person</label><input class="input" value="R. Sharma"></div>
+        <div class="field full"><label>Address, City, Pincode</label><textarea class="input" rows="2">Plot 14, MIDC Phase 2, Pune 411019</textarea></div>
+        <div class="field"><label>City / Town</label><input class="input" value="Pune"></div>
+        <div class="field"><label>GSTIN <span class="faint">(15 chars — GST REGISTERED)</span></label><input class="input mono" value="27AACPA1234C1ZP" maxlength="15"></div>
+      </div>
+      <div class="section-label">Buyer custom fields</div>
+      <div class="form-grid">
+        <div class="field"><label>Region</label><input class="input" value="MIDC Belt"></div>
+        <div class="field"><label>Agent</label><input class="input" value="M/s Deshmukh Associates"></div>
+        <div class="field"><label>Credit days (custom)</label><input class="input mono" value="30"></div>
+        <div class="field"><label>Loyalty tier</label><input class="input" value="Gold"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-buyer');toast('Buyer Saved','Profile written to the directory.','ok')">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- statement modal -->
+<div class="modal-back" id="modal-statement">
+  <div class="modal w-xl">
+    <div class="modal-head"><span class="mic"><i data-icon="book"></i></span>
+      <div style="flex:1"><h3>Account Statement — Acme Industries</h3><div class="msub">Same report as Reports → Buyer Statement, scoped to this buyer</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="row wrap" style="margin-bottom:12px">
+        <input class="input mono" style="width:130px" value="01/04/2026">
+        <input class="input mono" style="width:130px" value="24/09/2026">
+        <span class="spacer"></span>
+        <span class="kpi" style="padding:10px 16px"><div class="k-label">Balance due</div><div class="k-value" style="font-size:18px">₹84,220</div></span>
+      </div>
+      <div class="tbl-wrap" style="max-height:300px;overflow:auto">
+        <table class="tbl">
+          <thead><tr><th>Date</th><th>Particulars</th><th class="right">Debit</th><th class="right">Credit</th><th class="right">Balance</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">06/04</td><td>INV-0004 · Cotton shirting</td><td class="num right">1,02,400</td><td></td><td class="num right">1,02,400</td></tr>
+            <tr><td class="mono">18/04</td><td>Payment · UTR 7712</td><td></td><td class="num right">1,00,000</td><td class="num right">2,400</td></tr>
+            <tr><td class="mono">02/05</td><td>INV-0007 · Polyester blend</td><td class="num right">2,40,000</td><td></td><td class="num right">2,42,400</td></tr>
+            <tr><td class="mono">15/06</td><td>Payment · CHQ 447099</td><td></td><td class="num right">2,00,000</td><td class="num right">42,400</td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="4">Closing balance</td><td class="num right">₹84,220.00</td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Close</button>
+      <button class="btn" onclick="toast('Sent to printer','Statement queued · A4.','ok')"><i data-icon="printer" data-size="sm"></i>Print statement</button>
+    </div>
+  </div>
+</div>
+
+<!-- delete -->
+<div class="modal-back" id="modal-bdel">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete customer profile?</h3></div>
+    <div class="modal-body"><p style="margin:0">"Acme Industries" has bills and an outstanding balance of ₹84,220. Historic bills are kept; the profile is removed from pickers.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Keep profile</button>
+      <button class="btn danger solid" onclick="closeModal('modal-bdel');toast('Buyer Deleted','Profile removed; historic bills retained.','err')">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+</body>
+</html>

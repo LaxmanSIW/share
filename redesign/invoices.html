@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invoices | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="invoices">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">SALES · BILLING &amp; INVOICE HISTORY</span>
+      <h1>Invoices</h1>
+      <div class="sub">Every document you have issued — filter, print, export, collect.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Export finished','invoices-filtered-2026-09.csv · 14 rows.','ok')"><i data-icon="download" data-size="sm"></i>Export CSV</button>
+      <button class="btn ghost" onclick="bulkPdfs()"><i data-icon="files" data-size="sm"></i>Export PDFs</button>
+      <a class="btn accent" href="create-bill.html"><i data-icon="plus" data-size="sm"></i>Create New Invoice or Bill</a>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi"><div class="k-label">Documents (filtered)</div><div class="k-value">14</div><span class="k-delta muted">INV-0001 → INV-0013</span></div>
+    <div class="kpi"><div class="k-label">Grand total billed</div><div class="k-value">₹9,86,410</div><span class="k-delta muted">this period</span></div>
+    <div class="kpi"><div class="k-label">Due balance</div><div class="k-value">₹3,98,855</div><span class="k-delta neg">9 unpaid documents</span></div>
+    <div class="kpi gold"><div class="k-label">Prints logged</div><div class="k-value">31</div><span class="k-delta muted">print events recorded</span></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="input-wrap" style="min-width:240px"><i data-icon="search" data-size="sm"></i>
+        <input class="input" placeholder="Search bill no, buyer…"></div>
+      <select class="input"><option>All Types</option><option>Invoice</option><option>Challan</option><option>Credit Note</option><option>Quotation</option></select>
+      <select class="input"><option>All Statuses</option><option>Paid</option><option>Unpaid</option><option>Cancelled</option></select>
+      <input class="input mono" style="width:130px" placeholder="From date" value="01/09/2026">
+      <input class="input mono" style="width:130px" placeholder="To date" value="24/09/2026">
+      <span class="spacer"></span>
+      <button class="rbtn" onclick="toast('Filters cleared','Showing all documents.')"><i data-icon="x" data-size="sm"></i>Clear</button>
+      <span class="kbd">F5 reload</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th class="sortable">Bill No <span class="arr">▲</span></th><th class="sortable">Date</th><th>Type</th><th>Buyer</th>
+          <th class="right">Grand Total</th><th class="right">Due Balance</th><th>Status</th><th class="right">Prints</th><th class="right">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono"><b>INV-0013</b></td><td class="mono">2026-09-08</td><td>Invoice</td><td><b>Acme Industries</b></td>
+            <td class="num right">₹582.75</td><td class="num right">₹582.75</td><td><span class="badge warn"><span class="b-dot"></span>Unpaid</span></td><td class="num right">1</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">View</button><button class="rbtn" data-modal-open="modal-print">Print</button><button class="rbtn" onclick="toast('Invoice saved','INV-0013.pdf exported.','ok')">PDF</button><button class="rbtn ok" data-modal-open="modal-pay">Pay</button><button class="rbtn" data-popmenu="billmore" aria-haspopup="true"><i data-icon="dots" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono"><b>INV-0012</b></td><td class="mono">2026-09-08</td><td>Invoice</td><td><b>Acme Industries</b></td>
+            <td class="num right">₹582.75</td><td class="num right">₹582.75</td><td><span class="badge warn"><span class="b-dot"></span>Unpaid</span></td><td class="num right">1</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">View</button><button class="rbtn" data-modal-open="modal-print">Print</button><button class="rbtn" onclick="toast('Invoice saved','INV-0012.pdf exported.','ok')">PDF</button><button class="rbtn ok" data-modal-open="modal-pay">Pay</button><button class="rbtn" data-popmenu="billmore"><i data-icon="dots" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono"><b>INV-0011</b></td><td class="mono">2026-09-08</td><td>Invoice</td><td><b>Gamma Constructions</b></td>
+            <td class="num right">₹582.75</td><td class="num right">₹0.00</td><td><span class="badge hl">Paid</span></td><td class="num right">0</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">View</button><button class="rbtn" data-modal-open="modal-print">Print</button><button class="rbtn" onclick="toast('Invoice saved','INV-0011.pdf exported.','ok')">PDF</button><button class="rbtn" disabled>Pay</button><button class="rbtn" data-popmenu="billmore"><i data-icon="dots" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono"><b>CHL-0042</b></td><td class="mono">2026-09-06</td><td>Challan</td><td><b>Krishna Textiles</b></td>
+            <td class="num right">₹9,860.00</td><td class="num right">₹9,860.00</td><td><span class="badge neutral">Open</span></td><td class="num right">2</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">View</button><button class="rbtn" data-modal-open="modal-print">Print</button><button class="rbtn" onclick="toast('Challan saved','CHL-0042.pdf exported.','ok')">PDF</button><button class="rbtn" onclick="toast('Converted','Challan converted to Tax Invoice INV-0032 (DocType forced).','ok')">Convert</button><button class="rbtn" data-popmenu="billmore"><i data-icon="dots" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono"><b>INV-0010</b></td><td class="mono">2026-09-08</td><td>Invoice</td><td><b>Beta Engineers</b></td>
+            <td class="num right">₹582.75</td><td class="num right">₹0.00</td><td><span class="badge hl">Paid</span></td><td class="num right">4</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">View</button><button class="rbtn" data-modal-open="modal-print">Print</button><button class="rbtn" onclick="toast('Invoice saved','INV-0010.pdf exported.','ok')">PDF</button><button class="rbtn" disabled>Pay</button><button class="rbtn" data-popmenu="billmore"><i data-icon="dots" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono"><b>CRN-0007</b></td><td class="mono">2026-09-05</td><td>Credit Note</td><td><b>Beta Engineers</b></td>
+            <td class="num right">−₹210.00</td><td class="num right">—</td><td><span class="badge info">Adjusts INV-0008</span></td><td class="num right">1</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">View</button><button class="rbtn" data-modal-open="modal-print">Print</button><button class="rbtn" onclick="toast('Credit note saved','CRN-0007.pdf exported.','ok')">PDF</button><button class="rbtn" disabled>Pay</button><button class="rbtn" data-popmenu="billmore"><i data-icon="dots" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono strike"><b>INV-0006</b></td><td class="mono">2026-08-30</td><td>Invoice</td><td class="strike">Sunrise Traders</td>
+            <td class="num right strike">₹1,164.00</td><td class="num right strike">—</td><td><span class="badge neutral">Cancelled</span></td><td class="num right">0</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">View</button><button class="rbtn" onclick="toast('Nothing to export','Cancelled bills cannot be exported.')">PDF</button><button class="rbtn danger" onclick="toast('Delete cancelled','Cancelled bills are retained for audit.')">Delete</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tbl-foot">
+      <span>Showing <b>7</b> of <b>14</b> documents</span>
+      <span>·</span><span>Filtered: 01/09 → 24/09 · All types</span>
+      <div class="pager">
+        <button>‹</button><button class="on">1</button><button>2</button><button>›</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="faint" style="margin-top:18px;font-size:11.5px;line-height:1.6">Actions map 1:1 to HistoryView: <b>View</b> opens the invoice preview; <b>Print</b> opens the system print dialog; <b>PDF</b> exports the document; <b>Pay</b> records a transaction against the ledger; the <b>⋯</b> menu holds Edit, Duplicate, Convert to Tax Invoice, Cancel and Delete. Cancelled bills stay for audit and print with a CANCELLED status stamp.</p>
+</main></div>
+
+<!-- ===== view modal (invoice preview) ===== -->
+<div class="modal-back" id="modal-view">
+  <div class="modal w-xl">
+    <div class="modal-head"><span class="mic"><i data-icon="invoices"></i></span>
+      <div style="flex:1"><h3>Invoice Preview — INV-0013</h3><div class="msub">Template: GST Tax Invoice — Modern · rendered by the Ch-16 engine</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body" style="background:var(--springwood)">
+      <div class="paper" style="min-height:0;transform:scale(.8);transform-origin:top center;margin-bottom:-160px">
+        <div class="p-head">
+          <div><div class="p-brand">LEELAMANI TRADERS</div><div style="color:var(--text-2);font-size:11px">14, Cloth Market, Ring Road, Surat 395002 · <span class="mono">24AAECL9999K1ZM</span></div></div>
+          <div class="p-meta"><span class="p-eyebrow">Tax Invoice</span><br><b>INV-0013</b><br>Date: 08/09/2026</div>
+        </div>
+        <h4>Bill to</h4>
+        <div><b>Acme Industries</b> · Plot 14, MIDC Phase 2, Pune 411019 · <span class="mono">27AACPA1234C1ZP</span></div>
+        <table class="p-items">
+          <thead><tr><th>#</th><th>Item</th><th>Qty</th><th class="right">Rate</th><th class="right">Amount</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Cotton shirting — 120 GSM</td><td>6.00 MTR</td><td class="mono right">180.00</td><td class="mono right">1,080.00</td></tr>
+          </tbody>
+        </table>
+        <table class="p-tot" style="width:40%;margin-left:60%">
+          <tr><td>Taxable</td><td class="mono right">1,080.00</td></tr>
+          <tr class="g"><td>Grand total</td><td class="mono right">₹ 582.75*</td></tr>
+        </table>
+        <div class="p-words">*Prototype preview — sample line data.</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="muted" style="font-size:12px">Fit width · zoom 80%</span>
+      <span class="spacer"></span>
+      <button class="btn ghost" data-close>Close</button>
+      <button class="btn secondary" onclick="closeModal('modal-view');toast('Invoice saved','INV-0013.pdf exported.','ok')"><i data-icon="files" data-size="sm"></i>Export PDF</button>
+      <button class="btn" data-modal-open="modal-print"><i data-icon="printer" data-size="sm"></i>Print</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== print modal ===== -->
+<div class="modal-back" id="modal-print">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="printer"></i></span>
+      <div style="flex:1"><h3>InvoiceStudio Print</h3><div class="msub">Copies: Original for Recipient · Duplicate for Transporter · Triplicate for Supplier</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Printer</label>
+          <select class="input"><option>Default printer — HP LaserJet M1136</option><option>Canon LBP2900B</option><option>Microsoft Print to PDF</option><option>TSC TA210 (label engine)</option></select></div>
+        <div class="field"><label>Copies</label><input class="input mono" value="1"></div>
+        <div class="field"><label>Paper size</label><select class="input"><option>A4</option><option>Letter</option><option>Custom 80mm roll</option></select></div>
+        <div class="field"><label>Orientation</label>
+          <div class="seg" style="margin-top:4px"><button class="on">Portrait</button><button>Landscape</button></div></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-print');toast('Sent to printer','Document queued · 1 copy · HP LaserJet M1136.','ok')"><i data-icon="printer" data-size="sm"></i>Print</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== pay modal ===== -->
+<div class="modal-back" id="modal-pay">
+  <div class="modal w-md" style="width:520px">
+    <div class="modal-head"><span class="mic ok"><i data-icon="wallet"></i></span>
+      <div style="flex:1"><h3>Record payment — INV-0013</h3><div class="msub">Acme Industries · due ₹582.75 · writes to the transactions ledger</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Amount received <span class="req">*</span></label><input class="input mono" value="582.75"></div>
+        <div class="field"><label>Payment date</label><input class="input mono" value="24/09/2026"></div>
+        <div class="field"><label>Mode</label><select class="input"><option>Bank Transfer</option><option>Cash</option><option>Cheque</option><option>UPI</option></select></div>
+        <div class="field"><label>Reference / UTR</label><input class="input mono" placeholder="UTR / cheque no."></div>
+        <div class="field full"><label>Remarks</label><input class="input" placeholder="Remarks or payment reference"></div>
+      </div>
+      <label class="checkbox" style="margin-top:12px"><input type="checkbox" checked><span class="box"><i data-icon="check" data-size="sm"></i></span>Mark bill as fully paid</label>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-pay');toast('Payment recorded','₹582.75 · INV-0013 marked Paid · CS book updated.','ok')">Record payment</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  window.POPMENUS = {
+    billmore: [
+      { head: 'More bill actions' },
+      { ic: 'edit', t: 'Edit bill', act: 'goto:create-bill.html' },
+      { ic: 'duplicate', t: 'Duplicate bill', act: 'toast:Duplicate ready|New number INV-0032 · today\'s date · items, totals & notes copied.|ok' },
+      { ic: 'convert', t: 'Convert to Tax Invoice', act: 'toast:Converted|DocType forced to INVOICE; credit-note link preserved.|ok' },
+      { ic: 'clock', t: 'Repeat bill (recurring)', act: 'toast:Repeat scheduled|BillingService.repeatBill will clone on the next cycle.|ok' },
+      { sep: true },
+      { ic: 'alert', t: 'Cancel bill', act: 'modal:modal-cancel' },
+      { ic: 'trash', t: 'Delete bill', danger: true, act: 'modal:modal-delete' },
+    ]
+  };
+  function bulkPdfs() {
+    toast('Exporting…', 'Rendering 7 PDFs with the batch engine.', 'warn');
+    setTimeout(() => toast('Bulk Export Complete', '7 PDFs · 0 errors · opened in explorer.', 'ok'), 1400);
+  }
+  /* delete + cancel modals */
+  document.addEventListener('DOMContentLoaded', () => {
+    const del = document.createElement('div');
+    del.className = 'modal-back'; del.id = 'modal-delete';
+    del.innerHTML = '<div class="modal w-sm danger-modal"><div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete bill?</h3></div>' +
+      '<div class="modal-body"><p style="margin:0">This permanently removes the document and reverses stock &amp; ledger effects. Cancelled bills are usually kept for audit instead.</p></div>' +
+      '<div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Keep bill</button>' +
+      '<button class="btn danger solid" onclick="closeModal(\'modal-delete\');toast(\'Bill deleted\',\'INV-0013 removed; stock restored.\',\'err\')">Delete bill</button></div></div>';
+    document.body.appendChild(del);
+    del.addEventListener('click', e => { if (e.target === del) del.classList.remove('open'); });
+    AuroraInjectIcons(del);
+
+    const cn = document.createElement('div');
+    cn.className = 'modal-back'; cn.id = 'modal-cancel';
+    cn.innerHTML = '<div class="modal w-sm"><div class="modal-head"><span class="mic warn"><i data-icon="alert"></i></span><h3>Cancel this bill?</h3></div>' +
+      '<div class="modal-body"><p style="margin:0 0 12px">The bill stays in history with a CANCELLED stamp; amounts stop counting toward receivables.</p>' +
+      '<div class="field"><label>Reason (optional)</label><input class="input" placeholder="e.g. buyer returned goods"></div></div>' +
+      '<div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Back</button>' +
+      '<button class="btn" onclick="closeModal(\'modal-cancel\');toast(\'Bill cancelled\',\'Status stamp set — reprints show CANCELLED.\',\'warn\')">Cancel bill</button></div></div>';
+    document.body.appendChild(cn);
+    cn.addEventListener('click', e => { if (e.target === cn) cn.classList.remove('open'); });
+    AuroraInjectIcons(cn);
+  });
+</script>
+</body>
+</html>
