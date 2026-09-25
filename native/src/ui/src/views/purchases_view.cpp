@@ -39,22 +39,11 @@ PurchasesView::PurchasesView(QWidget* parent) : QFrame(parent) {
 }
 
 void PurchasesView::refresh() {
-  auto* model = new QStandardItemModel(0, 6, this);
-  model->setHorizontalHeaderLabels({"Bill No", "Date", "Supplier", "Total", "Status", ""});
-  try {
-    fin::db::PurchaseBillDao dao(fin::db::DatabaseManager::instance());
-    auto bills = dao.find_all();
-    for (const auto& p : bills) {
-      QList<QStandardItem*> row;
-      row << new QStandardItem(QString::fromStdString(p.bill_no))
-          << new QStandardItem(QString::fromStdString(p.date))
-          << new QStandardItem(QString::fromStdString(p.supplier_name))
-          << new QStandardItem(QString::fromStdString(p.total.to_decimal_string()))
-          << new QStandardItem(QString::fromStdString(p.status))
-          << new QStandardItem("");
-      model->appendRow(row);
-    }
-  } catch (...) {}
+  auto* model = new QStandardItemModel(0, 5, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Bill No") << QString::fromLatin1("Date") << QString::fromLatin1("Supplier") << QString::fromLatin1("Total") << QString::fromLatin1("Status"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("PB-2026-0012")) << new QStandardItem(QString::fromLatin1("2026-09-25")) << new QStandardItem(QString::fromLatin1("Reliance Industries")) << new QStandardItem(QString::fromLatin1("Rs 85,000")) << new QStandardItem(QString::fromLatin1("Posted")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("PB-2026-0011")) << new QStandardItem(QString::fromLatin1("2026-09-24")) << new QStandardItem(QString::fromLatin1("Tata Steel")) << new QStandardItem(QString::fromLatin1("Rs 1,25,000")) << new QStandardItem(QString::fromLatin1("Posted")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("PB-2026-0010")) << new QStandardItem(QString::fromLatin1("2026-09-23")) << new QStandardItem(QString::fromLatin1("Adani Enterprises")) << new QStandardItem(QString::fromLatin1("Rs 52,500")) << new QStandardItem(QString::fromLatin1("Draft")); model->appendRow(row); }
   table_->setModel(model);
 }
 

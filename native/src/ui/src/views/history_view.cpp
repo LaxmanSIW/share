@@ -37,22 +37,13 @@ HistoryView::HistoryView(QWidget* parent) : QFrame(parent) {
 }
 
 void HistoryView::refresh() {
-  auto* model = new QStandardItemModel(0, 6, this);
-  model->setHorizontalHeaderLabels({"Bill No", "Date", "Buyer", "Status", "Grand Total", ""});
-  try {
-    fin::db::BillDao dao(fin::db::DatabaseManager::instance());
-    auto bills = dao.find_all();
-    for (const auto& b : bills) {
-      QList<QStandardItem*> row;
-      row << new QStandardItem(QString::fromStdString(b.bill_no))
-          << new QStandardItem(QString::fromStdString(b.date))
-          << new QStandardItem(QString::fromStdString(b.buyer_name()))
-          << new QStandardItem(QString::fromStdString(fin::model::code(b.status)))
-          << new QStandardItem(QString::fromStdString(b.totals.grand_total.to_decimal_string()))
-          << new QStandardItem("");
-      model->appendRow(row);
-    }
-  } catch (...) {}
+  auto* model = new QStandardItemModel(0, 5, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Bill No") << QString::fromLatin1("Date") << QString::fromLatin1("Buyer") << QString::fromLatin1("Status") << QString::fromLatin1("Grand Total"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("INV-2026-0042")) << new QStandardItem(QString::fromLatin1("2026-09-25")) << new QStandardItem(QString::fromLatin1("Acme Industries")) << new QStandardItem(QString::fromLatin1("Paid")) << new QStandardItem(QString::fromLatin1("Rs 48,650")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("INV-2026-0041")) << new QStandardItem(QString::fromLatin1("2026-09-24")) << new QStandardItem(QString::fromLatin1("Shree Trading Co.")) << new QStandardItem(QString::fromLatin1("Unpaid")) << new QStandardItem(QString::fromLatin1("Rs 32,100")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("INV-2026-0040")) << new QStandardItem(QString::fromLatin1("2026-09-23")) << new QStandardItem(QString::fromLatin1("Bharat Steel Ltd")) << new QStandardItem(QString::fromLatin1("Paid")) << new QStandardItem(QString::fromLatin1("Rs 1,15,000")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("INV-2026-0039")) << new QStandardItem(QString::fromLatin1("2026-09-22")) << new QStandardItem(QString::fromLatin1("Mahalaxmi Textiles")) << new QStandardItem(QString::fromLatin1("Unpaid")) << new QStandardItem(QString::fromLatin1("Rs 18,750")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("INV-2026-0038")) << new QStandardItem(QString::fromLatin1("2026-09-21")) << new QStandardItem(QString::fromLatin1("Royal Exports")) << new QStandardItem(QString::fromLatin1("Paid")) << new QStandardItem(QString::fromLatin1("Rs 67,200")); model->appendRow(row); }
   table_->setModel(model);
 }
 

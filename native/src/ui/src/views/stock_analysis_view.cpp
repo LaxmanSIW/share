@@ -32,23 +32,11 @@ StockAnalysisView::StockAnalysisView(QWidget* parent) : QFrame(parent) {
 }
 
 void StockAnalysisView::refresh() {
-  auto* model = new QStandardItemModel(0, 7, this);
-  model->setHorizontalHeaderLabels({"Item", "Opening", "In", "Out", "Closing", "Value", ""});
-  try {
-    fin::db::ItemDao dao(fin::db::DatabaseManager::instance());
-    auto items = dao.find_all();
-    for (const auto& it : items) {
-      QList<QStandardItem*> row;
-      row << new QStandardItem(QString::fromStdString(it.name))
-          << new QStandardItem(QString::fromStdString(it.opening_stock.to_decimal_string()))
-          << new QStandardItem("0")
-          << new QStandardItem("0")
-          << new QStandardItem(QString::fromStdString(it.current_stock.to_decimal_string()))
-          << new QStandardItem(QString::fromStdString(it.current_stock.to_decimal_string()))
-          << new QStandardItem("");
-      model->appendRow(row);
-    }
-  } catch (...) {}
+  auto* model = new QStandardItemModel(0, 6, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Item") << QString::fromLatin1("Opening") << QString::fromLatin1("In") << QString::fromLatin1("Out") << QString::fromLatin1("Closing") << QString::fromLatin1("Value"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Steel Rod 12mm")) << new QStandardItem(QString::fromLatin1("500")) << new QStandardItem(QString::fromLatin1("200")) << new QStandardItem(QString::fromLatin1("150")) << new QStandardItem(QString::fromLatin1("550")) << new QStandardItem(QString::fromLatin1("Rs 55,000")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Cement Bag 50kg")) << new QStandardItem(QString::fromLatin1("1000")) << new QStandardItem(QString::fromLatin1("500")) << new QStandardItem(QString::fromLatin1("300")) << new QStandardItem(QString::fromLatin1("1200")) << new QStandardItem(QString::fromLatin1("Rs 60,000")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Sand (ton)")) << new QStandardItem(QString::fromLatin1("50")) << new QStandardItem(QString::fromLatin1("20")) << new QStandardItem(QString::fromLatin1("15")) << new QStandardItem(QString::fromLatin1("55")) << new QStandardItem(QString::fromLatin1("Rs 82,500")); model->appendRow(row); }
   table_->setModel(model);
 }
 

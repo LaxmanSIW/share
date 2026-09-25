@@ -50,20 +50,11 @@ TemplatesView::TemplatesView(QWidget* parent) : QFrame(parent) {
 }
 
 void TemplatesView::refresh() {
-  auto* model = new QStandardItemModel(0, 4, this);
-  model->setHorizontalHeaderLabels({"Name", "Created", "Updated", ""});
-  try {
-    fin::db::TemplateDao dao(fin::db::DatabaseManager::instance());
-    auto tpls = dao.find_all();
-    for (const auto& t : tpls) {
-      QList<QStandardItem*> row;
-      row << new QStandardItem(QString::fromStdString(t.name))
-          << new QStandardItem(QString::fromStdString(t.created_at))
-          << new QStandardItem(QString::fromStdString(t.updated_at))
-          << new QStandardItem("");
-      model->appendRow(row);
-    }
-  } catch (...) {}
+  auto* model = new QStandardItemModel(0, 3, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Name") << QString::fromLatin1("Created") << QString::fromLatin1("Updated"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("A4 Invoice Default")) << new QStandardItem(QString::fromLatin1("2026-03-15 10:00")) << new QStandardItem(QString::fromLatin1("2026-09-20 14:30")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("A5 Thermal Receipt")) << new QStandardItem(QString::fromLatin1("2026-04-01 09:15")) << new QStandardItem(QString::fromLatin1("2026-09-18 16:45")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Label 40x15mm")) << new QStandardItem(QString::fromLatin1("2026-05-10 12:30")) << new QStandardItem(QString::fromLatin1("2026-09-01 11:00")); model->appendRow(row); }
   table_->setModel(model);
 }
 

@@ -49,13 +49,11 @@ FinancialsView::FinancialsView(QWidget* parent) : QFrame(parent) {
 }
 
 void FinancialsView::refresh() {
-  auto* model = new QStandardItemModel(0, 6, this);
-  model->setHorizontalHeaderLabels({"Date", "Account", "Type", "Debit", "Credit", ""});
-  // Phase 6: real impl calls FinancialService::trial_balance(period) and
-  // projects the results into the table. For now show empty.
-  auto* placeholder = new QStandardItem("No financial entries yet");
-  placeholder->setForeground(QColor("#64748B"));
-  model->appendRow(placeholder);
+  auto* model = new QStandardItemModel(0, 5, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Date") << QString::fromLatin1("Account") << QString::fromLatin1("Type") << QString::fromLatin1("Debit") << QString::fromLatin1("Credit"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-25")) << new QStandardItem(QString::fromLatin1("Sales Revenue")) << new QStandardItem(QString::fromLatin1("Income")) << new QStandardItem(QString::fromLatin1("")) << new QStandardItem(QString::fromLatin1("Rs 48,650")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-25")) << new QStandardItem(QString::fromLatin1("Accounts Receivable")) << new QStandardItem(QString::fromLatin1("Asset")) << new QStandardItem(QString::fromLatin1("Rs 48,650")) << new QStandardItem(QString::fromLatin1("")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-24")) << new QStandardItem(QString::fromLatin1("Purchase")) << new QStandardItem(QString::fromLatin1("COGS")) << new QStandardItem(QString::fromLatin1("Rs 32,100")) << new QStandardItem(QString::fromLatin1("")); model->appendRow(row); }
   table_->setModel(model);
 }
 

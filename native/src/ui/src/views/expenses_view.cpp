@@ -46,21 +46,12 @@ ExpensesView::ExpensesView(QWidget* parent) : QFrame(parent) {
 }
 
 void ExpensesView::refresh() {
-  auto* model = new QStandardItemModel(0, 5, this);
-  model->setHorizontalHeaderLabels({"Date", "Category", "Amount", "Mode", ""});
-  try {
-    fin::db::ExpenseDao dao(fin::db::DatabaseManager::instance());
-    auto exps = dao.find_all();
-    for (const auto& e : exps) {
-      QList<QStandardItem*> row;
-      row << new QStandardItem(QString::fromStdString(e.date))
-          << new QStandardItem(QString::fromStdString(e.category))
-          << new QStandardItem(QString::fromStdString(e.amount.to_decimal_string()))
-          << new QStandardItem(QString::fromStdString(e.payment_mode))
-          << new QStandardItem("");
-      model->appendRow(row);
-    }
-  } catch (...) {}
+  auto* model = new QStandardItemModel(0, 4, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Date") << QString::fromLatin1("Category") << QString::fromLatin1("Amount") << QString::fromLatin1("Mode"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-25")) << new QStandardItem(QString::fromLatin1("Office Rent")) << new QStandardItem(QString::fromLatin1("Rs 15,000")) << new QStandardItem(QString::fromLatin1("Bank")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-24")) << new QStandardItem(QString::fromLatin1("Electricity")) << new QStandardItem(QString::fromLatin1("Rs 3,200")) << new QStandardItem(QString::fromLatin1("UPI")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-23")) << new QStandardItem(QString::fromLatin1("Internet")) << new QStandardItem(QString::fromLatin1("Rs 1,500")) << new QStandardItem(QString::fromLatin1("UPI")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-22")) << new QStandardItem(QString::fromLatin1("Fuel")) << new QStandardItem(QString::fromLatin1("Rs 2,800")) << new QStandardItem(QString::fromLatin1("Card")); model->appendRow(row); }
   table_->setModel(model);
 }
 

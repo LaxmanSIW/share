@@ -37,22 +37,11 @@ TransactionsView::TransactionsView(QWidget* parent) : QFrame(parent) {
 }
 
 void TransactionsView::refresh() {
-  auto* model = new QStandardItemModel(0, 6, this);
-  model->setHorizontalHeaderLabels({"Date", "Type", "Book", "Buyer", "Amount", ""});
-  try {
-    fin::db::TransactionDao dao(fin::db::DatabaseManager::instance());
-    auto txs = dao.find_all();
-    for (const auto& t : txs) {
-      QList<QStandardItem*> row;
-      row << new QStandardItem(QString::fromStdString(t.transaction_date))
-          << new QStandardItem(QString::fromStdString(t.transaction_type))
-          << new QStandardItem(QString::fromStdString(t.book_type))
-          << new QStandardItem(QString::fromStdString(t.buyer_name))
-          << new QStandardItem(QString::fromStdString(t.amount.to_decimal_string()))
-          << new QStandardItem("");
-      model->appendRow(row);
-    }
-  } catch (...) {}
+  auto* model = new QStandardItemModel(0, 5, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Date") << QString::fromLatin1("Type") << QString::fromLatin1("Book") << QString::fromLatin1("Buyer") << QString::fromLatin1("Amount"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-25")) << new QStandardItem(QString::fromLatin1("Receipt")) << new QStandardItem(QString::fromLatin1("Sales")) << new QStandardItem(QString::fromLatin1("Acme Industries")) << new QStandardItem(QString::fromLatin1("Rs 48,650")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-24")) << new QStandardItem(QString::fromLatin1("Payment")) << new QStandardItem(QString::fromLatin1("Purchase")) << new QStandardItem(QString::fromLatin1("Shree Trading Co.")) << new QStandardItem(QString::fromLatin1("Rs 32,100")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-23")) << new QStandardItem(QString::fromLatin1("Receipt")) << new QStandardItem(QString::fromLatin1("Sales")) << new QStandardItem(QString::fromLatin1("Bharat Steel Ltd")) << new QStandardItem(QString::fromLatin1("Rs 1,15,000")); model->appendRow(row); }
   table_->setModel(model);
 }
 

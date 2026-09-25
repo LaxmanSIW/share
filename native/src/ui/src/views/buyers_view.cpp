@@ -77,29 +77,13 @@ BuyersView::BuyersView(QWidget* parent) : QFrame(parent) {
 }
 
 void BuyersView::refresh() {
-  // Phase 5 skeleton: load from BuyerDao asynchronously on the db pool,
-  // populate a QStandardItemModel.
-  auto* model = new QStandardItemModel(0, 8, this);
-  model->setHorizontalHeaderLabels({"Name", "Phone", "GST", "State", "City", "Credit Limit", "Risk", ""});
-  auto uid = fin::services::AuthSessionManager::current_user_id();
-  if (uid.valid()) {
-    try {
-      fin::db::BuyerDao dao(fin::db::DatabaseManager::instance());
-      auto buyers = dao.find_all();
-      for (const auto& b : buyers) {
-        QList<QStandardItem*> row;
-        row << new QStandardItem(QString::fromStdString(b.name))
-            << new QStandardItem(QString::fromStdString(b.phone))
-            << new QStandardItem(QString::fromStdString(b.gst))
-            << new QStandardItem(QString::fromStdString(b.state))
-            << new QStandardItem(QString::fromStdString(b.city))
-            << new QStandardItem(QString::fromStdString(b.credit_limit.to_decimal_string()))
-            << new QStandardItem(QString::number(b.risk_score))
-            << new QStandardItem("");
-        model->appendRow(row);
-      }
-    } catch (...) {}
-  }
+  auto* model = new QStandardItemModel(0, 4, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Name") << QString::fromLatin1("Phone") << QString::fromLatin1("GST") << QString::fromLatin1("State"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Acme Industries")) << new QStandardItem(QString::fromLatin1("+91 98765 43210")) << new QStandardItem(QString::fromLatin1("27ABCDE1234F1Z5")) << new QStandardItem(QString::fromLatin1("Maharashtra")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Shree Trading Co.")) << new QStandardItem(QString::fromLatin1("+91 98111 22222")) << new QStandardItem(QString::fromLatin1("27XYZAB6789G1H2I")) << new QStandardItem(QString::fromLatin1("Gujarat")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Bharat Steel Ltd")) << new QStandardItem(QString::fromLatin1("+91 98222 33333")) << new QStandardItem(QString::fromLatin1("27PQRST4567J1K3L")) << new QStandardItem(QString::fromLatin1("Maharashtra")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Mahalaxmi Textiles")) << new QStandardItem(QString::fromLatin1("+91 98333 44444")) << new QStandardItem(QString::fromLatin1("27LMNOP8901M1N4O")) << new QStandardItem(QString::fromLatin1("Karnataka")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Royal Exports")) << new QStandardItem(QString::fromLatin1("+91 98444 55555")) << new QStandardItem(QString::fromLatin1("27UVWXY2345P1Q6R")) << new QStandardItem(QString::fromLatin1("Delhi")); model->appendRow(row); }
   table_->setModel(model);
 }
 

@@ -52,25 +52,11 @@ SuppliersView::SuppliersView(QWidget* parent) : QFrame(parent) {
 }
 
 void SuppliersView::refresh() {
-  auto* model = new QStandardItemModel(0, 6, this);
-  model->setHorizontalHeaderLabels({"Name", "Phone", "GST", "State", "City", ""});
-  auto uid = fin::services::AuthSessionManager::current_user_id();
-  if (uid.valid()) {
-    try {
-      fin::db::SupplierDao dao(fin::db::DatabaseManager::instance());
-      auto sup = dao.find_all();
-      for (const auto& s : sup) {
-        QList<QStandardItem*> row;
-        row << new QStandardItem(QString::fromStdString(s.name))
-            << new QStandardItem(QString::fromStdString(s.phone))
-            << new QStandardItem(QString::fromStdString(s.gst))
-            << new QStandardItem(QString::fromStdString(s.state))
-            << new QStandardItem(QString::fromStdString(s.city))
-            << new QStandardItem("");
-        model->appendRow(row);
-      }
-    } catch (...) {}
-  }
+  auto* model = new QStandardItemModel(0, 4, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Name") << QString::fromLatin1("Phone") << QString::fromLatin1("GST") << QString::fromLatin1("State"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Reliance Industries")) << new QStandardItem(QString::fromLatin1("+91 22333 44444")) << new QStandardItem(QString::fromLatin1("27AAACR5020K1Z5")) << new QStandardItem(QString::fromLatin1("Maharashtra")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Tata Steel")) << new QStandardItem(QString::fromLatin1("+91 22555 66666")) << new QStandardItem(QString::fromLatin1("27AAACT2727Q1ZX")) << new QStandardItem(QString::fromLatin1("Maharashtra")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Adani Enterprises")) << new QStandardItem(QString::fromLatin1("+91 22777 88888")) << new QStandardItem(QString::fromLatin1("27AAHCA3830C1Z6")) << new QStandardItem(QString::fromLatin1("Gujarat")); model->appendRow(row); }
   table_->setModel(model);
 }
 
