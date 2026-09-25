@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+<style>
+  .auth-form { display: grid; gap: 16px; max-width: 400px; }
+  .auth-form h1 { font-size: 30px; font-weight: 800; margin: 0 0 2px; letter-spacing: -.01em; }
+  .auth-form .lead { color: var(--text-2); margin: 0 0 10px; font-size: 14px; }
+  .or-rule { display: flex; align-items: center; gap: 12px; color: var(--text-3); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+  .or-rule::before, .or-rule::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .google-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    min-height: 44px; width: 100%; border: 1px solid var(--black); border-radius: var(--r-sm);
+    background: var(--white); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+  .google-btn:hover { background: var(--springwood); }
+  .strength { display: flex; gap: 5px; }
+  .strength i { height: 4px; flex: 1; background: var(--grey-100); }
+  .strength i.on { background: var(--black); }
+  .strength i.on.mid { background: var(--supernova); }
+  .alert-err { display: none; }
+  .alert-err.show { display: flex; }
+</style>
+</head>
+<body class="auth">
+<a class="skip-link" href="#body">Skip to content</a>
+<div class="auth-wrap">
+  <main class="auth-card" id="body">
+    <div class="auth-logo-row">
+      <span class="brand-mark" style="width:38px;height:38px;font-size:15px">IS</span>
+      <span><span class="brand-name" style="font-size:16px">InvoiceStudio</span><br><span class="brand-sub">Bill design &amp; print</span></span>
+    </div>
+
+    <form class="auth-form" onsubmit="return doSignIn(event)">
+      <div>
+        <h1>Sign in</h1>
+        <p class="lead">Enter your details to open your workspace. Sessions are verified with Firebase Identity Toolkit.</p>
+      </div>
+
+      <div class="banner danger alert-err" id="errBox"><i data-icon="alert" data-size="sm"></i><span id="errMsg"></span></div>
+
+      <div class="field">
+        <label for="email">Email address</label>
+        <div class="input-wrap"><i data-icon="mail" data-size="sm"></i>
+          <input class="input" type="email" id="email" placeholder="you@firm.in" autocomplete="username"></div>
+      </div>
+      <div class="field">
+        <label for="pw">Password</label>
+        <div class="input-wrap"><i data-icon="lock" data-size="sm"></i>
+          <input class="input" type="password" id="pw" placeholder="••••••••" autocomplete="current-password">
+          <button type="button" class="trail" onclick="togglePw(this)" title="Show password"><i data-icon="eye" data-size="sm"></i></button>
+        </div>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <label class="checkbox"><input type="checkbox" checked><span class="box"><i data-icon="check" data-size="sm"></i></span>Remember me on this device</label>
+        <a href="#" onclick="openModal('modal-forgot');return false" style="font-size:13px">Forgot password?</a>
+      </div>
+      <button class="btn block lg" type="submit" id="signinBtn">Sign in</button>
+      <div class="or-rule">or continue with</div>
+      <button class="google-btn" type="button" onclick="toast('Google Sign-In','Firebase OAuth popup would open here (GoogleSignInButton).')">
+        <i data-icon="google"></i>Continue with Google
+      </button>
+      <p class="center" style="margin:6px 0 0;font-size:13.5px">New to InvoiceStudio? <a href="signup.html"><b>Create an account</b></a></p>
+      <p class="auth-legal">Prototype notice: this screen is a static redesign mock — credentials are not validated and no data leaves your device. Production sign-in is handled by Firebase Authentication (see Settings → Profile).</p>
+    </form>
+  </main>
+
+  <aside class="auth-art" aria-hidden="true">
+    <span class="eyebrow">Q3 BILLING OUTLOOK</span>
+    <h2>Every rupee, every label, one calm workspace.</h2>
+    <p>Billing, purchases, stock and GST statements — with a WYSIWYG template designer and a TSC/TSPL label engine built in.</p>
+    <div class="auth-feats">
+      <div class="auth-feat"><span class="fic"><i data-icon="zap" data-size="sm"></i></span><span><b>Bills in four keystrokes</b><span>Catalog search, live document preview, save → print → PDF in one pass.</span></span></div>
+      <div class="auth-feat"><span class="fic"><i data-icon="financials" data-size="sm"></i></span><span><b>Books that reconcile themselves</b><span>Ledgers, P&amp;L, balance sheet and GSTR-1/3B computed from your vouchers.</span></span></div>
+      <div class="auth-feat"><span class="fic"><i data-icon="labels" data-size="sm"></i></span><span><b>Label printing that just prints</b><span>mm-accurate canvas, barcode mode, bulk rows and strip preview.</span></span></div>
+      <div class="auth-feat"><span class="fic"><i data-icon="chat" data-size="sm"></i></span><span><b>An assistant with your books</b><span>Ask for outstanding, stock or GST — it answers with real MCP tools.</span></span></div>
+    </div>
+  </aside>
+</div>
+
+<!-- forgot password modal -->
+<div class="modal-back" id="modal-forgot">
+  <div class="modal w-sm">
+    <div class="modal-head"><span class="mic"><i data-icon="mail"></i></span>
+      <div style="flex:1"><h3>Reset your password</h3><div class="msub">Reset instructions are emailed by Firebase.</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="field"><label for="fp-mail">Email address</label>
+        <input class="input" id="fp-mail" type="email" placeholder="you@firm.in"></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-forgot');toast('Instructions sent','Check your inbox — the reset link expires in 60 minutes.','ok')">Send instructions</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script>
+  window.AuroraInjectIcons(document);
+  /* auth pages have no shell — minimal modal helpers */
+  window.openModal = id => document.getElementById(id).classList.add('open');
+  window.closeModal = id => (id ? document.getElementById(id) : document.querySelector('.modal-back.open')).classList.remove('open');
+  document.querySelectorAll('.modal-back').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); }));
+  function togglePw(btn) {
+    const inp = btn.parentElement.querySelector('input');
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    btn.innerHTML = '<i data-icon="' + (show ? 'eyeoff' : 'eye') + '" data-size="sm"></i>';
+    AuroraInjectIcons(btn);
+  }
+  function doSignIn(ev) {
+    ev.preventDefault();
+    const mail = document.getElementById('email').value.trim();
+    const pw = document.getElementById('pw').value;
+    const err = document.getElementById('errBox');
+    if (!mail || !pw) {
+      document.getElementById('errMsg').textContent = 'Please enter both email and password.';
+      err.classList.add('show'); return false;
+    }
+    err.classList.remove('show');
+    const btn = document.getElementById('signinBtn');
+    btn.textContent = 'Signing in…'; btn.disabled = true;
+    setTimeout(() => { location.href = 'dashboard.html'; }, 650);
+    return false;
+  }
+  document.getElementById('pw').addEventListener('input', () => document.getElementById('errBox').classList.remove('show'));
+</script>
+</body>
+</html>

@@ -75,6 +75,16 @@
             <version>3.5.3</version>
         </dependency>
 
+        <!-- JNA — native Win32 access to recolor the OS title bar (DWM
+             attributes) so the window chrome matches the dark app theme.
+             Loaded lazily by TitleBarTheme; on any failure (other OS, API
+             unsupported) the default title bar is kept — never a crash. -->
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+            <version>5.16.0</version>
+        </dependency>
+
         <!-- JUnit 5 Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

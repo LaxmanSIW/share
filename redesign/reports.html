@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports &amp; Ledger | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="reports">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">SALES · REPORTS &amp; FINANCIAL LEDGER</span>
+      <h1>Reports &amp; Ledger</h1>
+      <div class="sub">Eight report builders over bills, transactions, items and transports. Click a card to run it.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Reloaded','Latest bills and transactions re-read from the store.','ok')"><i data-icon="refresh" data-size="sm"></i>Reload latest bills and transactions</button>
+      <button class="btn ghost" onclick="toast('Print queue','Report sent to the system print dialog.')"><i data-icon="printer" data-size="sm"></i>Print</button>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:20px">
+    <a class="report-card" href="#" onclick="openReport('modal-rep-buyer');return false">
+      <span class="ric"><i data-icon="users" data-size="sm"></i></span>
+      <b>Buyer Statement &amp; Ledger</b><span>Per-buyer running ledger: bills, payments, balance, ageing.</span>
+      <span class="cta-link" style="pointer-events:none">Run report <span class="arr">→</span></span>
+    </a>
+    <a class="report-card" href="#" onclick="openReport('modal-rep-item');return false">
+      <span class="ric"><i data-icon="wallet" data-size="sm"></i></span>
+      <b>Item Sales &amp; Movement</b><span>Qty sold, revenue and margin per catalog item, by period.</span>
+      <span class="cta-link" style="pointer-events:none">Run report <span class="arr">→</span></span>
+    </a>
+    <a class="report-card" href="#" onclick="openReport('modal-rep-cat');return false">
+      <span class="ric"><i data-icon="folder" data-size="sm"></i></span>
+      <b>Category Breakdown</b><span>Revenue split by product category with share of total.</span>
+      <span class="cta-link" style="pointer-events:none">Run report <span class="arr">→</span></span>
+    </a>
+    <a class="report-card" href="#" onclick="openReport('modal-rep-out');return false">
+      <span class="ric"><i data-icon="alert" data-size="sm"></i></span>
+      <b>Outstanding Report</b><span>Receivables by buyer with due-date buckets 0/30/60/90+.</span>
+      <span class="cta-link" style="pointer-events:none">Run report <span class="arr">→</span></span>
+    </a>
+    <a class="report-card" href="#" onclick="openReport('modal-rep-gst');return false">
+      <span class="ric"><i data-icon="financials" data-size="sm"></i></span>
+      <b>GST / Tax Summary</b><span>Rate-wise taxable value, CGST/SGST/IGST and ITC for the period.</span>
+      <span class="cta-link" style="pointer-events:none">Run report <span class="arr">→</span></span>
+    </a>
+    <a class="report-card" href="#" onclick="openReport('modal-rep-trans');return false">
+      <span class="ric"><i data-icon="truck" data-size="sm"></i></span>
+      <b>Transport Performance</b><span>Parcels, bales and value moved per agency with punctuality.</span>
+      <span class="cta-link" style="pointer-events:none">Run report <span class="arr">→</span></span>
+    </a>
+    <a class="report-card" href="#" onclick="openReport('modal-rep-trouser');return false">
+      <span class="ric"><i data-icon="swap" data-size="sm"></i></span>
+      <b>Trouser Movement</b><span>The garment-trade matrix: pieces in, out and net per month.</span>
+      <span class="cta-link" style="pointer-events:none">Run report <span class="arr">→</span></span>
+    </a>
+    <a class="report-card" href="#" onclick="openReport('modal-rep-trend');return false">
+      <span class="ric"><i data-icon="trendup" data-size="sm"></i></span>
+      <b>Sales Trends</b><span>Revenue &amp; collections curve across the chosen period.</span>
+      <span class="cta-link" style="pointer-events:none">Run report <span class="arr">→</span></span>
+    </a>
+  </div>
+
+  <div class="card alt">
+    <div class="card-head"><div><h3 class="card-title">Period &amp; scope</h3><p class="card-sub">Applies to every report card above</p></div></div>
+    <div class="row wrap">
+      <input class="input mono" style="width:140px" value="01/04/2026">
+      <span class="muted">to</span>
+      <input class="input mono" style="width:140px" value="24/09/2026">
+      <select class="input" style="min-width:200px"><option>All buyers</option><option>Acme Industries</option><option>Gamma Constructions</option><option>Beta Engineers</option></select>
+      <select class="input" style="min-width:170px"><option>All categories</option><option>Fabric</option><option>Packaging</option><option>Services</option></select>
+      <span class="spacer"></span>
+      <div class="seg sm"><button class="on">This FY</button><button>This month</button><button>Custom…</button></div>
+    </div>
+  </div>
+</main></div>
+
+<!-- ========= report modals ========= -->
+<div class="modal-back" id="modal-rep-buyer">
+  <div class="modal w-xl">
+    <div class="modal-head"><span class="mic"><i data-icon="users"></i></span>
+      <div style="flex:1"><h3>Account Statement — Acme Industries</h3><div class="msub">01/04/2026 → 24/09/2026 · running ledger</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="row wrap" style="margin-bottom:12px">
+        <span class="kpi" style="flex:1;padding:12px 16px"><div class="k-label">Billed</div><div class="k-value" style="font-size:20px">₹6,42,180</div></span>
+        <span class="kpi" style="flex:1;padding:12px 16px"><div class="k-label">Received</div><div class="k-value" style="font-size:20px">₹5,58,000</div></span>
+        <span class="kpi lead" style="flex:1;padding:12px 16px"><div class="k-label">Balance due</div><div class="k-value" style="font-size:20px">₹84,180</div></span>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Date</th><th>Particulars</th><th class="right">Debit (₹)</th><th class="right">Credit (₹)</th><th class="right">Balance</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">01/04</td><td>Opening balance</td><td></td><td></td><td class="num right">0.00</td></tr>
+            <tr><td class="mono">06/04</td><td>INV-0004 · Cotton shirting</td><td class="num right">1,02,400</td><td></td><td class="num right">1,02,400</td></tr>
+            <tr><td class="mono">18/04</td><td>Payment · UTR 7712</td><td></td><td class="num right">1,00,000</td><td class="num right">2,400</td></tr>
+            <tr><td class="mono">02/05</td><td>INV-0007 · Polyester blend</td><td class="num right">2,40,000</td><td></td><td class="num right">2,42,400</td></tr>
+            <tr><td class="mono">15/06</td><td>Payment · CHQ 447099</td><td></td><td class="num right">2,00,000</td><td class="num right">42,400</td></tr>
+            <tr><td class="mono">08/09</td><td>INV-0013 · Goods</td><td class="num right">582.75</td><td></td><td class="num right">84,180*</td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="4">Closing balance</td><td class="num right">₹84,180.00</td></tr></tfoot>
+        </table>
+      </div>
+      <p class="faint" style="font-size:11px;margin:10px 0 0">*Prototype rows — production ledger is computed live from bills + transactions with per-row balance.</p>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Close</button>
+      <button class="btn ghost" onclick="toast('Exported','acme-statement-2026.pdf saved.','ok')"><i data-icon="download" data-size="sm"></i>Export PDF</button>
+      <button class="btn" onclick="toast('Sent to printer','Statement queued · A4 · portrait.','ok')"><i data-icon="printer" data-size="sm"></i>Print</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-rep-item">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="wallet"></i></span>
+      <div style="flex:1"><h3>Item Sales &amp; Movement</h3><div class="msub">This financial year · all categories</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Item</th><th class="right">Qty sold</th><th class="right">Revenue</th><th class="right">Avg rate</th><th class="right">GP %</th></tr></thead>
+          <tbody>
+            <tr><td><b>Cotton shirting — 120 GSM</b></td><td class="num right">4,120 MTR</td><td class="num right">₹7,41,600</td><td class="num right">₹180.00</td><td class="num right pos">28.4%</td></tr>
+            <tr><td><b>Polyester blend — charcoal</b></td><td class="num right">2,960 MTR</td><td class="num right">₹3,55,200</td><td class="num right">₹120.00</td><td class="num right pos">19.8%</td></tr>
+            <tr><td><b>Corrugated carton 5-ply</b></td><td class="num right">1,240 PCS</td><td class="num right">₹52,080</td><td class="num right">₹42.00</td><td class="num right pos">12.2%</td></tr>
+            <tr><td><b>Stitching service</b></td><td class="num right">310 lots</td><td class="num right">₹1,08,500</td><td class="num right">₹350.00</td><td class="num right pos">64.0%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button>
+      <button class="btn ghost" onclick="toast('Exported','item-sales-2026-27.csv saved.','ok')">Export CSV</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-rep-cat">
+  <div class="modal w-md" style="width:640px">
+    <div class="modal-head"><span class="mic"><i data-icon="folder"></i></span>
+      <div style="flex:1"><h3>Category Breakdown</h3><div class="msub">Revenue share by category · this FY</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="row" style="gap:22px;align-items:center">
+        <div class="chart-box" style="width:210px;flex:none" id="chart-cat"></div>
+        <div style="flex:1">
+          <div class="stat-row"><span><i style="display:inline-block;width:10px;height:10px;background:var(--vermilion);margin-right:8px"></i>Fabric</span><span class="v">₹10,96,800 · 76%</span></div>
+          <div class="stat-row"><span><i style="display:inline-block;width:10px;height:10px;background:var(--black);margin-right:8px"></i>Services</span><span class="v">₹1,08,500 · 8%</span></div>
+          <div class="stat-row"><span><i style="display:inline-block;width:10px;height:10px;background:var(--grey-400);margin-right:8px"></i>Packaging</span><span class="v">₹52,080 · 4%</span></div>
+          <div class="stat-row"><span><i style="display:inline-block;width:10px;height:10px;background:var(--grey-200);margin-right:8px"></i>Other</span><span class="v">₹1,84,000 · 12%</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-rep-out">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic warn"><i data-icon="alert"></i></span>
+      <div style="flex:1"><h3>Outstanding Report</h3><div class="msub">Receivables with ageing buckets · as of 24/09/2026</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Buyer</th><th class="right">0–30 d</th><th class="right">31–60 d</th><th class="right">61–90 d</th><th class="right">90+ d</th><th class="right">Total</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><b>Acme Industries</b></td><td class="num right">₹1,165.50</td><td class="num right">₹0</td><td class="num right">₹83,054.50</td><td class="num right">₹0</td><td class="num right"><b>₹84,220</b></td><td class="right"><button class="rbtn" onclick="openReport('modal-rep-buyer')">Statement</button></td></tr>
+            <tr><td><b>Gamma Constructions</b></td><td class="num right">₹96,410</td><td class="num right">₹0</td><td class="num right">₹0</td><td class="num right">₹0</td><td class="num right"><b>₹96,410</b></td><td class="right"><button class="rbtn" onclick="openReport('modal-rep-buyer')">Statement</button></td></tr>
+            <tr><td><b>Beta Engineers</b></td><td class="num right">₹58,075</td><td class="num right">₹0</td><td class="num right">₹0</td><td class="num right">₹0</td><td class="num right"><b>₹58,075</b></td><td class="right"><button class="rbtn" onclick="openReport('modal-rep-buyer')">Statement</button></td></tr>
+            <tr><td><b>Krishna Textiles</b></td><td class="num right">₹41,900</td><td class="num right">₹0</td><td class="num right">₹0</td><td class="num right">₹0</td><td class="num right"><b>₹41,900</b></td><td class="right"><button class="rbtn" onclick="openReport('modal-rep-buyer')">Statement</button></td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="5">Total receivable</td><td class="num right">₹3,98,855</td><td></td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button>
+      <button class="btn" onclick="toast('Reminders queued','Payment reminder emails drafted for 4 buyers.','ok')"><i data-icon="mail" data-size="sm"></i>Send reminders</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-rep-gst">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="financials"></i></span>
+      <div style="flex:1"><h3>GST / Tax Summary</h3><div class="msub">Rate-wise computation · this FY · matches GSTR-1 buckets</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>GST rate</th><th class="right">Taxable value</th><th class="right">CGST</th><th class="right">SGST</th><th class="right">IGST</th><th class="right">Total tax</th></tr></thead>
+          <tbody>
+            <tr><td>5%</td><td class="num right">₹4,12,400</td><td class="num right">₹10,310</td><td class="num right">₹10,310</td><td class="num right">—</td><td class="num right">₹20,620</td></tr>
+            <tr><td>12%</td><td class="num right">₹7,41,600</td><td class="num right">₹44,496</td><td class="num right">₹44,496</td><td class="num right">—</td><td class="num right">₹88,992</td></tr>
+            <tr><td>18%</td><td class="num right">₹2,86,220</td><td class="num right">₹25,760</td><td class="num right">₹25,760</td><td class="num right">—</td><td class="num right">₹51,520</td></tr>
+            <tr><td>Exempt</td><td class="num right">₹1,800</td><td class="num right">—</td><td class="num right">—</td><td class="num right">—</td><td class="num right">—</td></tr>
+          </tbody>
+          <tfoot><tr><td>Total</td><td class="num right">₹14,42,020</td><td class="num right">₹80,566</td><td class="num right">₹80,566</td><td class="num right">—</td><td class="num right">₹1,61,132</td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button>
+      <button class="btn ghost" onclick="toast('Exported','gst-summary-2026-27.csv saved.','ok')">Export CSV</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-rep-trans">
+  <div class="modal w-md" style="width:660px">
+    <div class="modal-head"><span class="mic"><i data-icon="truck"></i></span>
+      <div style="flex:1"><h3>Transport Performance</h3><div class="msub">This FY · parcels &amp; value per agency</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Agency</th><th class="right">Parcels</th><th class="right">Bales</th><th class="right">Value moved</th><th class="right">On-time</th></tr></thead>
+          <tbody>
+            <tr><td><b>VRL Logistics</b></td><td class="num right">142</td><td class="num right">86</td><td class="num right">₹4,20,400</td><td><span class="badge ok">96%</span></td></tr>
+            <tr><td><b>Gati KWE</b></td><td class="num right">96</td><td class="num right">54</td><td class="num right">₹2,88,100</td><td><span class="badge ok">92%</span></td></tr>
+            <tr><td><b>DTDC</b></td><td class="num right">64</td><td class="num right">12</td><td class="num right">₹96,750</td><td><span class="badge warn">84%</span></td></tr>
+            <tr><td><b>Safexpress</b></td><td class="num right">40</td><td class="num right">22</td><td class="num right">₹1,10,200</td><td><span class="badge ok">98%</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-rep-trouser">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="swap"></i></span>
+      <div style="flex:1"><h3>Trouser Movement</h3><div class="msub">Pieces in vs out · monthly matrix (garment trade)</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Month</th><th class="right">In (purchases)</th><th class="right">Out (sales)</th><th class="right">Net</th><th>Chart</th></tr></thead>
+          <tbody>
+            <tr><td>April</td><td class="num right">900</td><td class="num right">1,240</td><td class="num right pos">+340</td><td><div class="prog" style="max-width:200px"><i style="width:82%"></i></div></td></tr>
+            <tr><td>May</td><td class="num right">1,100</td><td class="num right">1,310</td><td class="num right pos">+210</td><td><div class="prog" style="max-width:200px"><i style="width:87%"></i></div></td></tr>
+            <tr><td>June</td><td class="num right">1,000</td><td class="num right">1,180</td><td class="num right pos">+180</td><td><div class="prog" style="max-width:200px"><i style="width:78%"></i></div></td></tr>
+            <tr><td>July</td><td class="num right">1,200</td><td class="num right">1,420</td><td class="num right pos">+220</td><td><div class="prog" style="max-width:200px"><i style="width:94%"></i></div></td></tr>
+            <tr><td>August</td><td class="num right">1,150</td><td class="num right">1,395</td><td class="num right pos">+245</td><td><div class="prog" style="max-width:200px"><i style="width:93%"></i></div></td></tr>
+            <tr><td>September</td><td class="num right">1,240</td><td class="num right">1,508</td><td class="num right pos">+268</td><td><div class="prog ok" style="max-width:200px"><i style="width:100%"></i></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-rep-trend">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="trendup"></i></span>
+      <div style="flex:1"><h3>Sales Trends</h3><div class="msub">Invoiced vs collected · Apr → Sep 2026</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="chart-legend" style="margin-bottom:8px"><span><i style="background:var(--vermilion)"></i>Invoiced</span><span><i style="background:var(--black)"></i>Collected</span></div>
+      <div class="chart-box" id="chart-trend"></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button></div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  function openReport(id) { openModal(id); AuroraCharts.mountAll(document.getElementById(id)); }
+  AuroraCharts.donut('chart-cat', { values: [76, 8, 4, 12], colors: ['signal', 'black', 'grey', 'muted'], center: '₹14.4L', sub: 'taxable FY', size: 210 });
+  document.addEventListener('DOMContentLoaded', () => {
+    AuroraCharts.line('chart-trend', {
+      labels: ['Apr','May','Jun','Jul','Aug','Sep'],
+      series: [
+        { name: 'Invoiced', color: 'signal', values: [312000,358000,341000,402000,429000,482650] },
+        { name: 'Collected', color: 'black', values: [286000,301000,322000,348000,335000,361940] }
+      ], w: 660, h: 260
+    });
+  });
+</script>
+</body>
+</html>

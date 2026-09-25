@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transport Directory | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="transports">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">DIRECTORY &amp; CATALOG · TRANSPORT DIRECTORY</span>
+      <h1>Transport Directory</h1>
+      <div class="sub">Register a transport carrier / vehicle — used by bills, logistics dashboard and parcels reports.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn accent" data-modal-open="modal-trans"><i data-icon="plus" data-size="sm"></i>New Transport Agency</button>
+    </div>
+  </div>
+
+  <div class="tbl-wrap" style="max-width:1000px">
+    <div class="filters-row">
+      <div class="search-inline"><i data-icon="search"></i><input placeholder="Search by Agency Name, Vehicle Number, Phone..."></div>
+      <span class="spacer"></span>
+      <span class="faint" style="font-size:12px">4 carriers</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th class="sortable">Carrier / Agency Name <span class="arr">▲</span></th><th>Vehicle Number</th><th>Phone / Contact</th>
+          <th>Default for Buyers</th><th class="right">Parcels (FY)</th><th class="right">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><b>VRL Logistics</b><div class="faint" style="font-size:11.5px">Hubli · 42 branch network</div></td>
+            <td class="mono">KA25 A 4412</td><td class="mono">98450 11223</td>
+            <td><span class="badge neutral">Acme · Beta</span></td><td class="num right">142</td>
+            <td class="actions">
+              <button class="rbtn" onclick="editTr('VRL Logistics')"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn danger" data-modal-open="modal-tdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><b>Gati KWE</b><div class="faint" style="font-size:11.5px">All-India surface</div></td>
+            <td class="mono">MH12 QX 8891</td><td class="mono">98201 33445</td>
+            <td><span class="badge neutral">Gamma</span></td><td class="num right">96</td>
+            <td class="actions">
+              <button class="rbtn" onclick="editTr('Gati KWE')"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn danger" data-modal-open="modal-tdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><b>DTDC</b><div class="faint" style="font-size:11.5px">Express parcels</div></td>
+            <td class="mono">GJ05 DX 2011</td><td class="mono">99043 55667</td>
+            <td class="faint">—</td><td class="num right">64</td>
+            <td class="actions">
+              <button class="rbtn" onclick="editTr('DTDC')"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn danger" data-modal-open="modal-tdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><b>Safexpress</b><div class="faint" style="font-size:11.5px">B2B logistics</div></td>
+            <td class="mono">HR55 J 9034</td><td class="mono">98110 77889</td>
+            <td class="faint">—</td><td class="num right">40</td>
+            <td class="actions">
+              <button class="rbtn" onclick="editTr('Safexpress')"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn danger" data-modal-open="modal-tdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="faint" style="margin-top:18px;font-size:11.5px;line-height:1.6">"Default for Buyers" pre-selects the carrier when billing those buyers. Agency name is required ("Transport name is required."); vehicle and phone are optional free fields. Deleting a carrier re-maps its bills to "— none —".</p>
+</main></div>
+
+<div class="modal-back" id="modal-trans">
+  <div class="modal w-sm">
+    <div class="modal-head"><span class="mic"><i data-icon="truck"></i></span>
+      <div style="flex:1"><h3 id="trTitle">New Transport Agency</h3><div class="msub" id="trSub">Register a transport carrier / vehicle</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="stack">
+        <div class="field"><label>Agency Name (e.g. VRL Logistics) <span class="req">*</span></label><input class="input" id="trName" placeholder="Carrier name"></div>
+        <div class="field"><label>Vehicle Number</label><input class="input mono" placeholder="KA01 AB 1234"></div>
+        <div class="field"><label>Contact phone / driver number</label><input class="input mono" placeholder="Phone"></div>
+        <div class="field"><label>Default for Buyers</label>
+          <select class="input" multiple size="3"><option>Acme Industries</option><option>Gamma Constructions</option><option>Beta Engineers</option><option>Krishna Textiles</option></select>
+          <span class="hint">Hold Ctrl / Cmd to pick multiple buyers.</span></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-trans');toast('Transport Saved','Carrier written to the directory.','ok')">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-tdel">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete Transport</h3></div>
+    <div class="modal-body"><p style="margin:0">"VRL Logistics" is referenced by 31 bills. They will show "— none —" as carrier. The logistics dashboard will stop counting this agency.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Keep carrier</button>
+      <button class="btn danger solid" onclick="closeModal('modal-tdel');toast('Carrier removed successfully.','Bills re-mapped to none.','err')">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  function editTr(name) {
+    document.getElementById('trTitle').textContent = 'Edit Transport — ' + name;
+    document.getElementById('trSub').textContent = 'Update transport agency details';
+    document.getElementById('trName').value = name;
+    openModal('modal-trans');
+  }
+</script>
+</body>
+</html>

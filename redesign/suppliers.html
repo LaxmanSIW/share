@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suppliers &amp; Sellers | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="suppliers">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">DIRECTORY &amp; CATALOG · SELLER DIRECTORY</span>
+      <h1>Suppliers &amp; Sellers</h1>
+      <div class="sub">Active creditor profiles — banking details, credit periods and payables.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Export Successful','sellers-directory.csv · 9 profiles.','ok')"><i data-icon="download" data-size="sm"></i>Export CSV</button>
+      <button class="btn accent" data-modal-open="modal-supp"><i data-icon="plus" data-size="sm"></i>Add New Seller</button>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi lead"><div class="k-label">Profiles</div><div class="k-value">9</div><span class="k-delta muted">active creditor profiles</span></div>
+    <div class="kpi"><div class="k-label">Credit (payable)</div><div class="k-value">₹68,420</div><span class="k-delta neg">owed to suppliers</span></div>
+    <div class="kpi"><div class="k-label">Debit (we paid)</div><div class="k-value">₹1,46,380</div><span class="k-delta pos">this period</span></div>
+    <div class="kpi gold"><div class="k-label">Top creditor</div><div class="k-value" style="font-size:20px;padding-top:6px">Shree Textile Mills</div><span class="k-delta muted">₹64,200 payable</span></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="search-inline"><i data-icon="search"></i><input placeholder="Search by firm name, phone, GSTIN…"></div>
+      <span class="spacer"></span>
+      <button class="rbtn" onclick="toast('Search cleared','Showing the full directory.')"><i data-icon="x" data-size="sm"></i>Clear</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th class="sortable">Firm <span class="arr">▲</span></th><th>Contact &amp; Phone</th><th>GSTIN</th><th class="right">Credit period</th>
+          <th class="right">Credit (Payable)</th><th class="right">Debit (We Paid)</th><th class="right">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="person-cell"><span class="avatar">SM</span><span><b>Shree Textile Mills</b><span>Ring Road, Surat · HDFC ••2233</span></span></div></td>
+            <td><b>H. Patel</b><br><span class="mono muted">98250 44556</span></td><td><span class="code-pill">24AAECS4444L1ZP</span></td>
+            <td class="num right">30 days</td><td class="num right"><b>₹64,200</b></td><td class="num right">₹1,02,400</td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-supp"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn" data-modal-open="modal-ledger"><i data-icon="book" data-size="sm"></i>Ledger</button>
+              <button class="rbtn danger" data-modal-open="modal-sdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><div class="person-cell"><span class="avatar">AY</span><span><b>Annapurna Yarn Co.</b><span>Pandesara, Surat · SBI ••7781</span></span></div></td>
+            <td><b>M. Bhatt</b><br><span class="mono muted">98980 11224</span></td><td><span class="code-pill">24AAACA1122M1Z8</span></td>
+            <td class="num right">15 days</td><td class="num right"><b>₹0</b></td><td class="num right">₹44,000</td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-supp"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn" data-modal-open="modal-ledger"><i data-icon="book" data-size="sm"></i>Ledger</button>
+              <button class="rbtn danger" data-modal-open="modal-sdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><div class="person-cell"><span class="avatar">PW</span><span><b>PackWell Industries</b><span>Kadodara · Axis ••0912</span></span></div></td>
+            <td><b>S. Rao</b><br><span class="mono muted">99043 77812</span></td><td><span class="badge neutral">Not registered</span></td>
+            <td class="num right">7 days</td><td class="num right"><b>₹4,220</b></td><td class="num right">₹0</td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-supp"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn" data-modal-open="modal-ledger"><i data-icon="book" data-size="sm"></i>Ledger</button>
+              <button class="rbtn danger" data-modal-open="modal-sdel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tbl-foot"><span>Showing 3 of 9 profiles</span><div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>3</button><button>›</button></div></div>
+  </div>
+</main></div>
+
+<!-- add/edit seller -->
+<div class="modal-back" id="modal-supp">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="truck"></i></span>
+      <div style="flex:1"><h3>Edit Seller</h3><div class="msub">Create a new seller (Sundry Creditor) in directory · edit seller details</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="section-label" style="margin-top:0">Basic information</div>
+      <div class="form-grid">
+        <div class="field full"><label>Firm / Business Name <span class="req">*</span></label><input class="input" value="Shree Textile Mills"><span class="hint">Firm Name is required.</span></div>
+        <div class="field"><label>Contact person name</label><input class="input" value="H. Patel"></div>
+        <div class="field"><label>Mobile / Phone number</label><input class="input mono" value="98250 44556"></div>
+        <div class="field full"><label>Full address (street, area, pincode)</label><textarea class="input" rows="2">Ring Road, Surat 395002</textarea></div>
+        <div class="field"><label>City / Town</label><input class="input" value="Surat"></div>
+        <div class="field"><label>GSTIN <span class="faint">(15 chars)</span></label><input class="input mono" value="24AAECS4444L1ZP" maxlength="15"></div>
+      </div>
+      <div class="section-label">Financial &amp; banking</div>
+      <div class="form-grid">
+        <div class="field"><label>Bank name &amp; branch</label><input class="input" value="HDFC Bank — Ring Road branch"></div>
+        <div class="field"><label>Account number (for NEFT / RTGS)</label><input class="input mono" value="5010022334455"></div>
+        <div class="field"><label>IFSC Code</label><input class="input mono" value="HDFC0001234"></div>
+        <div class="field"><label>Credit Period <span class="faint">(whole days)</span></label><input class="input mono" value="30"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-supp');toast('Seller Saved','Creditor profile written to the directory.','ok')">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ledger -->
+<div class="modal-back" id="modal-ledger">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="book"></i></span>
+      <div style="flex:1"><h3>Ledger — Shree Textile Mills</h3><div class="msub">Purchases and payments with running balance</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="tbl-wrap" style="max-height:300px;overflow:auto">
+        <table class="tbl">
+          <thead><tr><th>Date</th><th>Details</th><th class="right">Credit</th><th class="right">Debit</th><th class="right">Balance</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">12/09</td><td>PUR-0028 · goods</td><td class="num right">51,680</td><td></td><td class="num right">51,680</td></tr>
+            <tr><td class="mono">20/09</td><td>Payment · NEFT</td><td></td><td class="num right">51,680</td><td class="num right">0</td></tr>
+            <tr><td class="mono">23/09</td><td>PUR-0031 · goods</td><td class="num right">64,200</td><td></td><td class="num right">64,200</td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="4">Payable</td><td class="num right">₹64,200.00</td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button>
+      <a class="btn" href="purchases.html">Open purchase register</a></div>
+  </div>
+</div>
+
+<!-- delete -->
+<div class="modal-back" id="modal-sdel">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete seller profile?</h3></div>
+    <div class="modal-body"><p style="margin:0">"Shree Textile Mills" has purchase history and a payable of ₹64,200. Purchases are retained; the profile leaves pickers.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Keep profile</button>
+      <button class="btn danger solid" onclick="closeModal('modal-sdel');toast('Seller Deleted','Profile removed; purchase history retained.','err')">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+</body>
+</html>

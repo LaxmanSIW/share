@@ -1,0 +1,45 @@
+# === Secrets — never commit ===
+.ssh/
+*.pem
+*.key
+*_rsa
+*_ed25519
+.env
+.env.*
+!.env.example
+
+# === Build artifacts ===
+build/
+out/
+cmake-build-*/
+*.o
+*.obj
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.a
+*.lib
+*.pdb
+*.ilk
+
+# === CMake / vcpkg ===
+CMakeUserPresets.json
+vcpkg_installed/
+.cache/
+compile_commands.json
+*.cmake.user
+
+# === IDE / OS ===
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# === Logs / runtime ===
+*.log
+*.trace
+tracy_*.json
+third_party/

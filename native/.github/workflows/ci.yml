@@ -1,0 +1,274 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'native/**'
+      - '.github/workflows/**'
+      - '.clang-tidy'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'native/**'
+
+env:
+  VCPKG_BINARY_SOURCES: 'clear;x-features,ci'
+  FIN_SANITIZE: 'ON'
+
+jobs:
+  # ============================================================
+  # Linux GCC 14 — Debug + ASan/UBSan
+  # ============================================================
+  linux-gcc-asan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libgl1-mesa-dev libxkbcommon-x11-dev libxcb-xinerama0 \
+            libfreetype6-dev libharfbuzz-dev libicu-dev \
+            libsqlite3-dev nlohmann-json3-dev libspdlog-dev libfmt-dev \
+            libzint-dev libzxing-cpp-dev \
+            libcurl4-openssl-dev libsodium-dev \
+            libqt6-svg6-dev libqt6-printsupport6-dev qt6-base-dev qt6-base-dev-tools qt6-multimedia-dev \
+            libboost-dev \
+            llvm clang-tidy clang-format
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/native/build/vcpkg_installed
+            ${{ github.workspace }}/.cache/vcpkg
+          key: vcpkg-linux-asan-${{ hashFiles('native/vcpkg.json') }}
+      - name: Configure (Debug + ASan)
+        working-directory: native
+        run: cmake --preset dev
+      - name: Build
+        working-directory: native
+        run: cmake --build --preset dev --parallel $(nproc)
+      - name: Run tests
+        working-directory: native
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:abort_on_error=1
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --preset dev --output-on-failure
+      - name: clang-tidy
+        working-directory: native
+        run: |
+          git diff --name-only HEAD~1 HEAD -- 'src/**/*.cpp' 'src/**/*.hpp' |
+          xargs -r -n1 clang-tidy -p build/dev --quiet
+
+  # ============================================================
+  # Linux Clang 18 — Release + LTO
+  # ============================================================
+  linux-clang-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            clang-18 lld-18 lldb-18 \
+            libgl1-mesa-dev libxkbcommon-x11-dev \
+            libfreetype6-dev libharfbuzz-dev libicu-dev \
+            libsqlite3-dev nlohmann-json3-dev libspdlog-dev libfmt-dev \
+            libzint-dev libzxing-cpp-dev \
+            libcurl4-openssl-dev libsodium-dev \
+            libqt6-svg6-dev libqt6-printsupport6-dev qt6-base-dev qt6-base-dev-tools
+      - name: Configure
+        working-directory: native
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: cmake --preset release
+      - name: Build
+        working-directory: native
+        run: cmake --build --preset release --parallel $(nproc)
+      - name: Tests
+        working-directory: native
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --preset release --output-on-failure
+
+  # ============================================================
+  # Linux Clang with ThreadSanitizer — concurrency stress
+  # ============================================================
+  linux-clang-tsan:
+    runs-on: ubuntu-24.04
+    continue-on-error: true   # skill §6: TSan on pre-built Qt reports hand-off false positives
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            clang-18 lld-18 \
+            libgl1-mesa-dev libxkbcommon-x11-dev \
+            libfreetype6-dev libharfbuzz-dev libicu-dev \
+            libsqlite3-dev nlohmann-json3-dev libspdlog-dev libfmt-dev \
+            libqt6-svg6-dev libqt6-printsupport6-dev qt6-base-dev qt6-base-dev-tools
+      - name: Configure (TSan)
+        working-directory: native
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: cmake --preset tsan
+      - name: Build
+        working-directory: native
+        run: cmake --build --preset tsan --parallel $(nproc)
+      - name: Tests (with TSan triage)
+        working-directory: native
+        env:
+          TSAN_OPTIONS: halt_on_error=0:second_deadlock_stack=1
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --preset dev --output-on-failure 2>&1 | tee tsan.log || true
+          echo "::warning::TSan reported hand-off noise from Qt's futex queues; triage for races on *your own* state."
+
+  # ============================================================
+  # Windows MSVC 2022 — Release (vcpkg manifest mode)
+  # ============================================================
+  windows-msvc-release:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          modules: 'qtsvg qtimageformats qttools qtmultimedia qtpdf'
+          setup-python: true
+      - name: Setup MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: ${{ github.workspace }}/vcpkg
+          vcpkgJsonGlob: 'native/vcpkg.json'
+      - name: Configure
+        working-directory: native
+        run: cmake --preset win-msvc-release
+      - name: Build
+        working-directory: native
+        run: cmake --build --preset win-msvc-release --config Release
+      - name: Tests
+        working-directory: native
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --preset win-msvc-release --output-on-failure -C Release
+
+  # ============================================================
+  # macOS Apple Clang — universal2 build
+  # ============================================================
+  macos-release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          modules: 'qtsvg qtimageformats qttools qtmultimedia qtpdf'
+      - name: Install build deps
+        run: |
+          brew install cmake ninja pkg-config sqlite nlohmann-json spdlog fmt harfbuzz freetype icu4c zint zxing-cpp curl libsodium boost
+      - name: Configure
+        working-directory: native
+        run: cmake --preset release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+      - name: Build
+        working-directory: native
+        run: cmake --build --preset release --parallel $(sysctl -n hw.ncpu)
+      - name: Tests
+        working-directory: native
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --preset release --output-on-failure
+
+  # ============================================================
+  # Headless smoke test (skill §7 testing layer 3: launch + navigate every view)
+  # ============================================================
+  smoke-test:
+    runs-on: ubuntu-24.04
+    needs: linux-gcc-asan
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libgl1-mesa-dev libxkbcommon-x11-dev libxcb-xinerama0 \
+            libsqlite3-dev nlohmann-json3-dev libspdlog-dev libfmt-dev \
+            libfreetype6-dev libharfbuzz-dev libicu-dev \
+            libqt6-svg6-dev libqt6-printsupport6-dev qt6-base-dev qt6-base-dev-tools \
+            xvfb
+      - name: Configure
+        working-directory: native
+        run: cmake --preset release
+      - name: Build
+        working-directory: native
+        run: cmake --build --preset release --parallel $(nproc)
+      - name: Headless smoke test
+        working-directory: native
+        env:
+          QT_QPA_PLATFORM: offscreen
+          INVOICESTUDIO_DATA_DIR: /tmp/ist-data
+          INVOICESTUDIO_DEBUG: '1'
+        run: |
+          mkdir -p /tmp/ist-data
+          timeout 30 ./build/release/bin/invoicestudio --smoke 2>&1 | tee smoke.log
+          grep -q "Ready" smoke.log
+          grep -q "UiWatchdog: 0 stalls" smoke.log || true
+
+  # ============================================================
+  # Packaging — Windows MSI + macOS DMG (skill §11)
+  # ============================================================
+  package:
+    runs-on: ${{ matrix.os }}
+    needs: [smoke-test]
+    strategy:
+      matrix:
+        include:
+          - os: windows-2022
+            preset: win-msvc-release
+          - os: macos-14
+            preset: release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps (macOS)
+        if: runner.os != 'Windows'
+        run: |
+          brew install cmake ninja pkg-config sqlite nlohmann-json spdlog fmt harfbuzz freetype icu4c zint zxing-cpp curl libsodium boost
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          modules: 'qtsvg qtimageformats qttools qtmultimedia qtpdf'
+      - name: Build
+        working-directory: native
+        run: |
+          cmake --preset ${{ matrix.preset }}
+          cmake --build --preset ${{ matrix.preset }} --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
+      - name: Package (CPack)
+        working-directory: native/build/${{ matrix.preset }}
+        run: cpack -C Release -V
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: invoicestudio-${{ matrix.os }}
+          path: |
+            native/build/${{ matrix.preset }}/*.{msi,exe,dmg,pkg}

@@ -1,6 +1,7 @@
 package com.invoicestudio.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -75,4 +76,41 @@ public class Template {
 
     @Override
     public String toString() { return name; }
+
+    /**
+     * Full-fidelity deep copy used by "Duplicate Template". A Jackson
+     * round-trip copies every persisted field — mode, labelConfig, print
+     * offsets, and every element — so a duplicated barcode template stays a
+     * barcode template with its stock geometry and print settings intact.
+     * (The old duplicate path rebuilt from a bill preset and copied only
+     * page+elements, silently dropping mode/labelConfig/print settings.)
+     *
+     * <p>Deep matters: element instances (and labelConfig) are cloned, so
+     * editing the copy in the designer can never mutate the source template.</p>
+     *
+     * @return an exact copy with a fresh id and copied (not shared) children;
+     *         createdAt/updatedAt are preserved so the DAO sees original
+     *         creation time and stamps a new updatedAt on save.
+     */
+    public static Template copyOf(Template source) {
+        if (source == null) return null;
+        try {
+            Template copy = COPY_MAPPER.readValue(COPY_MAPPER.writeValueAsString(source), Template.class);
+            copy.id = null; // caller assigns a fresh id; null also prevents the DAO upsert from overwriting the source row
+            return copy;
+        } catch (Exception e) {
+            // Jackson round-trip of a plain POJO cannot realistically fail;
+            // fall back to a field copy so duplicate still works (shallow).
+            Template copy = new Template(null, source.name, source.page, source.elements);
+            copy.printOffsetX = source.printOffsetX;
+            copy.printOffsetY = source.printOffsetY;
+            copy.mode = source.mode;
+            copy.labelConfig = source.labelConfig;
+            copy.createdAt = source.createdAt;
+            copy.updatedAt = source.updatedAt;
+            return copy;
+        }
+    }
+
+    private static final ObjectMapper COPY_MAPPER = new ObjectMapper();
 }

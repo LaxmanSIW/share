@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Templates Gallery | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="templates">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">DESIGN &amp; PRINT · TEMPLATES GALLERY</span>
+      <h1>Templates Gallery</h1>
+      <div class="sub">Your bill &amp; label layouts, plus preset starters you can clone into the designer.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Calibration sheet sent','Printer alignment &amp; margin test sheet queued.','ok')"><i data-icon="printer" data-size="sm"></i>Print Calibration Sheet</button>
+      <button class="btn accent" onclick="toast('New custom template','Created "Custom Template" and opened the designer.','ok');setTimeout(()=>location.href='designer.html',700)"><i data-icon="plus" data-size="sm"></i>New Custom Template</button>
+    </div>
+  </div>
+
+  <div class="section-label" style="margin-top:0">Preset starters (click to add to your templates)</div>
+  <div class="grid g3" style="margin-bottom:26px">
+    <div class="tpl-card">
+      <div class="tpl-thumb"><div class="tpl-mini"><div class="tm-brand">LEELAMANI TRADERS</div><div class="tm-row"><span>Invoice No.</span><span class="mono">INV-0031</span></div><div class="tm-rows"><div class="tm-row"><span>Item A</span><span class="mono">1,080.00</span></div><div class="tm-row"><span>Item B</span><span class="mono">513.00</span></div></div><div class="tm-tot"><span>TOTAL</span><span class="mono">₹2,637.75</span></div></div></div>
+      <div class="tpl-body"><b>GST Tax Invoice — Classic</b><span class="muted" style="font-size:12.5px">Full statutory layout: HSN column, CGST/SGST split, bank block, words.</span></div>
+      <div class="tpl-foot"><button class="rbtn accent" onclick="addPreset('GST Tax Invoice — Classic')"><i data-icon="plus" data-size="sm"></i>Add preset</button><button class="rbtn" onclick="openModal('modal-preview')">Preview</button></div>
+    </div>
+    <div class="tpl-card">
+      <div class="tpl-thumb"><div class="tpl-mini" style="border-top:4px solid var(--vermilion)"><div class="tm-brand">LEELAMANI TRADERS</div><div style="font-weight:800;color:var(--black);font-size:9px">TAX INVOICE</div><div class="tm-rows"><div class="tm-row"><span>Item A</span><span class="mono">1,080.00</span></div><div class="tm-row"><span>Item B</span><span class="mono">513.00</span></div></div><div class="tm-tot"><span>TOTAL</span><span class="mono">₹2,637.75</span></div></div></div>
+      <div class="tpl-body"><b>GST Tax Invoice — Modern</b><span class="muted" style="font-size:12.5px">Compact header, accent rule, QR block and condensed totals.</span></div>
+      <div class="tpl-foot"><button class="rbtn accent" onclick="addPreset('GST Tax Invoice — Modern')"><i data-icon="plus" data-size="sm"></i>Add preset</button><button class="rbtn" onclick="openModal('modal-preview')">Preview</button></div>
+    </div>
+    <div class="tpl-card">
+      <div class="tpl-thumb"><div class="tpl-mini" style="width:52%"><div class="tm-brand">LM</div><div class="tm-row"><span>Total</span><span class="mono">2637</span></div><div style="display:flex;gap:1px;align-items:flex-end;height:18px;margin-top:6px"><i style="width:2px;background:var(--black);height:12px"></i><i style="width:1px;background:var(--black);height:18px"></i><i style="width:2px;background:var(--black);height:8px"></i><i style="width:1px;background:var(--black);height:14px"></i><i style="width:3px;background:var(--black);height:16px"></i><i style="width:1px;background:var(--black);height:10px"></i></div><div style="font-size:6.5px;margin-top:3px">UPI: leelamani@hdfcbank</div></div></div>
+      <div class="tpl-body"><b>Thermal Mini Receipt</b><span class="muted" style="font-size:12.5px">80 mm roll with scan-to-pay UPI QR &amp; barcode. Continuous roll.</span></div>
+      <div class="tpl-foot"><button class="rbtn accent" onclick="addPreset('Thermal Mini Receipt')"><i data-icon="plus" data-size="sm"></i>Add preset</button><button class="rbtn" onclick="openModal('modal-preview')">Preview</button></div>
+    </div>
+    <div class="tpl-card">
+      <div class="tpl-thumb"><div class="tpl-mini" style="width:60%"><div class="tm-brand">INVOICE</div><div class="tm-row"><span>Buyer</span><span>Acme</span></div><div class="tm-rows"><div class="tm-row"><span>Line 1</span><span class="mono">1080</span></div></div><div class="tm-tot"><span>TOTAL</span><span class="mono">1080</span></div></div></div>
+      <div class="tpl-body"><b>Minimal Invoice</b><span class="muted" style="font-size:12.5px">One-page, no-statutory variant for estimates and challans.</span></div>
+      <div class="tpl-foot"><button class="rbtn accent" onclick="addPreset('Minimal Invoice')"><i data-icon="plus" data-size="sm"></i>Add preset</button><button class="rbtn" onclick="openModal('modal-preview')">Preview</button></div>
+    </div>
+    <div class="tpl-card">
+      <div class="tpl-thumb"><div class="tpl-mini label-mode"><div><div style="display:flex;gap:1px;align-items:flex-end;height:26px;justify-content:center"><i style="width:2px;background:var(--black);height:18px"></i><i style="width:1px;background:var(--black);height:26px"></i><i style="width:2px;background:var(--black);height:12px"></i><i style="width:1px;background:var(--black);height:22px"></i><i style="width:3px;background:var(--black);height:16px"></i><i style="width:1px;background:var(--black);height:26px"></i><i style="width:2px;background:var(--black);height:14px"></i><i style="width:1px;background:var(--black);height:20px"></i><i style="width:2px;background:var(--black);height:24px"></i></div><div class="lb-t">MRP ₹99.00</div></div></div></div>
+      <div class="tpl-body"><b>Label — 20×50 mm barcode</b><span class="muted" style="font-size:12.5px">Die-cut label cell: barcode, MRP text, batch line. TSC/TSPL ready.</span></div>
+      <div class="tpl-foot"><button class="rbtn accent" onclick="addPreset('Label — 20×50 mm barcode')"><i data-icon="plus" data-size="sm"></i>Add preset</button><button class="rbtn" onclick="openModal('modal-preview')">Preview</button></div>
+    </div>
+  </div>
+
+  <div class="section-label">My templates (5)</div>
+  <div class="grid g3">
+    <div class="tpl-card">
+      <div class="tpl-thumb"><span class="badge hl" style="position:absolute;top:10px;left:10px">Default · bills</span><div class="tpl-mini" style="border-top:4px solid var(--vermilion)"><div class="tm-brand">LEELAMANI TRADERS</div><div style="font-weight:800;font-size:9px;color:var(--black)">TAX INVOICE</div><div class="tm-rows"><div class="tm-row"><span>Item A</span><span class="mono">1,080.00</span></div><div class="tm-row"><span>Item B</span><span class="mono">513.00</span></div></div><div class="tm-tot"><span>TOTAL</span><span class="mono">₹2,637.75</span></div></div></div>
+      <div class="tpl-body"><b>Compact GST Invoice</b><span class="muted" style="font-size:12px">A4 · Modern preset, customised 12/08/2026</span></div>
+      <div class="tpl-foot">
+        <a class="rbtn solid" href="create-bill.html"><i data-icon="pluscircle" data-size="sm"></i>Create Bill</a>
+        <a class="rbtn" href="designer.html"><i data-icon="pen" data-size="sm"></i>Designer</a>
+        <button class="rbtn" onclick="toast('Template Duplicated','Added "Copy of Compact GST Invoice".','ok')"><i data-icon="duplicate" data-size="sm"></i></button>
+        <button class="rbtn danger" onclick="openModal('modal-tdel')"><i data-icon="trash" data-size="sm"></i></button>
+      </div>
+    </div>
+    <div class="tpl-card">
+      <div class="tpl-thumb"><div class="tpl-mini"><div class="tm-brand">LEELAMANI TRADERS</div><div class="tm-row"><span>Invoice No.</span><span class="mono">INV-0031</span></div><div class="tm-rows"><div class="tm-row"><span>Item A</span><span class="mono">1,080.00</span></div></div><div class="tm-tot"><span>TOTAL</span><span class="mono">₹2,637.75</span></div></div></div>
+      <div class="tpl-body"><b>GST Tax Invoice — Classic</b><span class="muted" style="font-size:12px">A4 · added from preset 02/03/2026</span></div>
+      <div class="tpl-foot">
+        <a class="rbtn solid" href="create-bill.html"><i data-icon="pluscircle" data-size="sm"></i>Create Bill</a>
+        <a class="rbtn" href="designer.html"><i data-icon="pen" data-size="sm"></i>Designer</a>
+        <button class="rbtn" onclick="toast('Template Duplicated','Copy added.','ok')"><i data-icon="duplicate" data-size="sm"></i></button>
+        <button class="rbtn danger" onclick="openModal('modal-tdel')"><i data-icon="trash" data-size="sm"></i></button>
+      </div>
+    </div>
+    <div class="tpl-card">
+      <div class="tpl-thumb"><div class="tpl-mini label-mode"><div><div style="display:flex;gap:1px;align-items:flex-end;height:26px;justify-content:center"><i style="width:2px;background:var(--black);height:18px"></i><i style="width:1px;background:var(--black);height:26px"></i><i style="width:2px;background:var(--black);height:12px"></i><i style="width:1px;background:var(--black);height:22px"></i><i style="width:3px;background:var(--black);height:16px"></i><i style="width:1px;background:var(--black);height:26px"></i></div><div class="lb-t">SHREE TRADERS</div></div></div></div>
+      <div class="tpl-body"><b>Label leelamani</b><span class="muted" style="font-size:12px">Barcode mode · 20×50 mm · 3 across · 105 mm strip</span></div>
+      <div class="tpl-foot">
+        <a class="rbtn solid" href="designer.html"><i data-icon="pen" data-size="sm"></i>Designer</a>
+        <button class="rbtn" onclick="toast('Bulk Label Print','Opening bulk rows for this label…','ok');setTimeout(()=>location.href='designer.html',700)"><i data-icon="labels" data-size="sm"></i>Bulk Print</button>
+        <button class="rbtn" onclick="toast('Template Duplicated','Copy added.','ok')"><i data-icon="duplicate" data-size="sm"></i></button>
+        <button class="rbtn danger" onclick="openModal('modal-tdel')"><i data-icon="trash" data-size="sm"></i></button>
+      </div>
+    </div>
+    <div class="tpl-card">
+      <div class="tpl-thumb"><div class="tpl-mini" style="width:52%"><div class="tm-brand">LM</div><div class="tm-row"><span>Cash</span><span class="mono">2637</span></div><div style="display:flex;gap:1px;align-items:flex-end;height:16px;margin-top:6px"><i style="width:2px;background:var(--black);height:10px"></i><i style="width:1px;background:var(--black);height:16px"></i><i style="width:2px;background:var(--black);height:7px"></i><i style="width:1px;background:var(--black);height:12px"></i></div></div></div>
+      <div class="tpl-body"><b>Thermal POS Receipt</b><span class="muted" style="font-size:12px">80 mm continuous · UPI QR</span></div>
+      <div class="tpl-foot">
+        <a class="rbtn solid" href="create-bill.html"><i data-icon="pluscircle" data-size="sm"></i>Create Bill</a>
+        <a class="rbtn" href="designer.html"><i data-icon="pen" data-size="sm"></i>Designer</a>
+        <button class="rbtn" onclick="toast('Template Duplicated','Copy added.','ok')"><i data-icon="duplicate" data-size="sm"></i></button>
+        <button class="rbtn danger" onclick="openModal('modal-tdel')"><i data-icon="trash" data-size="sm"></i></button>
+      </div>
+    </div>
+    <div class="tpl-card">
+      <div class="tpl-thumb"><div class="tpl-mini" style="width:60%"><div class="tm-brand">ESTIMATE</div><div class="tm-row"><span>Buyer</span><span>—</span></div><div class="tm-rows"><div class="tm-row"><span>Line 1</span><span class="mono">—</span></div></div><div class="tm-tot"><span>TOTAL</span><span class="mono">—</span></div></div></div>
+      <div class="tpl-body"><b>Custom Template</b><span class="muted" style="font-size:12px">Blank designer start · A4 · last saved 18/09/2026</span></div>
+      <div class="tpl-foot">
+        <a class="rbtn solid" href="designer.html"><i data-icon="pen" data-size="sm"></i>Designer</a>
+        <button class="rbtn" onclick="toast('Template Duplicated','Copy added.','ok')"><i data-icon="duplicate" data-size="sm"></i></button>
+        <button class="rbtn danger" onclick="openModal('modal-tdel')"><i data-icon="trash" data-size="sm"></i></button>
+      </div>
+    </div>
+  </div>
+</main></div>
+
+<div class="modal-back" id="modal-preview">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="templates"></i></span>
+      <div style="flex:1"><h3>Template preview</h3><div class="msub">Static thumbnail — full preview renders in Create Bill or the designer</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body" style="background:var(--springwood)">
+      <div class="paper" style="min-height:0;padding:22px 26px">
+        <div class="p-head"><div><div class="p-brand">LEELAMANI TRADERS</div></div><div class="p-meta"><span class="p-eyebrow">Tax Invoice</span><br><b>INV-0031</b></div></div>
+        <table class="p-items"><thead><tr><th>Item</th><th class="right">Amount</th></tr></thead><tbody><tr><td>Cotton shirting — 120 GSM</td><td class="mono right">1,080.00</td></tr></tbody></table>
+        <table class="p-tot" style="width:40%;margin-left:60%"><tr class="g"><td>Total</td><td class="mono right">₹2,637.75</td></tr></table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button>
+      <a class="btn" href="designer.html">Open in designer</a></div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-tdel">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete Template?</h3></div>
+    <div class="modal-body"><p style="margin:0">Bills already issued keep their rendered copies. New bills must pick another template (or restore a preset).</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Keep template</button>
+      <button class="btn danger solid" onclick="closeModal('modal-tdel');toast('Template Deleted','Removed from the gallery.','err')">Delete template</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  function addPreset(name) {
+    toast('Preset Added', '"' + name + '" copied into My Templates.', 'ok');
+  }
+</script>
+</body>
+</html>

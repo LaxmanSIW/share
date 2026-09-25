@@ -105,6 +105,19 @@ public class DialogHelper {
             pane.getStyleClass().add("custom-dialog-pane");
         }
 
+        // Ensure the dark OS title bar is applied whenever the dialog is shown
+        dialog.addEventHandler(javafx.scene.control.DialogEvent.DIALOG_SHOWN, e -> {
+            try {
+                if (pane.getScene() != null && pane.getScene().getWindow() instanceof Stage stage) {
+                    styleStage(stage);
+                }
+                TitleBarTheme.applyToAllProcessWindows();
+                Platform.runLater(TitleBarTheme::applyToAllProcessWindows);
+            } catch (Exception ignored) {
+                AppLog.debug(ignored);
+            }
+        });
+
         // Set application icon + stage-level min dimensions once the dialog's
         // own stage exists (the pane min above already guarantees the size,
         // this only adds the resize floor for user-driven resizing).
@@ -113,13 +126,34 @@ public class DialogHelper {
                 if (pane.getScene() != null && pane.getScene().getWindow() instanceof Stage stage) {
                     if (minWidth > 0) stage.setMinWidth(minWidth);
                     if (minHeight > 0) stage.setMinHeight(minHeight);
-                    applyAppIcon(stage);
+                    styleStage(stage);
                     if (css != null && !pane.getScene().getStylesheets().contains(css)) {
                         pane.getScene().getStylesheets().add(css);
                     }
                 }
             } catch (Exception ignored) {
             AppLog.debug(ignored); }
+        });
+    }
+
+    public static void styleStage(Stage stage) {
+        if (stage == null) return;
+        applyAppIcon(stage);
+        if (stage.isShowing()) {
+            TitleBarTheme.apply(stage);
+            TitleBarTheme.applyToAllProcessWindows();
+        }
+        stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_SHOWN, e -> {
+            TitleBarTheme.apply(stage);
+            TitleBarTheme.applyToAllProcessWindows();
+            Platform.runLater(TitleBarTheme::applyToAllProcessWindows);
+        });
+        stage.showingProperty().addListener((obs, was, is) -> {
+            if (is) {
+                TitleBarTheme.apply(stage);
+                TitleBarTheme.applyToAllProcessWindows();
+                Platform.runLater(TitleBarTheme::applyToAllProcessWindows);
+            }
         });
     }
 
@@ -131,5 +165,13 @@ public class DialogHelper {
         if (css != null && !scene.getStylesheets().contains(css)) {
             scene.getStylesheets().add(css);
         }
+        if (scene.getWindow() instanceof Stage stage) {
+            styleStage(stage);
+        }
+        scene.windowProperty().addListener((obs, oldW, newW) -> {
+            if (newW instanceof Stage s) {
+                styleStage(s);
+            }
+        });
     }
 }

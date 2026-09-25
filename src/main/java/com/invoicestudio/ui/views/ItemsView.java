@@ -580,7 +580,7 @@ public class ItemsView extends VBox {
 
     private void openItemDialog(ItemRecord editing) {
         Stage dlg = new Stage();
-        DialogHelper.applyAppIcon(dlg); // logo in title bar from the very first frame
+        DialogHelper.styleStage(dlg); // logo + dark title bar from the very first frame
         dlg.initModality(Modality.APPLICATION_MODAL);
         dlg.setTitle(editing == null ? "New Catalog Item" : "Edit Item: " + editing.getName());
 

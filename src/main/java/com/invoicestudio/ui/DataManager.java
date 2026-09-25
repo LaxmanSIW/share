@@ -234,6 +234,18 @@ public final class DataManager {
     }
 
     /**
+     * Call after any template was created/updated/deleted outside this class
+     * (designer save, duplicate, import, delete, presets). Templates have no
+     * DataManager-side cache, but the epoch bump is what makes the cached
+     * Templates Gallery re-read the table on its next show — without it the
+     * gallery kept showing the old names/cards until the app restarted
+     * (reported: renamed template still listed under the old name).
+     */
+    public void invalidateTemplates() {
+        bumpEpoch();
+    }
+
+    /**
      * Persist a bill, refresh the cache and notify listeners in one call.
      * Automatically synchronizes with the financial ledger (transactions table).
      * Returns the saved bill for chaining.

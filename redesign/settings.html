@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="settings">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">SYSTEM · SETTINGS</span>
+      <h1>Settings</h1>
+      <div class="sub">Business profile, numbering, typography, printing hardware, knowledge, backups, shortcuts, assistant and MCP server.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn accent" onclick="toast('Settings saved','All business profile and system preferences written.','ok')"><i data-icon="save" data-size="sm"></i>Save all business profile and system preferences</button>
+    </div>
+  </div>
+
+  <div class="settings-layout">
+    <!-- vertical tab list -->
+    <nav class="card" style="padding:8px;position:sticky;top:0">
+      <div class="vtabs" data-tabs="set" data-tabs-for="[data-pane=set]">
+        <button class="on" data-tab="profile"><i data-icon="user" data-size="sm"></i>Profile</button>
+        <button data-tab="bank"><i data-icon="bank" data-size="sm"></i>Bank</button>
+        <button data-tab="billing"><i data-icon="invoices" data-size="sm"></i>Billing</button>
+        <button data-tab="fields"><i data-icon="table" data-size="sm"></i>Fields</button>
+        <button data-tab="fonts"><i data-icon="text" data-size="sm"></i>Fonts</button>
+        <button data-tab="print"><i data-icon="printer" data-size="sm"></i>Print</button>
+        <button data-tab="knowledge"><i data-icon="book" data-size="sm"></i>Knowledge</button>
+        <button data-tab="backup"><i data-icon="database" data-size="sm"></i>Backup</button>
+        <button data-tab="shortcuts"><i data-icon="code" data-size="sm"></i>Shortcuts</button>
+        <button data-tab="chatbot"><i data-icon="chat" data-size="sm"></i>Chatbot</button>
+        <button data-tab="mcp"><i data-icon="server" data-size="sm"></i>MCP Server</button>
+      </div>
+    </nav>
+
+    <div class="set-panel">
+      <!-- ============ PROFILE ============ -->
+      <section data-pane="set" data-f="profile">
+        <h2>My business profile</h2>
+        <p class="p-sub">Identity printed on every document and used by business variables.</p>
+
+        <div class="set-card">
+          <h3><i data-icon="user" data-size="sm"></i>Business identity</h3>
+          <div class="form-grid">
+            <div class="field full"><label>Business / trade name <span class="req">*</span></label><input class="input" value="Leelamani Traders"></div>
+            <div class="field"><label>Phone Number</label><input class="input mono" value="98251 00011"></div>
+            <div class="field"><label>Email Address</label><input class="input" value="shree@leelamani.in"></div>
+            <div class="field"><label>GSTIN</label><input class="input mono" value="24AAECL9999K1ZM" maxlength="15"></div>
+            <div class="field"><label>State (e.g. Maharashtra)</label><input class="input" value="Gujarat"></div>
+            <div class="field"><label>State Code (e.g. 27)</label><input class="input mono" value="24"></div>
+            <div class="field full"><label>Registered Address</label><textarea class="input" rows="2">14, Cloth Market, Ring Road, Surat, Gujarat 395002</textarea></div>
+          </div>
+        </div>
+
+        <div class="set-card">
+          <h3><i data-icon="image" data-size="sm"></i>Business logo</h3>
+          <div class="logo-drop">
+            <span class="logo-thumb">LT</span>
+            <div style="flex:1">
+              <b style="font-size:13.5px">InvoiceStudio logo loaded</b>
+              <div class="faint" style="font-size:12px">PNG / JPG / WebP · remember to click Save Settings after upload</div>
+            </div>
+            <button class="rbtn" onclick="toast('Logo loaded.','InvoiceStudio logo loaded. Remember to click Save Settings.','ok')"><i data-icon="upload" data-size="sm"></i>Upload Logo</button>
+            <button class="rbtn" onclick="toast('App logo set','Set bundled InvoiceStudio logo as business logo.','ok')"><i data-icon="star" data-size="sm"></i>Use App Logo</button>
+            <button class="rbtn danger" onclick="toast('Logo removed','Remember to click Save Settings.','warn')"><i data-icon="trash" data-size="sm"></i></button>
+          </div>
+        </div>
+
+        <div class="set-card">
+          <h3><i data-icon="shield" data-size="sm"></i>Firebase account &amp; authentication</h3>
+          <div class="set-row">
+            <div class="s-info"><b>Current user</b><span>shree@leelamani.in · <span class="mono">Firebase User UID: 8fK2…a91</span></span></div>
+            <button class="rbtn" onclick="toast('Firebase UID copied to clipboard','','ok')"><i data-icon="copy" data-size="sm"></i>Copy Firebase UID</button>
+          </div>
+          <div class="set-row">
+            <div class="s-info"><b>Authentication provider</b><span>Firebase Identity Toolkit (Google Cloud) · <span class="badge ok" style="cursor:default">Active Session</span></span></div>
+            <span class="badge neutral" style="cursor:default">Persistent (Remember Me enabled)</span>
+          </div>
+          <div class="set-row" style="display:block">
+            <b style="font-size:13.5px;display:block;margin-bottom:10px">Update account password</b>
+            <div class="form-grid">
+              <div class="field"><label>Enter new password (min 6 chars)</label><input class="input" type="password" placeholder="••••••••"></div>
+              <div class="field"><label>Confirm new password</label><input class="input" type="password" placeholder="••••••••"></div>
+            </div>
+            <button class="btn sm" style="margin-top:10px" onclick="toast('Authentication Error','Failed to update password. (prototype)','err')">Update Password</button>
+          </div>
+          <div class="set-row">
+            <div class="s-info"><b>Local offline guest mode</b><span>Work without an account; data stays on this machine.</span></div>
+            <label class="switch"><input type="checkbox"><span class="track"></span></label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ BANK ============ -->
+      <section data-pane="set" data-f="bank" style="display:none">
+        <h2>Bank &amp; payment details</h2>
+        <p class="p-sub">Printed in the bank block of templates; feeds {{my_bank_name}} &amp; {{my_account_no}}.</p>
+        <div class="set-card">
+          <h3><i data-icon="bank" data-size="sm"></i>Bank &amp; payment details</h3>
+          <div class="form-grid">
+            <div class="field"><label>Bank Name</label><input class="input" value="HDFC Bank"></div>
+            <div class="field"><label>Account Number</label><input class="input mono" value="5010022334455"></div>
+            <div class="field"><label>IFSC Code</label><input class="input mono" value="HDFC0001234"></div>
+            <div class="field"><label>Bank UPI ID</label><input class="input mono" value="leelamani@hdfcbank"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ BILLING ============ -->
+      <section data-pane="set" data-f="billing" style="display:none">
+        <h2>Billing preferences &amp; numbering</h2>
+        <p class="p-sub">How bills are numbered and what defaults new documents carry.</p>
+        <div class="set-card">
+          <h3><i data-icon="invoices" data-size="sm"></i>Billing preferences &amp; numbering</h3>
+          <div class="form-grid">
+            <div class="field"><label>Bill No Prefix</label><input class="input mono" value="INV-"></div>
+            <div class="field"><label>Padding Digits</label><input class="input mono" value="4"></div>
+            <div class="field"><label>Next Bill Number</label><input class="input mono" value="0031"></div>
+            <div class="field"><label>Currency Symbol</label><input class="input" value="₹"></div>
+            <div class="field full"><label>Default Terms &amp; Conditions</label><textarea class="input" rows="3">1. Goods once sold will not be taken back. 2. Interest @18% p.a. on overdue amounts. 3. Subject to Surat jurisdiction.</textarea></div>
+          </div>
+          <label class="checkbox" style="margin-top:12px"><input type="checkbox" checked><span class="box"><i data-icon="check" data-size="sm"></i></span>Status stamp on print (PAID / CANCELLED)</label>
+          <label class="checkbox" style="margin-top:8px"><input type="checkbox" checked><span class="box"><i data-icon="check" data-size="sm"></i></span>Auto-create recurring invoices on startup</label>
+        </div>
+        <div class="set-card alt">
+          <h3><i data-icon="help" data-size="sm"></i>How bill prefix and zero-padding digits work</h3>
+          <p style="font-size:13px;line-height:1.65;margin:0;color:var(--text-2)">Prefix <span class="code-pill">INV-</span> + zero-padding <b>4</b> renders bill numbers as <span class="mono">INV-0031</span>. The next number always continues from the highest used number, so deleting bills never re-issues numbers. The same scheme drives duplicate, convert and repeat-bill cloning via <span class="mono">BillingService.nextBillNo(settings)</span>.</p>
+        </div>
+      </section>
+
+      <!-- ============ FIELDS ============ -->
+      <section data-pane="set" data-f="fields" style="display:none">
+        <h2>Buyer custom fields</h2>
+        <p class="p-sub">Up to 12 extra fields per buyer; available as {{cf_*}} variables and CSV columns.</p>
+        <div class="set-card">
+          <h3><i data-icon="table" data-size="sm"></i>Buyer custom fields</h3>
+          <div class="row" style="margin-bottom:12px">
+            <input class="input" placeholder="New field name (e.g. Region)">
+            <button class="btn secondary" onclick="toast('Field added','Custom fields appear on buyer forms &amp; exports.','ok')"><i data-icon="plus" data-size="sm"></i>Add Field</button>
+          </div>
+          <div class="set-row"><div class="s-info"><b>Region</b><span>Text · shown on buyer form &amp; directory table</span></div><button class="rbtn danger" onclick="toast('Field removed','Buyer forms updated.','warn')"><i data-icon="trash" data-size="sm"></i></button></div>
+          <div class="set-row"><div class="s-info"><b>Manager</b><span>Text · shown on buyer form &amp; directory table</span></div><button class="rbtn danger" onclick="toast('Field removed','Buyer forms updated.','warn')"><i data-icon="trash" data-size="sm"></i></button></div>
+          <div class="set-row"><div class="s-info"><b>Agent</b><span>Text · exported to CSV as column</span></div><button class="rbtn danger" onclick="toast('Field removed','Buyer forms updated.','warn')"><i data-icon="trash" data-size="sm"></i></button></div>
+          <div class="banner info" style="margin-top:12px"><i data-icon="info"></i><span>Maximum <b>12 custom buyer fields</b> allowed. A field with this name already exists — names must be unique.</span></div>
+        </div>
+      </section>
+
+      <!-- ============ FONTS ============ -->
+      <section data-pane="set" data-f="fonts" style="display:none">
+        <h2>Custom fonts &amp; typography</h2>
+        <p class="p-sub">Google Fonts by name or URL, plus local .ttf/.otf files — used by the designer and PDF export.</p>
+        <div class="set-card">
+          <h3><i data-icon="text" data-size="sm"></i>Add a font</h3>
+          <div class="form-grid">
+            <div class="field"><label>Font name or Google Fonts URL (e.g. Outfit)</label>
+              <div class="input-wrap"><i data-icon="search" data-size="sm"></i><input class="input" placeholder="Outfit"></div></div>
+            <div class="field"><label>Local file</label>
+              <div class="row"><button class="btn ghost" onclick="toast('Font file','Browse Local Font (.ttf, .otf)… (prototype)')"><i data-icon="upload" data-size="sm"></i>Browse Local Font (.ttf, .otf)…</button></div></div>
+          </div>
+          <button class="btn sm" style="margin-top:10px" onclick="toast('Font added','Outfit registered for the designer &amp; PDF engine.','ok')"><i data-icon="plus" data-size="sm"></i>Add Font Name / URL</button>
+        </div>
+        <div class="set-card">
+          <h3><i data-icon="files" data-size="sm"></i>Registered fonts</h3>
+          <div class="set-row"><div class="s-info"><b>Outfit (Google Font)</b><span>400 · 600 · 800 — rendered via bundled rasteriser</span></div><button class="rbtn danger" onclick="toast('Font removed','Designer font lists updated.','warn')">Remove this font</button></div>
+          <div class="set-row"><div class="s-info"><b>KaiGen Gothic (local .otf)</b><span>CJK-ready — embedded in PDF on use</span></div><button class="rbtn danger" onclick="toast('Font removed','Designer font lists updated.','warn')">Remove this font</button></div>
+        </div>
+        <div class="set-card alt">
+          <h3><i data-icon="help" data-size="sm"></i>How to add &amp; use custom fonts</h3>
+          <p style="font-size:13px;line-height:1.65;margin:0;color:var(--text-2)">Pick a Google Font by name (or paste its URL) — it downloads and registers for the designer, previews and PDF export. Local files (.ttf/.otf) load from disk and are embedded into PDFs when used, so documents print identically on any machine.</p>
+        </div>
+      </section>
+
+      <!-- ============ PRINT ============ -->
+      <section data-pane="set" data-f="print" style="display:none">
+        <h2>Print calibration &amp; hardware offsets</h2>
+        <p class="p-sub">Nudge output to match your printer's physical margins.</p>
+        <div class="set-card">
+          <h3><i data-icon="printer" data-size="sm"></i>Print calibration</h3>
+          <div class="form-grid">
+            <div class="field"><label>Horizontal Offset (mm, + moves right)</label><input class="input mono" value="0.0"></div>
+            <div class="field"><label>Vertical Offset (mm, + moves down)</label><input class="input mono" value="0.0"></div>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button class="btn secondary sm" onclick="toast('Calibration sheet sent to printer.','Alignment &amp; margin test sheet queued.','ok')"><i data-icon="printer" data-size="sm"></i>Print Calibration Sheet</button>
+            <span class="faint" style="font-size:12px">"ABCDEFGHIJKLM 1234567890" prints across the sheet to judge offsets.</span>
+          </div>
+        </div>
+        <div class="set-card">
+          <h3><i data-icon="barcode" data-size="sm"></i>Thermal label quality — brightness threshold (TSC / TSPL)</h3>
+          <div class="row">
+            <input type="range" min="0" max="255" value="160" style="flex:1;accent-color:var(--black)">
+            <input class="input mono" style="width:80px" value="160">
+          </div>
+          <p class="faint" style="font-size:11.5px;margin:8px 0 0">Pixels darker than this threshold print black on the TSPL BITMAP path — lower for faint prints, raise to reduce ribbon burn.</p>
+        </div>
+      </section>
+
+      <!-- ============ KNOWLEDGE ============ -->
+      <section data-pane="set" data-f="knowledge" style="display:none">
+        <h2>Knowledge Hub</h2>
+        <p class="p-sub">Built-in guides, AI-chat articles and your own documentation — searchable by the assistant.</p>
+        <div class="row" style="margin-bottom:14px">
+          <div class="search-inline" style="flex:1;max-width:360px"><i data-icon="search"></i><input placeholder="Search 31 articles…"></div>
+          <span class="spacer"></span>
+          <button class="btn accent sm" data-modal-open="modal-kh"><i data-icon="plus" data-size="sm"></i>Create New Documentation Article</button>
+        </div>
+        <div class="kh-grid">
+          <div class="kh-cat">InvoiceStudio core</div>
+          <a class="kh-card" href="#" onclick="return false"><b>Creating your first bill</b><p>Buyer search, catalog pick, live preview and the save → print → PDF loop.</p><span class="kh-meta">Core · updated 12 Sep 2026</span></a>
+          <a class="kh-card" href="#" onclick="return false"><b>Designing labels for TSC printers</b><p>Barcode mode, stock geometry, strip preview and TSPL brightness.</p><span class="kh-meta">Core · updated 10 Sep 2026</span></a>
+          <a class="kh-card" href="#" onclick="return false"><b>GST fields &amp; GSTR-3B mapping</b><p>How rate-wise buckets are computed and where ITC nets off.</p><span class="kh-meta">Core · updated 08 Sep 2026</span></a>
+          <div class="kh-cat">AI chatbot</div>
+          <a class="kh-card" href="#" onclick="return false"><b>What the assistant can do</b><p>Tool rounds, MCP execution, quotas and model switching.</p><span class="kh-meta">AI · art_ai_17 · updated 22 Sep 2026</span></a>
+          <a class="kh-card" href="#" onclick="return false"><b>AI bugs &amp; known fixes</b><p>Chat history quirks, greeting interception and payload trimming.</p><span class="kh-meta">AI · art_ai_15 · updated 19 Sep 2026</span></a>
+          <div class="kh-cat">TSC / General</div>
+          <a class="kh-card" href="#" onclick="return false"><b>Optimisation log</b><p>Round-by-round changes with measured effects.</p><span class="kh-meta">General · updated 24 Sep 2026</span></a>
+        </div>
+      </section>
+
+      <!-- ============ BACKUP ============ -->
+      <section data-pane="set" data-f="backup" style="display:none">
+        <h2>Database backup &amp; restore</h2>
+        <p class="p-sub">Full JSON export/restore plus where your data actually lives.</p>
+        <div class="set-card">
+          <h3><i data-icon="database" data-size="sm"></i>Database backup &amp; restore</h3>
+          <div class="set-row">
+            <div class="s-info"><b>Export Backup JSON</b><span>Export complete database backup to a JSON file</span></div>
+            <button class="btn sm" onclick="toast('Save Database Backup','invoicestudio-backup-2026-09-24.json · 4.2 MB','ok')"><i data-icon="download" data-size="sm"></i>Export Backup JSON</button>
+          </div>
+          <div class="set-row">
+            <div class="s-info"><b>Restore from Backup JSON…</b><span>Restore database from previously exported JSON backup</span></div>
+            <button class="btn sm danger" data-modal-open="modal-restore"><i data-icon="upload" data-size="sm"></i>Restore…</button>
+          </div>
+        </div>
+        <div class="set-card alt">
+          <h3><i data-icon="server" data-size="sm"></i>Local embedded data storage</h3>
+          <div class="set-row"><div class="s-info"><b>App data directory</b><span class="mono" style="font-size:11.5px">%APPDATA%/InvoiceStudio/ · SQLite + JSON sidecars</span></div><button class="rbtn" onclick="toast('Copied','Path copied to clipboard.','ok')"><i data-icon="copy" data-size="sm"></i>Copy</button></div>
+          <div class="set-row"><div class="s-info"><b>Session mode</b><span>Persistent (Remember Me enabled) · Local Offline Guest Mode available</span></div><span class="badge ok" style="cursor:default">Session Only-safe</span></div>
+        </div>
+      </section>
+
+      <!-- ============ SHORTCUTS ============ -->
+      <section data-pane="set" data-f="shortcuts" style="display:none">
+        <h2>Keyboard shortcuts</h2>
+        <p class="p-sub">Rebindable app actions — validated, deduped and persisted to shortcuts.json.</p>
+        <div class="set-card">
+          <h3><i data-icon="code" data-size="sm"></i>Workspace</h3>
+          <div class="shortcut-row"><span>Dashboard</span><span class="kbd">G then D</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+          <div class="shortcut-row"><span>New bill</span><span class="kbd">Ctrl+N</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+          <div class="shortcut-row"><span>Reload data</span><span class="kbd">F5</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+          <div class="shortcut-row"><span>Command palette</span><span class="kbd">Ctrl+K</span><button class="rbtn" onclick="toast('Reserved','This combo is contextual and always on.')">Fixed</button></div>
+        </div>
+        <div class="set-card">
+          <h3><i data-icon="invoices" data-size="sm"></i>Sales &amp; billing</h3>
+          <div class="shortcut-row"><span>Invoices</span><span class="kbd">Ctrl+H</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+          <div class="shortcut-row"><span>Buyers</span><span class="kbd">Ctrl+B</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+          <div class="shortcut-row"><span>Items</span><span class="kbd">Ctrl+I</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+          <div class="shortcut-row"><span>Reports</span><span class="kbd">Ctrl+R</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+        </div>
+        <div class="set-card">
+          <h3><i data-icon="pen" data-size="sm"></i>Design &amp; print</h3>
+          <div class="shortcut-row"><span>Templates</span><span class="kbd">Ctrl+T</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+          <div class="shortcut-row"><span>Label designer</span><span class="kbd">Ctrl+Shift+L</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+          <div class="shortcut-row"><span>Bulk label print</span><span class="kbd">Ctrl+Shift+B</span><button class="rbtn" onclick="toast('Rebind','Press the new key combination…')">Change</button></div>
+        </div>
+        <div class="row" style="margin-top:4px">
+          <button class="btn ghost" onclick="toast('Reset all','Every shortcut returned to its default combo.','warn')">Reset all to defaults</button>
+          <span class="faint" style="font-size:12px">Validation: combos must parse, can't be reserved (Alt+Tab…), need a modifier (F-keys exempt) and can't collide ("TAKEN").</span>
+        </div>
+      </section>
+
+      <!-- ============ CHATBOT ============ -->
+      <section data-pane="set" data-f="chatbot" style="display:none">
+        <h2>AI Chatbot</h2>
+        <p class="p-sub">Provider &amp; model, the API key vault, and how the assistant behaves.</p>
+        <div class="set-card">
+          <h3><i data-icon="key" data-size="sm"></i>Provider &amp; model</h3>
+          <div class="form-grid">
+            <div class="field"><label>Provider</label>
+              <select class="input"><option>GLM (OpenAI-compatible)</option><option>Gemini</option><option>Local system model</option></select></div>
+            <div class="field"><label>Endpoint</label><input class="input mono" value="https://open.bigmodel.cn/api/paas/v4/"></div>
+            <div class="field"><label>Model</label>
+              <div class="row"><select class="input" style="flex:1"><option>glm-4.6 · free-tier · 32k ctx</option><option>glm-4.5-air</option><option>gemini-2.0-flash-lite</option></select>
+              <button class="rbtn" onclick="toast('Testing glm-4.6…','Fetching the live model list from your provider.','warn')"><i data-icon="refresh" data-size="sm"></i>Fetch live list</button></div></div>
+            <div class="field"><label>API key</label>
+              <div class="input-wrap"><i data-icon="key" data-size="sm"></i>
+                <input class="input mono" type="password" value="a1b3f7b3aa9a4769b7a68c6b5c99c7c0">
+                <button type="button" class="trail" onclick="toast('Key visibility','Toggled.')"><i data-icon="eye" data-size="sm"></i></button></div></div>
+          </div>
+          <div class="row" style="margin-top:12px;gap:8px">
+            <button class="btn sm secondary" onclick="toast('Test connection','Testing glm-4.6… 200 OK · 412 ms · 32,768 ctx.','ok')"><i data-icon="zap" data-size="sm"></i>Test connection</button>
+            <button class="btn sm ghost" onclick="toast('Saved to vault','Key stored in api-vault.json and selectable from the dropdown.','ok')"><i data-icon="save" data-size="sm"></i>Save current key</button>
+          </div>
+        </div>
+        <div class="set-card">
+          <h3><i data-icon="lock" data-size="sm"></i>API key vault</h3>
+          <div class="field" style="max-width:380px;margin-bottom:10px"><label>Assign key from vault</label>
+            <select class="input"><option>GLM · primary (•••c0)</option><option>GLM · spare (•••9b)</option><option>Gemini · free (•••kY0)</option></select></div>
+          <div class="set-row"><div class="s-info"><b>GLM · primary</b><span class="mono" style="font-size:11px">•••• •••• •••• c0 · added 12 Sep 2026</span></div><button class="rbtn" onclick="toast('Copied','Key copied to clipboard.','ok')"><i data-icon="copy" data-size="sm"></i>Copy</button><button class="rbtn danger" onclick="toast('Key removed','Pick a key from the dropdown to delete it.','warn')"><i data-icon="trash" data-size="sm"></i></button></div>
+          <div class="set-row"><div class="s-info"><b>Gemini · free</b><span class="mono" style="font-size:11px">•••• •••• •••• kY0 · light default for free tier</span></div><button class="rbtn" onclick="toast('Copied','Key copied to clipboard.','ok')"><i data-icon="copy" data-size="sm"></i>Copy</button><button class="rbtn danger" onclick="toast('Key removed','Pick a key from the dropdown to delete it.','warn')"><i data-icon="trash" data-size="sm"></i></button></div>
+          <p class="faint" style="font-size:11.5px;margin:8px 0 0">Switching provider auto-fills the matching vault key; "No vault key for &lt;provider&gt;" prompts a save first.</p>
+        </div>
+        <div class="set-card">
+          <h3><i data-icon="chat" data-size="sm"></i>Behaviour</h3>
+          <div class="set-row"><div class="s-info"><b>Show the floating chat icon (bottom-right)</b><span>The round assistant FAB on every screen</span></div><label class="switch"><input type="checkbox" checked><span class="track"></span></label></div>
+          <div class="set-row"><div class="s-info"><b>History window</b><span>Messages of context sent per turn (payload weight)</span></div>
+            <select class="input" style="width:120px"><option>12</option><option>20</option><option>40</option></select></div>
+          <div class="set-row"><div class="s-info"><b>Max tool rounds</b><span>Model→tool round-trips before forced answer</span></div>
+            <select class="input" style="width:120px"><option>3</option><option>5</option><option>8</option></select></div>
+        </div>
+      </section>
+
+      <!-- ============ MCP ============ -->
+      <section data-pane="set" data-f="mcp" style="display:none">
+        <h2>AI access server (MCP)</h2>
+        <p class="p-sub">Localhost HTTP server exposing app tools to Claude / Cursor / VS Code and the built-in assistant.</p>
+        <div class="set-card">
+          <h3><i data-icon="server" data-size="sm"></i>Configuration</h3>
+          <div class="form-grid">
+            <div class="field"><label>Port</label><input class="input mono" value="8765"></div>
+            <div class="field"><label>Auto-start with app</label><div style="margin-top:6px"><label class="switch"><input type="checkbox" checked><span class="track"></span></label></div></div>
+          </div>
+        </div>
+        <div class="set-card">
+          <h3><i data-icon="key" data-size="sm"></i>Auth token &amp; AI client setup</h3>
+          <div class="row wrap">
+            <input class="input mono" style="flex:1;min-width:240px" value="Bearer mcp_9f2e…" readonly>
+            <button class="rbtn" onclick="toast('Copied','Bearer token copied.','ok')"><i data-icon="copy" data-size="sm"></i>Copy Token</button>
+            <button class="rbtn" onclick="toast('New token generated','Update your MCP client config.','warn')"><i data-icon="refresh" data-size="sm"></i>Regenerate</button>
+          </div>
+          <label class="checkbox" style="margin-top:10px"><input type="checkbox" checked><span class="box"><i data-icon="check" data-size="sm"></i></span>Require bearer token</label>
+          <div class="divider"></div>
+          <div class="row wrap" style="gap:8px">
+            <button class="btn ghost sm" onclick="toast('Claude Desktop config copied','Paste into claude_desktop_config.json.','ok')"><i data-icon="copy" data-size="sm"></i>Copy Claude Desktop Config</button>
+            <button class="btn ghost sm" onclick="toast('Cursor / VS Code config copied','Paste into mcp.json.','ok')"><i data-icon="copy" data-size="sm"></i>Copy Cursor / VS Code Config</button>
+          </div>
+        </div>
+        <div class="set-card">
+          <h3><i data-icon="alert" data-size="sm"></i>Pending confirmations</h3>
+          <div class="set-row">
+            <div class="s-info"><b>bills.deleteBill(INV-0006)</b><span>Requested by external client · 2 min ago</span></div>
+            <button class="rbtn ok" onclick="toast('Approved','Operation executed; caller notified.','ok')">Approve</button>
+            <button class="rbtn danger" onclick="toast('Rejected','Operation blocked.','err')">Reject</button>
+          </div>
+          <div class="set-row"><div class="s-info"><b>No pending operations.</b><span>New tool calls appear here when confirmation is required.</span></div></div>
+        </div>
+        <div class="set-card alt">
+          <h3><i data-icon="files" data-size="sm"></i>Activity log</h3>
+          <div style="font-family:var(--mono);font-size:11.5px;color:var(--text-2);display:grid;gap:5px">
+            <span>09:41:02 · GET /tools · client=claude-desktop · 200</span>
+            <span>09:41:14 · CALL ledger.outstanding(limit=5) · 96ms · ok</span>
+            <span>09:42:31 · CALL knowledge.search("gst") · 41ms · 6 hits</span>
+            <span>09:44:08 · CALL bills.createBill(draft) · pending confirmation</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main></div>
+
+<!-- KH article editor -->
+<div class="modal-back" id="modal-kh">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="book"></i></span>
+      <div style="flex:1"><h3>Create New Documentation Article</h3><div class="msub">Markdown supported · indexed for assistant search</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field full"><label>Title <span class="req">*</span></label><input class="input" placeholder="e.g. Handling 80mm roll paper jams"></div>
+        <div class="field"><label>Category</label>
+          <select class="input"><option>General</option><option>InvoiceStudio Core</option><option>AI Chatbot</option><option>TSC / General</option></select></div>
+        <div class="field"><label>Description</label><input class="input" placeholder="One-line summary"></div>
+      </div>
+      <div class="field" style="margin-top:14px"><label>Body (Markdown)</label>
+        <textarea class="input" rows="7" placeholder="## Steps&#10;1. …"></textarea></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn danger" onclick="toast('Article deleted','Knowledge index re-built.','err')">Delete Article</button>
+      <button class="btn" onclick="closeModal('modal-kh');toast('Save Article','Indexed for assistant search.','ok')">Save Article</button>
+    </div>
+  </div>
+</div>
+
+<!-- restore confirm -->
+<div class="modal-back" id="modal-restore">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="alert"></i></span><h3>Confirm Restore</h3></div>
+    <div class="modal-body"><p style="margin:0 0 10px">Restoring from <span class="mono">invoicestudio-backup-2026-09-24.json</span> replaces current data.</p>
+      <div class="field"><label>Select Backup File to Restore</label><input class="input" value="C:\\Users\\lex\\Downloads\\invoicestudio-backup-2026-09-24.json" readonly></div></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn danger solid" onclick="closeModal('modal-restore');toast('Restoring from backup…','Views will re-warm when done.','warn')">Restore now</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+</body>
+</html>
