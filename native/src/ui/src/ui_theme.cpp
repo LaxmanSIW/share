@@ -17,6 +17,7 @@ namespace fin::ui {
 QFrame* UiTheme::page(QWidget* parent) {
   auto* page = new QFrame(parent);
   page->setProperty("class", "view-page");
+  page->setStyleSheet("background-color: #0B0E13;");
   page->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   auto* l = new QVBoxLayout(page);
   l->setContentsMargins(24, 24, 24, 24);
@@ -27,6 +28,7 @@ QFrame* UiTheme::page(QWidget* parent) {
 QFrame* UiTheme::card(int spacing, QWidget* parent) {
   auto* card = new QFrame(parent);
   card->setProperty("class", "card");
+  card->setStyleSheet("background-color: #151B25; border: 1px solid #232B38; border-radius: 8px;");
   card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   auto* l = new QVBoxLayout(card);
   l->setContentsMargins(16, 16, 16, 16);

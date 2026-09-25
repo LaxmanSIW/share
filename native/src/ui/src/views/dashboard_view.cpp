@@ -75,6 +75,7 @@ QFrame* make_kpi_card(const QString& label, const QString& value,
                         std::string_view icon, QWidget* parent) {
   auto* card = new QFrame(parent);
   card->setProperty("class", "card");
+  card->setStyleSheet("background-color: #151B25; border: 1px solid #232B38; border-radius: 8px;");
   card->setMinimumHeight(120);
   auto* l = new QVBoxLayout(card);
   l->setContentsMargins(16, 16, 16, 16);
