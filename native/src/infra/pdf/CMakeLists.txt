@@ -1,0 +1,5 @@
+# src/infra/pdf/CMakeLists.txt — Phase 3 placeholder (QPdfWriter / PoDoFo)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui)
+qt_add_library(fin_pdf STATIC)
+target_include_directories(fin_pdf PUBLIC include)
+target_link_libraries(fin_pdf PUBLIC fin::domain Qt6::Core Qt6::Gui)

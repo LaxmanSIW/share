@@ -1,0 +1,51 @@
+# .clang-tidy — Phase 7 hardening config
+#
+# Skill §6: run in CI on changed files; enforces the rules from the
+# cpp-desktop-accounting-designer skill (money as int64 not double, no
+# processEvents, no .get()/.wait() on UI thread, etc.)
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  concurrency-*,
+  modernize-*,
+  cert-*,
+  cppcoreguidelines-pro-type-cstylecast,
+  cppcoreguidelines-pro-type-static-cast-downcast,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  cppcoreguidelines-pro-bounds-constant-array-index,
+  readability-*,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-named-parameter,
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -cert-err58-cpp,
+  -cert-err60-cpp
+
+# Custom checks for skill-specific rules (manual grep in CI):
+#   - grep for ".exec(" inside slots → flag (skill rule §8)
+#   - grep for "processEvents(" → flag
+#   - grep for ".get()/.wait()/.join()/.sleep" on UI thread → flag
+#   - grep for "double.*amount|money|price|qty" → flag (skill §1)
+#   - grep for "QSqlQuery|sqlite3_step" in widgets/models → flag
+#   - grep for "resizeColumnsToContents" → flag (skill §7)
+#   - grep for "QTableWidget|QListWidget" with big data → flag
+#   - grep for "std::async" default policy → flag
+#   - grep for "QThread" subclass overriding run() → flag
+#   - grep for "namespace acct" → flag (libc conflict; we use `fin`)
+
+CheckOptions:
+  - key:   readability-function-cognitive.ComplexityThreshold
+    value: '35'   # skill §5.5: >60 = bug farm; we warn at 35
+  - key:   modernize-use-default-member-init.UseAssignment
+    value: '1'
+  - key:   bugprone-unhandled-exception-after-new.NewExceptionType
+    value: 'std::bad_alloc'
+
+WarningsAsErrors: ''
+HeaderFilterRegex: 'fin/'
+FormatLine: 100

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "invoicestudio-native",
+  "version-string": "4.0.0",
+  "description": "Native C++/Qt6 port of InvoiceStudio desktop accounting app",
+  "dependencies": [
+    { "name": "qtbase",        "features": [] },
+    { "name": "qtsvg",         "features": [] },
+    { "name": "qtimageformats","features": [] },
+    { "name": "qttools",       "features": [] },
+    { "name": "qttranslations","features": [] },
+    { "name": "qtmultimedia",  "features": [] },
+    { "name": "sqlite3",       "features": ["json1","fts5"] },
+    { "name": "nlohmann-json", "features": [] },
+    { "name": "spdlog",        "features": [] },
+    { "name": "fmt",           "features": [] },
+    { "name": "icu",           "features": [] },
+    { "name": "harfbuzz",      "features": [] },
+    { "name": "freetype",      "features": [] },
+    { "name": "zint",          "features": [] },
+    { "name": "zxing-cpp",     "features": [] },
+    { "name": "libdeflate",    "features": [] },
+    { "name": "minizip-ng",    "features": [] },
+    { "name": "openssl",       "features": [] },
+    { "name": "curl",          "features": ["openssl"] },
+    { "name": "libsodium",    "features": [] },
+    { "name": "sqlitecpp",     "features": [] },
+    { "name": "gtest",         "features": [] },
+    { "name": "benchmark",     "features": [] },
+    { "name": "rapidcheck",    "features": [] }
+  ],
+  "builtin-baseline": "2024-09-30"
+}
