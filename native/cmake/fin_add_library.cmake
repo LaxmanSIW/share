@@ -1,0 +1,11 @@
+# Helper function: create a static library target with the standard build flags.
+# Usage: fin_add_library(<name> STATIC [PUBLIC_INCLUDES <dir>...] [SOURCES <files>...])
+function(fin_add_library name type)
+  cmake_parse_arguments(ARG "" "" "PUBLIC_INCLUDES;SOURCES" ${ARGN})
+  add_library(${name} ${type} ${ARG_SOURCES})
+  add_library(fin::${name} ALIAS ${name})
+  target_link_libraries(${name} PUBLIC fin::build_flags)
+  if(ARG_PUBLIC_INCLUDES)
+    target_include_directories(${name} PUBLIC ${ARG_PUBLIC_INCLUDES})
+  endif()
+endfunction()

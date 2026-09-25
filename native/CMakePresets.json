@@ -1,0 +1,86 @@
+{
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Dev (Debug + ASan/UBSan)",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FIN_SANITIZE": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release (RelWithDebInfo + LTO)",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "release-asan",
+      "displayName": "Release with ASan (CI leak hunts)",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "FIN_SANITIZE": "ON"
+      }
+    },
+    {
+      "name": "tsan",
+      "displayName": "TSan (concurrency stress)",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FIN_TSAN": "ON"
+      }
+    },
+    {
+      "name": "win-msvc-release",
+      "displayName": "Windows MSVC Release",
+      "inherits": "base",
+      "generator": "Visual Studio 17 2022",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Coverage (gcov/llvm-cov)",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FIN_COVERAGE": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev",        "configurePreset": "dev" },
+    { "name": "release",    "configurePreset": "release" },
+    { "name": "release-asan","configurePreset": "release-asan" },
+    { "name": "tsan",        "configurePreset": "tsan" },
+    { "name": "win-msvc-release","configurePreset": "win-msvc-release" },
+    { "name": "coverage",    "configurePreset": "coverage" }
+  ],
+  "testPresets": [
+    { "name": "dev",     "configurePreset": "dev",     "output": { "outputOnFailure": true } },
+    { "name": "release", "configurePreset": "release","output": { "outputOnFailure": true } }
+  ]
+}
