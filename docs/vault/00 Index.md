@@ -22,6 +22,9 @@ Open **Graph View** (Ctrl+G) to see how everything connects.
 - [[07 Branches and Versions]] — branch topology, version history, recent fixes
 - [[08 MCP Server]] — MCP tool surface
 - [[09 Template Download & Upload]] — decision record: exporting/importing templates (one, several, all)
+- [[10 Designer Selection & Resize]] — decision record: duplicate deep-copy, stale gallery fix, resize-handle semantics + aspect lock, text editor polish
+- [[11 Remote Printing from Phone]] — future direction: phone as a local remote control for bills/labels (shop context, data stays local)
+- [[12 Dark OS Title Bar]] — decision record: dark Windows title bar via DWM (native chrome matches the app theme)
 
 ## Quick find — "where do I change X?"
 
@@ -34,6 +37,8 @@ Open **Graph View** (Ctrl+G) to see how everything connects.
 | Build version, installer, CI | [[06 Build Packaging CI]] |
 | Item saved with null id (fixed) | [[07 Branches and Versions]] |
 | Template download / upload (export / import) | [[09 Template Download & Upload]] |
+| Designer resize / selection / duplicate behaviour | [[10 Designer Selection & Resize]] |
+| The OS title bar / window chrome colors | [[12 Dark OS Title Bar]] |
 
 ## Feature map (screen → code path)
 

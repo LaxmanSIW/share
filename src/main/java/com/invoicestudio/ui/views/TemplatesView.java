@@ -95,6 +95,7 @@ public class TemplatesView extends BorderPane {
             blank.setId("tpl_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10));
             blank.setName("New Custom Template");
             templateDao.saveTemplate(blank);
+            app.getData().invalidateTemplates();
             app.showTemplateDesigner(blank);
         });
 
@@ -104,6 +105,7 @@ public class TemplatesView extends BorderPane {
         newLabelBtn.setOnAction(e -> {
             Template lbl = PresetTemplates.buildLabelTemplate();
             templateDao.saveTemplate(lbl);
+            app.getData().invalidateTemplates();
             app.showTemplateDesigner(lbl);
         });
 
@@ -251,12 +253,16 @@ public class TemplatesView extends BorderPane {
         dupBtn.getStyleClass().addAll("button-sm", "button-secondary");
         dupBtn.setTooltip(new Tooltip("Duplicate Template"));
         dupBtn.setOnAction(e -> {
-            Template copy = PresetTemplates.buildClassic();
+            // Deep copy of the real template — preserves mode (bill vs barcode
+            // label), labelConfig stock geometry and print offsets. The old
+            // code rebuilt from a bill preset, which silently converted a
+            // duplicated barcode template into a bill template and wiped its
+            // print settings.
+            Template copy = Template.copyOf(t);
             copy.setId("tpl_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10));
             copy.setName(t.getName() + " (Copy)");
-            copy.setPage(t.getPage());
-            copy.setElements(t.getElements());
             templateDao.saveTemplate(copy);
+            app.getData().invalidateTemplates();
             refresh();
             Toast.show(app.getRootPane(), "Template Duplicated", "Created copy of " + t.getName(), false);
         });
@@ -270,6 +276,7 @@ public class TemplatesView extends BorderPane {
             confirm.showAndWait().ifPresent(ans -> {
                 if (ans == ButtonType.YES) {
                     templateDao.deleteTemplate(t.getId());
+                    app.getData().invalidateTemplates();
                     refresh();
                     Toast.show(app.getRootPane(), "Template Deleted", t.getName() + " removed.", false);
                 }
@@ -397,6 +404,7 @@ public class TemplatesView extends BorderPane {
 
         try {
             TemplatePackageService.ImportResult result = packageService.importTemplates(file);
+            app.getData().invalidateTemplates();
             refresh();
             Toast.show(app.getRootPane(), "Templates Uploaded", result.summary(), false);
         } catch (Exception ex) {
@@ -421,6 +429,7 @@ public class TemplatesView extends BorderPane {
     private void loadPreset(Template preset) {
         preset.setId("tpl_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10));
         templateDao.saveTemplate(preset);
+        app.getData().invalidateTemplates();
         refresh();
         Toast.show(app.getRootPane(), "Preset Added", "Added " + preset.getName() + " to your templates.", false);
     }

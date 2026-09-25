@@ -1690,11 +1690,19 @@ Label {
     -fx-padding: 0;
 }
 
-.custom-dialog-pane .header-panel, .dialog-pane .header-panel {
-    -fx-background-color: -color-surface;
+.custom-dialog-pane .header-panel,
+.dialog-pane .header-panel,
+.custom-dialog-pane:header > .header-panel,
+.dialog-pane:header > .header-panel {
+    -fx-background-color: -color-bg;
+    -fx-border-color: transparent transparent -color-border transparent;
+    -fx-border-width: 0 0 1 0;
 }
 
-.custom-dialog-pane .header-panel .label, .dialog-pane .header-panel .label {
+.custom-dialog-pane .header-panel .label,
+.dialog-pane .header-panel .label,
+.custom-dialog-pane:header > .header-panel > .label,
+.dialog-pane:header > .header-panel > .label {
     -fx-text-fill: -color-text;
     -fx-font-size: 14px;
     -fx-font-weight: bold;

@@ -144,6 +144,12 @@ public class TemplateDesigner extends BorderPane {
     private static final double WRAPPER_MARGIN_MIN_PX = 260.0;
     private Canvas gridCanvasNode;
     private boolean snapToGrid = true;
+    /**
+     * "Bind W/H" — when true, corner-handle drags (and W/H spinners) keep the
+     * element's width:height ratio, the Figma-style aspect lock exposed in the
+     * Position & Size panel. Session-scoped, not persisted per element.
+     */
+    private boolean aspectLock = false;
     private boolean magnetSnapping = true;
     private boolean showGrid = true;
     private boolean isPanMode = false;
@@ -1642,6 +1648,114 @@ public class TemplateDesigner extends BorderPane {
         return Math.max(3.0, 10.0 / Math.max(0.3, zoom));
     }
 
+    /**
+     * Element types whose visual content SCALES with the frame — for these a
+     * resize is a scale operation, so the on-screen preview scales the live
+     * node (matches what the user sees in Figma/Canva when scaling an image
+     * or barcode; a re-render per drag frame is too expensive and re-rasterizes).
+     * The released handler re-renders the final state via
+     * {@link #updateElementVisualInPlace}.
+     */
+    private static boolean isScaleable(ElementType t) {
+        return t == ElementType.IMAGE || t == ElementType.BARCODE
+                || t == ElementType.QRCODE || t == ElementType.ICON || t == ElementType.SVG;
+        // TEXT keeps fixed font size (industry convention: side/corner resize
+        // changes the box, not the glyphs); TABLE re-lays-out columns live.
+    }
+
+    /**
+     * Corner handles drag proportionally for these types (Figma corner
+     * semantics: content-scaling objects keep their aspect ratio from corners,
+     * Shift is then not needed — Shift toggles to free). Everything else,
+     * including text boxes, stays free-resize from all 8 handles.
+     */
+    private static boolean isCornerProportional(ElementType t) {
+        return isScaleable(t);
+    }
+
+    /**
+     * Applies the aspect-ratio lock ("Bind W/H" checkbox in Position & Size)
+     * plus the Shift-key modifier to a drag-computed size. The ratio is taken
+     * from the drag-START size (origW/origH), so toggling Shift mid-drag can
+     * never compound drift. Corner drag on content objects (image/barcode/…)
+     * is proportional by default and Shift frees it; other types are free by
+     * default and Shift constrains; the lock always constrains.
+     *
+     * @param axis dominant drag axis: "w" or "h"
+     * @return [w, h] in mm
+     */
+    private double[] applyConstrain(TemplateElement el, double origW, double origH,
+                                    double newW, double newH, boolean corner, boolean shift, String axis) {
+        return constrainSize(aspectLock, el.getType(), origW, origH, newW, newH, corner, shift, axis);
+    }
+
+    /**
+     * Pure resize-decision function — package-private so the resize-semantics
+     * unit test can pin the behaviour without building the designer UI.
+     *
+     * <p>Corner handles on content objects (image/barcode/QR/…) are
+     * proportional BY DEFAULT and Shift frees them; corner handles on other
+     * types are free by default and Shift constrains them (that is exactly a
+     * XOR between "is content" and "Shift held"). Side handles never bind
+     * unless the aspect lock is on, and the lock always wins over Shift.</p>
+     */
+    static double[] constrainSize(boolean locked, ElementType type, double origW, double origH,
+                                  double newW, double newH, boolean corner, boolean shift, String axis) {
+        double ratio = origW / Math.max(0.0001, origH);
+        boolean content = isCornerProportional(type);
+        boolean constrain = locked || (corner && (content != shift));
+        if (constrain) {
+            if ("w".equals(axis)) newH = newW / ratio;
+            else newW = newH * ratio;
+        }
+        return new double[]{newW, newH};
+    }
+
+    /**
+     * Live drag preview for content-scaling objects (image/barcode/qr/icon/svg):
+     * scales the existing visual node with the frame so the user sees the
+     * content grow/shrink like in mainstream design tools, instead of the
+     * frame moving over static content. Called every drag frame; the released
+     * handler re-renders through updateElementVisualInPlace.
+     */
+    private void updateLiveScaledVisual(TemplateElement el, double newWmm, double newHmm) {
+        double wPx = newWmm * MM_PX;
+        double hPx = newHmm * MM_PX;
+        double[] rendered = renderedSizes.get(el);
+        double renderedW = rendered != null ? rendered[0] : wPx;
+        double renderedH = rendered != null ? rendered[1] : hPx;
+        for (Node n : elementsPane.getChildren()) {
+            if (n.getUserData() == el && n instanceof Pane p) {
+                p.setLayoutX(el.getX() * MM_PX);
+                p.setLayoutY(el.getY() * MM_PX);
+                p.setPrefSize(wPx, hPx);
+                p.setMinSize(wPx, hPx);
+                p.setMaxSize(wPx, hPx);
+                Node visual = p.getChildren().size() > 1 ? p.getChildren().get(1) : null;
+                if (visual != null && renderedW > 0.0001 && renderedH > 0.0001) {
+                    visual.setScaleX(wPx / renderedW);
+                    visual.setScaleY(hPx / renderedH);
+                }
+                break;
+            }
+        }
+        updateStatusBarCoords();
+    }
+
+    /** Clears any scale preview left by {@link #updateLiveScaledVisual}. */
+    private void clearScalePreview(TemplateElement el) {
+        for (Node n : elementsPane.getChildren()) {
+            if (n.getUserData() == el && n instanceof Pane p) {
+                Node visual = p.getChildren().size() > 1 ? p.getChildren().get(1) : null;
+                if (visual != null) {
+                    visual.setScaleX(1.0);
+                    visual.setScaleY(1.0);
+                }
+                break;
+            }
+        }
+    }
+
     private Rectangle createHandleShape(Cursor cursor, double sizePx) {
         Rectangle h = new Rectangle(sizePx, sizePx);
         h.setFill(Color.web("#D9A13B"));
@@ -1793,10 +1907,11 @@ public class TemplateDesigner extends BorderPane {
 
         double x = el.getX() * MM_PX;
         double y = el.getY() * MM_PX;
-        // Min editor size scales with 1/zoom too — a fixed design-space floor
-        // made the editor dwarf the element it edits at high zoom.
-        double w = Math.max(60.0 / Math.max(0.3, zoom), el.getW() * MM_PX);
-        double h = Math.max(30.0 / Math.max(0.3, zoom), el.getH() * MM_PX);
+        // EXACT element footprint (was: design-space floors of 60×30 that blew
+        // up small text boxes at high zoom and made the editor visibly change
+        // the element's size while editing). Editing must never resize.
+        double w = Math.max(4.0, el.getW() * MM_PX);
+        double h = Math.max(4.0, el.getH() * MM_PX);
 
         TextArea editor = new TextArea(el.getText() != null ? el.getText() : "");
         editor.setWrapText(true);
@@ -1804,6 +1919,7 @@ public class TemplateDesigner extends BorderPane {
         editor.setLayoutY(y);
         editor.setPrefSize(w, h);
         editor.setMinSize(w, h);
+        editor.setMaxSize(w, h); // hard-capped so the editor can never outgrow the element
         editor.setRotate(el.getRotation());
 
         String colorHex = el.getColor() != null && !el.getColor().isBlank() ? el.getColor() : "#1a1a1a";
@@ -1823,8 +1939,12 @@ public class TemplateDesigner extends BorderPane {
                 "-fx-font-family: '%s'; -fx-font-size: %.1fpx; -fx-font-weight: %d; -fx-font-style: %s; "
                 + "-fx-text-fill: %s; -fx-background-color: %s; -fx-background-insets: 0; "
                 + "-fx-border-color: #D9A13B; -fx-border-width: %.2fpx; -fx-border-radius: %.2fpx; "
-                + "-fx-background-radius: %.2fpx; -fx-padding: 0;",
-                family, fontSize, weight, fs, colorHex, bg, 1.0 * inv, 2.0 * inv, 2.0 * inv));
+                + "-fx-background-radius: %.2fpx; -fx-padding: 0; "
+                // Selection highlight + caret in brand gold instead of the
+                // light-blue system default (reported: ugly highlight color).
+                + "-fx-highlight-fill: #D9A13B55; -fx-highlight-text-fill: %s; "
+                + "-fx-accent: #D9A13B;",
+                family, fontSize, weight, fs, colorHex, bg, 1.0 * inv, 2.0 * inv, 2.0 * inv, colorHex));
 
         editor.setOnKeyPressed(ke -> {
             if (ke.getCode() == KeyCode.ESCAPE) {
@@ -2079,6 +2199,10 @@ public class TemplateDesigner extends BorderPane {
         double xPx = el.getX() * MM_PX;
         double yPx = el.getY() * MM_PX;
 
+        // Record the size the visual was rendered at so updateLiveScaledVisual
+        // can compute honest scale ratios during the NEXT resize drag.
+        recordRenderedSize(el, wPx, hPx);
+
         for (Node n : elementsPane.getChildren()) {
             if (n.getUserData() == el && n instanceof Pane wrapper) {
                 wrapper.setLayoutX(xPx);
@@ -2113,6 +2237,14 @@ public class TemplateDesigner extends BorderPane {
             }
         }
     }
+
+    /** Remembers the size an element's visual was last rendered at (drag-scale bookkeeping). */
+    private void recordRenderedSize(TemplateElement el, double wPx, double hPx) {
+        renderedSizes.put(el, new double[]{wPx, hPx});
+    }
+
+    /** Element → the size its visual was rendered at (identity: elements are unique instances). */
+    private final java.util.Map<TemplateElement, double[]> renderedSizes = new java.util.IdentityHashMap<>();
 
     private void updateLiveElementVisual(TemplateElement el, double newW, double newH, double newX, double newY) {
         double wPx = newW * MM_PX;
@@ -2455,13 +2587,20 @@ public class TemplateDesigner extends BorderPane {
             double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
             double newW = Math.max(5.0, resizeStart[2] + dx);
             double newH = Math.max(3.0, resizeStart[3] + dy);
+            // Corner drag: content objects scale proportionally by default
+            // (Figma corner semantics); Shift flips to free. Other types stay
+            // free unless Shift constrains them.
+            String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
+            double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
+            newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); }
             el.setW(newW); el.setH(newH);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
-            updateLiveElementVisual(el, newW, newH, el.getX(), el.getY());
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, newH);
+            else updateLiveElementVisual(el, newW, newH, el.getX(), el.getY());
             e.consume();
         });
-        handleSE.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleSE.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 2. E Handle (Right-Center)
         handleE.setOnMousePressed(e -> {
@@ -2478,10 +2617,13 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) newW = Math.round(newW);
             el.setW(newW);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, el.getH() * MM_PX);
-            updateLiveElementVisual(el, newW, el.getH(), el.getX(), el.getY());
+            // Side handles stretch one dimension — for content objects that is
+            // a non-uniform scale of the visual (matches mainstream tools).
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, el.getH());
+            else updateLiveElementVisual(el, newW, el.getH(), el.getX(), el.getY());
             e.consume();
         });
-        handleE.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleE.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 3. S Handle (Bottom-Center)
         handleS.setOnMousePressed(e -> {
@@ -2498,10 +2640,11 @@ public class TemplateDesigner extends BorderPane {
             if (snapToGrid) newH = Math.round(newH);
             el.setH(newH);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, el.getW() * MM_PX, newH * MM_PX);
-            updateLiveElementVisual(el, el.getW(), newH, el.getX(), el.getY());
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, el.getW(), newH);
+            else updateLiveElementVisual(el, el.getW(), newH, el.getX(), el.getY());
             e.consume();
         });
-        handleS.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleS.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 4. W Handle (Left-Center with Left-Side Scaling)
         handleW.setOnMousePressed(e -> {
@@ -2521,10 +2664,11 @@ public class TemplateDesigner extends BorderPane {
             el.setW(newW); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, el.getH() * MM_PX);
-            updateLiveElementVisual(el, newW, el.getH(), newX, el.getY());
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, el.getH());
+            else updateLiveElementVisual(el, newW, el.getH(), newX, el.getY());
             e.consume();
         });
-        handleW.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleW.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 5. N Handle (Top-Center)
         handleN.setOnMousePressed(e -> {
@@ -2544,10 +2688,11 @@ public class TemplateDesigner extends BorderPane {
             el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, el.getW() * MM_PX, newH * MM_PX);
-            updateLiveElementVisual(el, el.getW(), newH, el.getX(), newY);
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, el.getW(), newH);
+            else updateLiveElementVisual(el, el.getW(), newH, el.getX(), newY);
             e.consume();
         });
-        handleN.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleN.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 6. NW Handle (Top-Left)
         handleNW.setOnMousePressed(e -> {
@@ -2564,16 +2709,20 @@ public class TemplateDesigner extends BorderPane {
             double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
             double newW = Math.max(5.0, resizeStart[2] - dx);
             double newH = Math.max(3.0, resizeStart[3] - dy);
+            String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
+            double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
+            newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
             double newX = Math.max(0, resizeStart[4] + (resizeStart[2] - newW));
             double newY = Math.max(0, resizeStart[5] + (resizeStart[3] - newH));
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newX = Math.round(newX); newY = Math.round(newY); }
             el.setW(newW); el.setH(newH); el.setX(newX); el.setY(newY);
             selBox.setLayoutX(newX * MM_PX); selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
-            updateLiveElementVisual(el, newW, newH, newX, newY);
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, newH);
+            else updateLiveElementVisual(el, newW, newH, newX, newY);
             e.consume();
         });
-        handleNW.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleNW.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 7. NE Handle (Top-Right)
         handleNE.setOnMousePressed(e -> {
@@ -2590,15 +2739,19 @@ public class TemplateDesigner extends BorderPane {
             double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
             double newW = Math.max(5.0, resizeStart[2] + dx);
             double newH = Math.max(3.0, resizeStart[3] - dy);
+            String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
+            double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
+            newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
             double newY = Math.max(0, resizeStart[5] + (resizeStart[3] - newH));
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newY = Math.round(newY); }
             el.setW(newW); el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
-            updateLiveElementVisual(el, newW, newH, el.getX(), newY);
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, newH);
+            else updateLiveElementVisual(el, newW, newH, el.getX(), newY);
             e.consume();
         });
-        handleNE.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleNE.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         // 8. SW Handle (Bottom-Left)
         handleSW.setOnMousePressed(e -> {
@@ -2615,15 +2768,19 @@ public class TemplateDesigner extends BorderPane {
             double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
             double newW = Math.max(5.0, resizeStart[2] - dx);
             double newH = Math.max(3.0, resizeStart[3] + dy);
+            String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
+            double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
+            newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
             double newX = Math.max(0, resizeStart[4] + (resizeStart[2] - newW));
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newX = Math.round(newX); }
             el.setW(newW); el.setH(newH); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
-            updateLiveElementVisual(el, newW, newH, newX, el.getY());
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, newH);
+            else updateLiveElementVisual(el, newW, newH, newX, el.getY());
             e.consume();
         });
-        handleSW.setOnMouseReleased(e -> { updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleSW.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
 
         selBox.getChildren().addAll(moveHitArea, border, rotateStem, handleRotate, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW);
         if (isPointEditable(el)) {
@@ -2961,14 +3118,26 @@ public class TemplateDesigner extends BorderPane {
             });
             wSpin.valueProperty().addListener((obs, o, v) -> {
                 if (!updatingProperties && !updatingGeo[0] && v != null) {
-                    el.setW(UnitConverter.toMm(v, unitBox.getValue()));
+                    double newW = UnitConverter.toMm(v, unitBox.getValue());
+                    double ratio = el.getW() > 0.0001 ? el.getH() / el.getW() : 1.0;
+                    el.setW(newW);
+                    if (aspectLock) {
+                        el.setH(newW * ratio);
+                        syncGeoSpinnersIfPresent(); // keep the H spinner in step
+                    }
                     updateElementVisualInPlace(el);
                     updateSelectionOverlay();
                 }
             });
             hSpin.valueProperty().addListener((obs, o, v) -> {
                 if (!updatingProperties && !updatingGeo[0] && v != null) {
-                    el.setH(UnitConverter.toMm(v, unitBox.getValue()));
+                    double newH = UnitConverter.toMm(v, unitBox.getValue());
+                    double ratio = el.getH() > 0.0001 ? el.getW() / el.getH() : 1.0;
+                    el.setH(newH);
+                    if (aspectLock) {
+                        el.setW(newH * ratio);
+                        syncGeoSpinnersIfPresent(); // keep the W spinner in step
+                    }
                     updateElementVisualInPlace(el);
                     updateSelectionOverlay();
                 }
@@ -2988,6 +3157,16 @@ public class TemplateDesigner extends BorderPane {
             posGrid.add(wSpin, 1, 2);
             posGrid.add(hLbl, 2, 2);
             posGrid.add(hSpin, 3, 2);
+
+            // Aspect-ratio lock (Figma-style): corner-handle drags and W/H
+            // spinners keep the width:height ratio while enabled. Session
+            // flag on the designer — not persisted per element — so it never
+            // surprises older templates saved without it.
+            CheckBox bindCb = new CheckBox("Bind W/H (keep aspect ratio)");
+            bindCb.setSelected(aspectLock);
+            bindCb.setTooltip(new Tooltip("Keep width and height proportional when resizing (drag corner handles or edit W/H). Hold Shift while dragging to temporarily invert."));
+            bindCb.selectedProperty().addListener((obs, o, v) -> aspectLock = Boolean.TRUE.equals(v));
+            posGrid.add(bindCb, 0, 3, 4, 1);
 
             geoPane.setContent(posGrid);
             addPropertyNode(geoPane);
@@ -7333,6 +7512,12 @@ public class TemplateDesigner extends BorderPane {
     private void saveTemplate() {
         template.setUpdatedAt(Instant.now().toString());
         templateDao.saveTemplate(template);
+        // Bump the data epoch so cached views (Templates Gallery, Create Bill's
+        // template list) re-read on their next show. Without this, renaming and
+        // saving here left the gallery showing the old name until app restart
+        // — reloadAllData() below is a no-op while the designer is the active
+        // view (no "designer" case in the switch).
+        app.getData().invalidateTemplates();
         app.reloadAllData();
         Toast.show(app.getRootPane(), "Template Saved", "\"" + template.getName() + "\" saved successfully.", false);
     }

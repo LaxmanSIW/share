@@ -129,18 +129,27 @@ public class StudioApp extends Application {
         } catch (Exception ignored) {
             AppLog.debug(ignored); }
 
+        TitleBarTheme.init();
         new WindowStateManager().applyAndTrack(stage, 1440, 900, 1024, 640);
         stage.show();
+        // OS title bar (icon + title + min/max/close strip) matches the dark
+        // theme — OS-drawn chrome, so styled natively, not via CSS. Must run
+        // AFTER show(): the native window exists only once the JavaFX peer is
+        // created inside show(). The process-wide sweep also catches any
+        // window already open; it is idempotent.
+        TitleBarTheme.apply(stage);
+        // Belt-and-braces: the native HWND can land a pulse after show() —
+        // re-sweep once more (covers this window and every other one).
+        Platform.runLater(TitleBarTheme::applyToAllProcessWindows);
 
         // Global icon safety net: EVERY window this app ever opens — Dialogs,
         // raw Stages, file pickers with title bars — inherits the InvoiceStudio
-        // logo automatically if it has no icon of its own. One listener here
-        // means no dialog site can ever regress to the default Java icon.
+        // logo and dark title bar automatically.
         Window.getWindows().addListener((ListChangeListener<Window>) change -> {
             while (change.next()) {
                 for (Window w : change.getAddedSubList()) {
                     if (w instanceof Stage s) {
-                        DialogHelper.applyAppIcon(s);
+                        DialogHelper.styleStage(s);
                     }
                 }
             }

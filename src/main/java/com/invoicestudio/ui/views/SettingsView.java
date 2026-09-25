@@ -1202,6 +1202,7 @@ public class SettingsView extends VBox {
                             r.billCount, r.buyerCount, r.itemCount, r.templateCount), false);
                     app.getData().invalidateBills();
                     app.getData().invalidateSettings();
+                    app.getData().invalidateTemplates();
                     reload();
                 } catch (Exception e) {
                     com.invoicestudio.service.AppLog.error(e);
