@@ -65,6 +65,34 @@ void DesignerCanvas::paintEvent(QPaintEvent* /*e*/) {
     p.fillRect(QRectF(ox, oy, page_w_px, page_h_px), QColor("#FFFFFF"));
     p.setPen(QPen(QColor("#151B25"), 1));
     p.drawRect(QRectF(ox, oy, page_w_px, page_h_px));
+
+    // Draw grid (matches Java buildGridCanvas)
+    p.setPen(QPen(QColor(200, 200, 200, 60), 1, Qt::DotLine));
+    double grid_step_px = 5.0 * zoom_ppm_; // 5mm grid
+    for (double x = ox; x < ox + page_w_px; x += grid_step_px) {
+      p.drawLine(QPointF(x, oy), QPointF(x, oy + page_h_px));
+    }
+    for (double y = oy; y < oy + page_h_px; y += grid_step_px) {
+      p.drawLine(QPointF(ox, y), QPointF(ox + page_w_px, y));
+    }
+
+    // Draw margin guides (matches Java buildMarginGuides)
+    double ml = (template_->page.margin_left.to_mm() + origin_x_mm_) * zoom_ppm_;
+    double mr = ox + page_w_px - template_->page.margin_right.to_mm() * zoom_ppm_;
+    double mt = (template_->page.margin_top.to_mm() + origin_y_mm_) * zoom_ppm_;
+    double mb = oy + page_h_px - template_->page.margin_bottom.to_mm() * zoom_ppm_;
+    p.setPen(QPen(QColor(217, 161, 59, 80), 1, Qt::DashLine));
+    p.drawLine(QPointF(ml, oy), QPointF(ml, oy + page_h_px));
+    p.drawLine(QPointF(mr, oy), QPointF(mr, oy + page_h_px));
+    p.drawLine(QPointF(ox, mt), QPointF(ox + page_w_px, mt));
+    p.drawLine(QPointF(ox, mb), QPointF(ox + page_w_px, mb));
+  } else {
+    // No template loaded — show placeholder text
+    p.setPen(QColor("#64748B"));
+    QFont f = p.font();
+    f.setPointSize(14);
+    p.setFont(f);
+    p.drawText(rect(), Qt::AlignCenter, "No template loaded.\nCreate or open a template to start designing.");
   }
 
   // USER REQUIREMENT #7: when the origin offset is set to negative values,

@@ -86,6 +86,37 @@ ReportsView::ReportsView(QWidget* parent) : QFrame(parent) {
      {"Cement Bag 50kg", "1200", "Rs 350", "Rs 4,20,000"},
      {"Sand (ton)", "55", "Rs 1500", "Rs 82,500"}});
 
+  // Outstanding Report (matches Java buildOutstandingReport)
+  make_tab("Outstanding",
+    {"Buyer", "Bill No", "Date", "Amount", "Days Overdue"},
+    {{"Acme Industries", "INV-0041", "2026-09-24", "Rs 32,100", "1"},
+     {"Mahalaxmi Textiles", "INV-0039", "2026-09-22", "Rs 18,750", "3"},
+     {"Royal Exports", "INV-0036", "2026-09-18", "Rs 45,000", "7"},
+     {"Shree Trading Co.", "INV-0033", "2026-09-15", "Rs 22,500", "10"}});
+
+  // Sales Trends (matches Java buildSalesTrendsReport)
+  make_tab("Sales Trends",
+    {"Month", "Invoiced", "Collected", "Growth %"},
+    {{"Sep 2026", "Rs 4,82,650", "Rs 3,61,940", "+12.4%"},
+     {"Aug 2026", "Rs 4,29,200", "Rs 3,35,100", "+8.1%"},
+     {"Jul 2026", "Rs 3,97,100", "Rs 3,10,050", "+5.2%"},
+     {"Jun 2026", "Rs 3,77,500", "Rs 2,95,000", "+3.1%"},
+     {"May 2026", "Rs 3,66,200", "Rs 2,86,100", "+2.8%"}});
+
+  // Item Movement (matches Java buildItemMovementReport)
+  make_tab("Item Movement",
+    {"Item", "Qty Sold", "Revenue", "Qty Purchased", "Current Stock"},
+    {{"Steel Rod 12mm", "550", "Rs 55,000", "700", "550"},
+     {"Cement Bag 50kg", "300", "Rs 1,05,000", "500", "1200"},
+     {"Sand (ton)", "15", "Rs 22,500", "20", "55"}});
+
+  // Category Breakdown (matches Java buildCategoryBreakdownReport)
+  make_tab("Category",
+    {"Category", "Items", "Qty Sold", "Revenue"},
+    {{"Construction", "3", "865", "Rs 1,82,500"},
+     {"Finishing", "1", "120", "Rs 30,000"},
+     {"Raw Materials", "1", "350", "Rs 2,80,000"}});
+
   l->addWidget(tabs_, 1);
 }
 

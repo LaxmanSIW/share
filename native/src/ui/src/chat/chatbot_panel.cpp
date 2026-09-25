@@ -1,3 +1,4 @@
+#include <QTimer>
 // fin/ui/chat/chatbot_panel.cpp
 #include "fin/ui/chat/chatbot_panel.hpp"
 #include "fin/ui/ui_theme.hpp"
@@ -33,13 +34,60 @@ ChatbotPanel::ChatbotPanel(QWidget* parent) : QFrame(parent) {
     hide();
     emit close_requested();
   });
-  // Wire send.
+  // Wire send — includes local AI fallback response
   connect(send_btn_, &QPushButton::clicked, this, [this] {
     auto text = input_->toPlainText().trimmed();
     if (text.isEmpty()) return;
     append_message("user", text);
     input_->clear();
     emit send_requested(text);
+    // Local AI fallback: respond with a helpful message
+    // (Real impl would call AiChatClient::send_streaming)
+    QTimer::singleShot(500, this, [this, text] {
+      QString response;
+      QString lower = text.toLower();
+      if (lower.contains("invoice") || lower.contains("bill")) {
+        response = "You can create a new invoice by clicking the \"+ New Bill\" button "
+                  "in the sidebar (or press Ctrl+N). To view existing invoices, "
+                  "click \"Invoices\" in the sidebar.";
+      } else if (lower.contains("buyer") || lower.contains("customer")) {
+        response = "To manage buyers, click \"Catalog\" in the sidebar and select \"Buyers\". "
+                  "You can add, edit, or delete buyer records from there.";
+      } else if (lower.contains("item") || lower.contains("product")) {
+        response = "Items are managed under Catalog → Items. You can set HSN codes, "
+                  "GST rates, stock levels, and reorder points for each item.";
+      } else if (lower.contains("gst") || lower.contains("tax")) {
+        response = "GST is automatically split into CGST + SGST for intra-state transactions "
+                  "and IGST for inter-state. You can configure this in Settings → Billing.";
+      } else if (lower.contains("report") || lower.contains("summary")) {
+        response = "Reports are available in the Reports & Ledger tab. You can view "
+                  "Trial Balance, P&L, GST Summary, Outstanding, Sales Trends, and more.";
+      } else if (lower.contains("template") || lower.contains("designer")) {
+        response = "The Template Designer lets you create custom invoice and label layouts. "
+                  "Access it from Catalog → Templates, then click \"Template Designer\".\n"
+                  "Features: text, images, shapes, tables, barcodes, QR codes, and more.";
+      } else if (lower.contains("label") || lower.contains("print")) {
+        response = "Label printing supports thermal printers via TSPL commands. "
+                  "Use the Label Print History to track print runs.";
+      } else if (lower.contains("backup") || lower.contains("restore")) {
+        response = "Backup & restore is in Settings → Backup. Auto-backup runs before "
+                  "every migration. You can also backup manually.";
+      } else if (lower.contains("mcp")) {
+        response = "The MCP (Model Context Protocol) server exposes InvoiceStudio data "
+                  "and operations as tools that AI assistants can call. Configure it "
+                  "in Settings → MCP Server.";
+      } else if (lower.contains("help") || lower.contains("how")) {
+        response = "I can help with invoices, buyers, items, GST, reports, templates, "
+                  "label printing, backups, and MCP. Ask me about any feature!";
+      } else {
+        response = "I understand you're asking about: \"" + text + "\".\n\n"
+                  "I'm running in local mode (no API key configured). To get full AI "
+                  "responses, configure an API key in Settings → Chatbot.\n\n"
+                  "In the meantime, I can help with: invoices, buyers, items, GST, "
+                  "reports, templates, labels, backups, and MCP.";
+      }
+      append_message("assistant", response);
+    });
   });
 
   // Welcome message.
