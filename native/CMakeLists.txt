@@ -1,30 +1,64 @@
-# CMakeLists.txt — lite build for the sandbox (no vcpkg)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC_SEARCH_PATHS src)
-# Uses third_party/ headers for spdlog + fmt + nlohmann/json instead of vcpkg.
+# CMakeLists.txt — InvoiceStudio Native (cross-platform: Windows + Linux + macOS)
 cmake_minimum_required(VERSION 3.25)
 
-project(InvoiceStudioLite
+project(InvoiceStudioNative
   VERSION 4.0.0
-  DESCRIPTION "Lite build of InvoiceStudio Native (sandbox verification)"
+  DESCRIPTION "InvoiceStudio Native - C++/Qt6 port"
   LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Output dirs
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC_SEARCH_PATHS src)
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# Find Qt6 (installed via aqtinstall)
-set(CMAKE_PREFIX_PATH "/home/z/my-project/qt/6.7.3/gcc_64")
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg SvgWidgets Network Concurrent PrintSupport)
+# Default to Release if no build type specified
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+endif()
 
+# === Find Qt6 ===
+# CMAKE_PREFIX_PATH should be set by the caller (build.bat or cmake command)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg SvgWidgets Network Concurrent PrintSupport)
 qt_standard_project_setup()
 
-# Domain layer (pure C++)
+# === Platform-specific compiler flags ===
+# Use CMake's built-in CXX_FLAGS per config + add extra warnings
+if(MSVC)
+  add_compile_options(/W4 /permissive- /utf-8 /Zc:__cplusplus /Zc:preprocessor /bigobj /wd4127 /wd4456 /wd4189 /wd4100 /wd4505 /wd4267 /wd4244 /wd4305 /EHsc)
+else()
+  add_compile_options(-Wall -Wextra -Wno-pedantic -Wno-shadow -Wno-conversion -Wno-error)
+endif()
+
+# === Third-party includes (headers only - no vcpkg needed) ===
+add_library(fin_third_party INTERFACE)
+target_include_directories(fin_third_party INTERFACE
+  ${CMAKE_SOURCE_DIR}/third_party
+  ${CMAKE_SOURCE_DIR}/third_party/spdlog/include
+  ${CMAKE_SOURCE_DIR}/third_party/fmt/include
+  ${CMAKE_SOURCE_DIR}/third_party/nlohmann
+)
+
+# === SQLite ===
+# On Windows: download pre-built sqlite3 if not found
+# On Linux: use system sqlite3
+find_package(SQLite3 QUIET)
+if(NOT SQLite3_FOUND)
+  find_library(SQLITE3_LIBRARY sqlite3)
+  find_path(SQLITE3_INCLUDE_DIR sqlite3.h)
+endif()
+# If still not found, try to download on Windows
+if(NOT SQLITE3_LIBRARY AND WIN32)
+  message(STATUS "SQLite3 not found - downloading pre-built...")
+  include(${CMAKE_SOURCE_DIR}/cmake/download_sqlite3.cmake OPTIONAL)
+endif()
+
+# === Domain layer (pure C++, no Qt) ===
 add_library(fin_domain STATIC
   src/domain/src/currency.cpp
   src/domain/src/rounding.cpp
@@ -36,22 +70,8 @@ add_library(fin_domain STATIC
   src/domain/src/purchase_stock.cpp
 )
 target_include_directories(fin_domain PUBLIC src/domain/include)
-target_compile_options(fin_domain PRIVATE -Wall -Wextra -Wno-pedantic -Wno-shadow -Wno-conversion -O2 -Wno-error)
 
-# Third-party includes (no vcpkg)
-add_library(fin_third_party INTERFACE)
-target_include_directories(fin_third_party INTERFACE
-  ${CMAKE_SOURCE_DIR}/third_party
-  ${CMAKE_SOURCE_DIR}/third_party/spdlog/include
-  ${CMAKE_SOURCE_DIR}/third_party/fmt/include
-  ${CMAKE_SOURCE_DIR}/third_party/nlohmann
-)
-
-# SQLite — use system lib
-find_library(SQLITE3_LIBRARY sqlite3)
-find_path(SQLITE3_INCLUDE_DIR sqlite3.h)
-
-# App layer (Qt + spdlog)
+# === App layer ===
 qt_add_library(fin_app STATIC
   src/app/src/async.cpp
   src/app/src/ui_watchdog.cpp
@@ -70,9 +90,8 @@ qt_add_library(fin_app STATIC
 target_include_directories(fin_app PUBLIC src/app/include)
 target_link_libraries(fin_app PUBLIC fin_domain Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent)
 target_link_libraries(fin_app PRIVATE fin_third_party)
-target_compile_options(fin_app PRIVATE -Wall -Wextra -Wno-pedantic -Wno-shadow -Wno-conversion -O2 -Wno-error)
 
-# Services layer (Qt + nlohmann/json)
+# === Services layer ===
 qt_add_library(fin_services STATIC
   src/services/src/auth_session.cpp
   src/services/src/billing.cpp
@@ -123,9 +142,8 @@ target_include_directories(fin_services PUBLIC
 )
 target_link_libraries(fin_services PUBLIC fin_domain fin_app Qt6::Core Qt6::Network Qt6::Concurrent Qt6::PrintSupport)
 target_link_libraries(fin_services PRIVATE fin_third_party)
-target_compile_options(fin_services PRIVATE -Wall -Wextra -Wno-pedantic -Wno-shadow -Wno-conversion -O2 -Wno-error)
 
-# DB layer (sqlite3)
+# === DB layer ===
 qt_add_library(fin_db STATIC
   src/infra/db/src/database_manager.cpp
   src/infra/db/src/bill_dao.cpp
@@ -141,11 +159,14 @@ qt_add_library(fin_db STATIC
 target_include_directories(fin_db PUBLIC src/infra/db/include)
 target_link_libraries(fin_db PUBLIC fin_domain fin_services Qt6::Core)
 target_link_libraries(fin_db PRIVATE fin_third_party)
-target_include_directories(fin_db PRIVATE ${SQLITE3_INCLUDE_DIR})
-target_link_libraries(fin_db PRIVATE ${SQLITE3_LIBRARY})
-target_compile_options(fin_db PRIVATE -Wall -Wextra -Wno-pedantic -Wno-shadow -Wno-conversion -O2 -Wno-error)
+if(SQLite3_FOUND)
+  target_link_libraries(fin_db PRIVATE SQLite::SQLite3)
+elseif(SQLITE3_LIBRARY)
+  target_include_directories(fin_db PRIVATE ${SQLITE3_INCLUDE_DIR})
+  target_link_libraries(fin_db PRIVATE ${SQLITE3_LIBRARY})
+endif()
 
-# UI layer (Qt widgets + svg)
+# === UI layer ===
 qt_add_library(fin_ui STATIC
   src/ui/src/icon_helper.cpp
   src/ui/src/ui_theme.cpp
@@ -243,7 +264,6 @@ target_link_libraries(fin_ui PUBLIC
   fin_domain fin_services fin_app fin_db
   Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg Qt6::SvgWidgets Qt6::Network Qt6::PrintSupport)
 target_link_libraries(fin_ui PRIVATE fin_third_party)
-target_compile_options(fin_ui PRIVATE -Wall -Wextra -Wno-pedantic -Wno-shadow -Wno-conversion -O2 -Wno-error)
 
 # Embed the global QSS file as a Qt resource.
 qt_add_resources(fin_ui "qss"
@@ -251,10 +271,34 @@ qt_add_resources(fin_ui "qss"
   FILES resources/css/globalfile.qss
 )
 
-# Main executable
+# (compiler flags set globally via add_compile_options above)
+
+# === Main executable ===
 qt_add_executable(invoicestudio
   src/app/src/main.cpp
   src/app/src/smoke_test.cpp
 )
 target_link_libraries(invoicestudio PRIVATE fin_ui fin_app)
-target_compile_options(invoicestudio PRIVATE -Wall -Wextra -Wno-pedantic -Wno-shadow -Wno-conversion -O2 -Wno-error)
+if(MSVC)
+  
+  set_target_properties(invoicestudio PROPERTIES WIN32_EXECUTABLE ON)
+else()
+  
+endif()
+
+# === Post-build: run windeployqt on Windows ===
+if(WIN32)
+  find_program(WINDEPLOYQT windeployqt HINTS "${Qt6_DIR}/../../../bin" "${Qt6_DIR}/bin")
+  if(WINDEPLOYQT)
+    add_custom_command(TARGET invoicestudio POST_BUILD
+      COMMAND ${WINDEPLOYQT} --no-translations --no-system-d3d-compiler
+              --no-opengl-sw --no-quick-import
+              $<TARGET_FILE:invoicestudio>
+      COMMENT "Running windeployqt to copy Qt DLLs..."
+    )
+    message(STATUS "windeployqt found: ${WINDEPLOYQT}")
+  else()
+    message(WARNING "windeployqt not found - Qt DLLs won't be copied automatically.")
+    message(STATUS "You may need to add Qt bin directory to your PATH to run the app.")
+  endif()
+endif()
