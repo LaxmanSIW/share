@@ -1,3 +1,5 @@
+#include <QMenu>
+#include <QAction>
 // fin/ui/sidebar.cpp
 #include "fin/ui/sidebar.hpp"
 #include "fin/ui/icon_helper.hpp"
@@ -132,4 +134,57 @@ void Sidebar::set_user(const QString& display_name, const QString& email) {
   user_initials_->setText(initials);
 }
 
+void Sidebar::add_catalog_button(const std::vector<NavItem>& catalog_items,
+                                  std::function<void(const std::string& id)> on_catalog_click) {
+  auto* btn = new QPushButton(nav_container_);
+  btn->setProperty("class", "nav-button");
+  btn->setIcon(IconHelper::icon(IconHelper::ICON_CATEGORIES, 16, QColor("#94A3B8")));
+  btn->setIconSize(QSize(16, 16));
+  btn->setText("Catalog");
+  btn->setCursor(Qt::PointingHandCursor);
+  btn->setToolTip("Buyers, Sellers, Items, Categories, Templates, Transports, Variables & Label History");
+
+  auto* l = qobject_cast<QVBoxLayout*>(nav_container_->layout());
+  if (l) l->insertWidget(l->count() - 1, btn);
+
+  // Create a popup menu
+  auto* menu = new QMenu(btn);
+  menu->setStyleSheet(
+    "QMenu { background-color: #151B25; border: 1px solid #2E3A4E; border-radius: 4px; padding: 4px; }"
+    "QMenu::item { padding: 6px 24px 6px 16px; border-radius: 4px; color: #F4F4F5; }"
+    "QMenu::item:selected { background-color: rgba(217, 161, 59, 0.20); color: #F4F4F5; }"
+    "QMenu::separator { height: 1px; background-color: #232B38; margin: 4px 8px; }"
+  );
+  auto* head = new QAction("DIRECTORY & CATALOG", menu);
+  head->setEnabled(false);
+  menu->addAction(head);
+  menu->addSeparator();
+  for (const auto& item : catalog_items) {
+    auto* action = new QAction(QString::fromStdString(item.label), menu);
+    action->setIcon(IconHelper::icon(item.icon_name, 15, QColor("#94A3B8")));
+    auto id = item.id;
+    QObject::connect(action, &QAction::triggered, btn, [id, on_catalog_click, menu]() {
+      if (on_catalog_click) on_catalog_click(id);
+      menu->hide();
+    });
+    menu->addAction(action);
+  }
+
+  QObject::connect(btn, &QPushButton::clicked, btn, [btn, menu]() {
+    menu->popup(btn->mapToGlobal(QPoint(btn->width() + 4, 0)));
+  });
+  nav_buttons_.insert("catalog", btn);
+}
+
+void Sidebar::add_new_bill_button(std::function<void()> on_click) {
+  auto* btn = new QPushButton("+  New Bill", nav_container_);
+  btn->setProperty("class", "accent-gold");
+  btn->setCursor(Qt::PointingHandCursor);
+  btn->setToolTip("Create a new invoice (Ctrl+N)");
+  QObject::connect(btn, &QPushButton::clicked, btn, [on_click]() { if (on_click) on_click(); });
+  auto* l = qobject_cast<QVBoxLayout*>(nav_container_->layout());
+  if (l) l->insertWidget(l->count() - 1, btn);
+}
+
 } // namespace fin::ui
+

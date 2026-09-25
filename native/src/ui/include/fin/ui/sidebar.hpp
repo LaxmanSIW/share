@@ -1,8 +1,4 @@
 // fin/ui/sidebar.hpp — Sidebar navigation (port of Java SidebarController.java)
-//
-// Skill rule 5.2 role 2: owns nav buttons, active-view highlighting, and the
-// user profile pill. View construction is delegated back to the shell's
-// public navigation API (StudioApp::show_view).
 #pragma once
 #include <QFrame>
 #include <QLabel>
@@ -11,6 +7,7 @@
 #include <QString>
 #include <functional>
 #include <string_view>
+#include <vector>
 
 namespace fin::ui {
 
@@ -25,32 +22,33 @@ class Sidebar : public QFrame {
  public:
   explicit Sidebar(QWidget* parent = nullptr);
 
-  /// Set the active nav item; updates the gold indicator on the left.
   void set_active(const QString& id);
-
-  /// Register a navigation item. Items appear in registration order.
   void add_item(const NavItem& item, std::function<void()> on_activate);
-
-  /// Set the user profile pill at the bottom (name + email + avatar).
   void set_user(const QString& display_name, const QString& email);
+
+  /// Add a Catalog button that opens a popup menu (matches Java showCatalogPopup).
+  void add_catalog_button(const std::vector<NavItem>& catalog_items,
+                           std::function<void(const std::string& id)> on_catalog_click);
+
+  /// Add a "+ New Bill" gold button at the bottom (matches Java sidebar-cta).
+  void add_new_bill_button(std::function<void()> on_click);
 
  signals:
   void view_activated(const QString& id);
 
  private:
-  QFrame*    brand_block_;
-  QLabel*    brand_text_;
-  QFrame*    brand_icon_box_;
-  QLabel*    brand_icon_;
-  QFrame*    nav_container_;
+  QFrame*    brand_block_{nullptr};
+  QLabel*    brand_text_{nullptr};
+  QFrame*    brand_icon_box_{nullptr};
+  QLabel*    brand_icon_{nullptr};
+  QFrame*    nav_container_{nullptr};
   QHash<QString, QPushButton*> nav_buttons_;
   QString    current_view_;
 
-  // User pill
-  QFrame*    user_pill_;
-  QLabel*    user_initials_;
-  QLabel*    user_name_;
-  QLabel*    user_email_;
+  QFrame*    user_pill_{nullptr};
+  QLabel*    user_initials_{nullptr};
+  QLabel*    user_name_{nullptr};
+  QLabel*    user_email_{nullptr};
 };
 
 } // namespace fin::ui

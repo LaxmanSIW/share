@@ -157,7 +157,7 @@ void StudioApp::build_shell_() {
 }
 
 void StudioApp::register_nav_() {
-  // Match the Java original's sidebar structure exactly:
+  // Match the Java original's sidebar structure EXACTLY:
   // 1. Dashboard
   // 2. Invoices (History)
   // 3. Transactions
@@ -169,8 +169,11 @@ void StudioApp::register_nav_() {
   // 9. Financials
   // 10. Stock & Profit
   // 11. --- separator ---
-  // 12. Catalog (popup: Buyers, Suppliers, Items, Categories, Templates, Transports, Variables, Label History, Designer)
+  // 12. Catalog (popup: 8 items: Buyers, Sellers, Items, Categories, Templates, Transports, Variables, Label History)
   // 13. Settings
+  // --- filler ---
+  // 14. + New Bill (gold button)
+  // 15. User profile pill
   sidebar_->add_item({"dashboard", "Dashboard", IconHelper::ICON_DASHBOARD}, [this]{ show_view("dashboard"); });
   sidebar_->add_item({"history", "Invoices", IconHelper::ICON_HISTORY}, [this]{ show_view("history"); });
   sidebar_->add_item({"transactions", "Transactions", IconHelper::ICON_TRANSACTIONS}, [this]{ show_view("transactions"); });
@@ -179,15 +182,26 @@ void StudioApp::register_nav_() {
   sidebar_->add_item({"expenses", "Expenses", IconHelper::ICON_TAG}, [this]{ show_view("expenses"); });
   sidebar_->add_item({"financials", "Financials", IconHelper::ICON_BAR_CHART}, [this]{ show_view("financials"); });
   sidebar_->add_item({"stock_analysis", "Stock & Profit", IconHelper::ICON_TRENDING_UP}, [this]{ show_view("stock_analysis"); });
-  // Catalog popup would go here (Buyers, Suppliers, Items, Categories, Templates, etc.)
-  sidebar_->add_item({"buyers", "Buyers", IconHelper::ICON_USERS}, [this]{ show_view("buyers"); });
-  sidebar_->add_item({"items", "Items", IconHelper::ICON_PACKAGE}, [this]{ show_view("items"); });
-  sidebar_->add_item({"suppliers", "Suppliers", IconHelper::ICON_BUSINESS}, [this]{ show_view("suppliers"); });
-  sidebar_->add_item({"templates", "Templates", IconHelper::ICON_TEMPLATES}, [this]{ show_view("templates"); });
-  sidebar_->add_item({"designer", "Template Designer", IconHelper::ICON_SHAPES}, [this]{ show_view("designer"); });
+
+  // Catalog popup button — collapses 8 directory items into one (matches Java)
+  sidebar_->add_catalog_button(
+    {{"buyers", "Buyers", IconHelper::ICON_USERS},
+     {"suppliers", "Sellers", IconHelper::ICON_BUSINESS},
+     {"items", "Items", IconHelper::ICON_PACKAGE},
+     {"categories", "Categories", IconHelper::ICON_CATEGORIES},
+     {"templates", "Templates", IconHelper::ICON_TEMPLATES},
+     {"transports", "Transports", IconHelper::ICON_TRANSPORT},
+     {"variables", "Variables", IconHelper::ICON_VARIABLE},
+     {"label_history", "Label Print History", IconHelper::ICON_HISTORY}},
+    [this](const std::string& id) { show_view(QString::fromStdString(id)); }
+  );
+
   sidebar_->add_item({"settings", "Settings", IconHelper::ICON_SETTINGS}, [this]{ show_view("settings"); });
 
-  // Sidebar default user (will be replaced by AuthView on successful login).
+  // + New Bill button (gold CTA at bottom — matches Java sidebar-cta)
+  sidebar_->add_new_bill_button([this]{ show_view("create_bill"); });
+
+  // User profile pill (updated on login)
   sidebar_->set_user("Guest", "Not signed in");
 }
 
