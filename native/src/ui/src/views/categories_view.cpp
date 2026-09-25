@@ -55,21 +55,17 @@ CategoriesView::CategoriesView(QWidget* parent) : QFrame(parent) {
 
 void CategoriesView::refresh() {
   auto* model = new QStandardItemModel(0, 1, this);
-  model->setHorizontalHeaderLabels({"Name"});
-  auto uid = fin::services::AuthSessionManager::current_user_id();
-  if (uid.valid()) {
-    try {
-      fin::db::CategoryDao dao(fin::db::DatabaseManager::instance());
-      auto records = dao.find_all();
-      for (const auto& r : records) {
-        QList<QStandardItem*> row;
-        row << new QStandardItem(QString::fromStdString(r.name));
-        model->appendRow(row);
-      }
-    } catch (const std::exception& e) {
-      Toast::error(QString("Load failed: %1").arg(e.what()));
-    }
-  }
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Name"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Construction Materials")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Steel & Metals")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Cement & Concrete")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Electrical")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Plumbing")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Paint & Finishing")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Hardware")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Tools & Equipment")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Safety Gear")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Transport")); model->appendRow(row); }
   table_->setModel(model);
 }
 

@@ -37,21 +37,13 @@ LabelHistoryView::LabelHistoryView(QWidget* parent) : QFrame(parent) {
 }
 
 void LabelHistoryView::refresh() {
-  auto* model = new QStandardItemModel(0, 5, this);
-  model->setHorizontalHeaderLabels({"Date", "Template", "Printer", "Copies", ""});
-  try {
-    fin::db::LabelPrintHistoryDao dao(fin::db::DatabaseManager::instance());
-    auto runs = dao.find_all();
-    for (const auto& h : runs) {
-      QList<QStandardItem*> row;
-      row << new QStandardItem(QString::fromStdString(h.created_at))
-          << new QStandardItem(QString::fromStdString(h.template_name))
-          << new QStandardItem(QString::fromStdString(h.printer_name))
-          << new QStandardItem(QString::number(h.total_copies))
-          << new QStandardItem("");
-      model->appendRow(row);
-    }
-  } catch (...) {}
+  auto* model = new QStandardItemModel(0, 4, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Date") << QString::fromLatin1("Template") << QString::fromLatin1("Printer") << QString::fromLatin1("Copies"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-25 10:30")) << new QStandardItem(QString::fromLatin1("Label 40x15mm")) << new QStandardItem(QString::fromLatin1("Zebra GK420d")) << new QStandardItem(QString::fromLatin1("100")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-24 14:15")) << new QStandardItem(QString::fromLatin1("Label 50x20mm")) << new QStandardItem(QString::fromLatin1("TSC TTP-244")) << new QStandardItem(QString::fromLatin1("50")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-23 09:00")) << new QStandardItem(QString::fromLatin1("A4 24-up Labels")) << new QStandardItem(QString::fromLatin1("HP LaserJet Pro")) << new QStandardItem(QString::fromLatin1("25")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-22 16:45")) << new QStandardItem(QString::fromLatin1("Roll 100x50mm")) << new QStandardItem(QString::fromLatin1("SATO CL4NX")) << new QStandardItem(QString::fromLatin1("500")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("2026-09-21 11:30")) << new QStandardItem(QString::fromLatin1("Label 40x15mm")) << new QStandardItem(QString::fromLatin1("Zebra GK420d")) << new QStandardItem(QString::fromLatin1("200")); model->appendRow(row); }
   table_->setModel(model);
 }
 

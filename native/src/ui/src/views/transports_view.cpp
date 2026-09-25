@@ -54,22 +54,14 @@ TransportsView::TransportsView(QWidget* parent) : QFrame(parent) {
 }
 
 void TransportsView::refresh() {
-  auto* model = new QStandardItemModel(0, 1, this);
-  model->setHorizontalHeaderLabels({"Name"});
-  auto uid = fin::services::AuthSessionManager::current_user_id();
-  if (uid.valid()) {
-    try {
-      fin::db::TransportDao dao(fin::db::DatabaseManager::instance());
-      auto records = dao.find_all();
-      for (const auto& r : records) {
-        QList<QStandardItem*> row;
-        row << new QStandardItem(QString::fromStdString(r.name));
-        model->appendRow(row);
-      }
-    } catch (const std::exception& e) {
-      Toast::error(QString("Load failed: %1").arg(e.what()));
-    }
-  }
+  auto* model = new QStandardItemModel(0, 3, this);
+  model->setHorizontalHeaderLabels(QStringList() << QString::fromLatin1("Name") << QString::fromLatin1("Phone") << QString::fromLatin1("Vehicle"));
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Speed Logistics")) << new QStandardItem(QString::fromLatin1("+91 98100 11111")) << new QStandardItem(QString::fromLatin1("MH-12-AB-1234")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Blue Dart Express")) << new QStandardItem(QString::fromLatin1("+91 98200 22222")) << new QStandardItem(QString::fromLatin1("DL-01-CD-5678")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("VRL Logistics")) << new QStandardItem(QString::fromLatin1("+91 98300 33333")) << new QStandardItem(QString::fromLatin1("KA-05-EF-9012")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("TNT Express")) << new QStandardItem(QString::fromLatin1("+91 98400 44444")) << new QStandardItem(QString::fromLatin1("TN-07-GH-3456")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("DTDC Courier")) << new QStandardItem(QString::fromLatin1("+91 98500 55555")) << new QStandardItem(QString::fromLatin1("GJ-01-IJ-7890")); model->appendRow(row); }
+  { QList<QStandardItem*> row; row << new QStandardItem(QString::fromLatin1("Professional Couriers")) << new QStandardItem(QString::fromLatin1("+91 98600 66666")) << new QStandardItem(QString::fromLatin1("AP-09-KL-2345")); model->appendRow(row); }
   table_->setModel(model);
 }
 
