@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Register | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="expenses">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">PURCHASE &amp; EXPENSES · EXPENSE REGISTER</span>
+      <h1>Expenses</h1>
+      <div class="sub">Direct (trading-account) and indirect vouchers — freight, wages, power, office and more.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="openModal('modal-accounts')"><i data-icon="folder" data-size="sm"></i>Manage accounts</button>
+      <button class="btn ghost" onclick="openModal('modal-report')"><i data-icon="reports" data-size="sm"></i>Expense overview report with charts</button>
+      <button class="btn accent" data-modal-open="modal-voucher"><i data-icon="plus" data-size="sm"></i>New Expense Voucher</button>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi lead"><div class="k-label">Direct expenses</div><div class="k-value">₹58,240</div><span class="k-delta muted">Freight, wages, power — trading account</span></div>
+    <div class="kpi"><div class="k-label">Indirect expenses</div><div class="k-value">₹31,120</div><span class="k-delta muted">office, professional, misc</span></div>
+    <div class="kpi"><div class="k-label">Vouchers this period</div><div class="k-value">47</div><span class="k-delta muted">all vouchers this period</span></div>
+    <div class="kpi gold"><div class="k-label">Top account</div><div class="k-value" style="font-size:20px;padding-top:6px">Freight &amp; Cartage</div><span class="k-delta muted">₹22,400 · 25% of spend</span></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="seg" id="exSeg"><button class="on">All</button><button>Direct</button><button>Indirect</button></div>
+      <select class="input" style="min-width:170px"><option>All Accounts</option><option>Freight &amp; Cartage</option><option>Wages &amp; Labour</option><option>Power &amp; Fuel</option><option>Office Supplies</option><option>Miscellaneous</option></select>
+      <select class="input"><option>All Types</option><option>Cash</option><option>Bank Transfer</option><option>Cheque</option></select>
+      <span class="spacer"></span>
+      <button class="rbtn" onclick="toast('Filters cleared','Showing all vouchers.')"><i data-icon="x" data-size="sm"></i>Clear</button>
+      <button class="rbtn" onclick="toast('Exported','expense-register-2026-09.csv saved.','ok')"><i data-icon="download" data-size="sm"></i>Export CSV</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th class="sortable">Date <span class="arr">▲</span></th><th>Account</th><th>Category</th><th>Description</th>
+          <th>Mode / Ref</th><th class="right">Amount (₹)</th><th class="right">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">23/09/2026</td><td><b>Freight &amp; Cartage</b></td><td><span class="badge brand">DIRECT</span></td><td>VRL — 18 bales to Gamma</td>
+            <td class="mono">Cash · —</td><td class="num right">4,200.00</td>
+            <td class="actions"><button class="rbtn" onclick="openVoucher(true)"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-vdel"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">22/09/2026</td><td><b>Wages &amp; Labour</b></td><td><span class="badge brand">DIRECT</span></td><td>Loading/unloading — week 38</td>
+            <td class="mono">Cash · —</td><td class="num right">3,800.00</td>
+            <td class="actions"><button class="rbtn" onclick="openVoucher(true)"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-vdel"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">20/09/2026</td><td><b>Power &amp; Fuel</b></td><td><span class="badge brand">DIRECT</span></td><td>Diesel — generator, 40 L</td>
+            <td class="mono">Bank · UTR 5521</td><td class="num right">3,560.00</td>
+            <td class="actions"><button class="rbtn" onclick="openVoucher(true)"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-vdel"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">18/09/2026</td><td><b>Office Supplies</b></td><td><span class="badge neutral">INDIRECT</span></td><td>A4 paper, cartridges, register</td>
+            <td class="mono">UPI · —</td><td class="num right">2,140.00</td>
+            <td class="actions"><button class="rbtn" onclick="openVoucher(true)"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-vdel"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">15/09/2026</td><td><b>Miscellaneous</b></td><td><span class="badge neutral">INDIRECT</span></td><td>Courier &amp; sundry</td>
+            <td class="mono">Cash · —</td><td class="num right">640.00</td>
+            <td class="actions"><button class="rbtn" onclick="openVoucher(true)"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-vdel"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+        </tbody>
+        <tfoot><tr><td colspan="5">Filtered totals — 47 vouchers</td><td class="num right">₹89,360.00</td><td></td></tr></tfoot>
+      </table>
+    </div>
+    <div class="tbl-foot"><span>Showing 5 of 47 vouchers · direct 29 · indirect 18</span>
+      <div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>…</button><button>10</button><button>›</button></div></div>
+  </div>
+</main></div>
+
+<!-- new voucher -->
+<div class="modal-back" id="modal-voucher">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="expenses"></i></span>
+      <div style="flex:1"><h3>New Expense Voucher</h3><div class="msub">Post spend to an expense account — feeds the trading account and P&amp;L.</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Account <span class="req">*</span></label>
+          <select class="input"><option>Freight &amp; Cartage</option><option>Wages &amp; Labour</option><option>Power &amp; Fuel</option><option>Office Supplies</option><option>Miscellaneous</option></select>
+          <span class="hint">Accounts are managed under "Manage accounts" (rename, archive, duplicate).</span></div>
+        <div class="field"><label>Category <span class="req">*</span></label>
+          <div class="seg" style="margin-top:2px"><button class="on">Direct</button><button>Indirect</button></div></div>
+        <div class="field"><label>Amount (₹) <span class="req">*</span></label><input class="input mono" placeholder="0.00"></div>
+        <div class="field"><label>Expense date <span class="req">*</span></label><input class="input mono" value="24/09/2026"></div>
+        <div class="field"><label>Mode</label><select class="input"><option>Cash</option><option>Bank Transfer</option><option>Cheque</option></select></div>
+        <div class="field"><label>Cheque No / UTR (optional)</label><input class="input mono"></div>
+        <div class="field full"><label>Description <span class="req">*</span></label><input class="input" placeholder="What was paid for?"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-voucher');toast('Expense Saved','Voucher posted · P&amp;L and category report updated.','ok')">Save voucher</button>
+    </div>
+  </div>
+</div>
+
+<!-- accounts manager -->
+<div class="modal-back" id="modal-accounts">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="folder"></i></span>
+      <div style="flex:1"><h3>Expense Accounts</h3><div class="msub">Add an expense account (payee) · rename · archive · duplicate</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="row" style="margin-bottom:12px">
+        <input class="input" placeholder="New account name…">
+        <button class="btn secondary" onclick="toast('Account created','Added to the account list.','ok')"><i data-icon="plus" data-size="sm"></i>Add</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Account</th><th>Status</th><th class="right">This period</th><th class="right">Actions</th></tr></thead>
+          <tbody>
+            <tr><td><b>Freight &amp; Cartage</b></td><td><span class="badge ok">Active</span></td><td class="num right">₹22,400</td>
+              <td class="actions"><button class="rbtn" onclick="toast('Account Renamed','Inline rename dialog opened.')">Rename</button><button class="rbtn" onclick="toast('Account Archived','Hidden from pickers; history intact.','warn')">Archive</button><button class="rbtn danger" data-modal-open="modal-acc-del">Delete</button></td></tr>
+            <tr><td><b>Wages &amp; Labour</b></td><td><span class="badge ok">Active</span></td><td class="num right">₹19,600</td>
+              <td class="actions"><button class="rbtn" onclick="toast('Account Renamed','Inline rename dialog opened.')">Rename</button><button class="rbtn" onclick="toast('Account Archived','Hidden from pickers; history intact.','warn')">Archive</button><button class="rbtn danger" data-modal-open="modal-acc-del">Delete</button></td></tr>
+            <tr><td><b>Power &amp; Fuel</b></td><td><span class="badge ok">Active</span></td><td class="num right">₹12,800</td>
+              <td class="actions"><button class="rbtn" onclick="toast('Account Renamed','Inline rename dialog opened.')">Rename</button><button class="rbtn" onclick="toast('Account Archived','Hidden from pickers; history intact.','warn')">Archive</button><button class="rbtn danger" data-modal-open="modal-acc-del">Delete</button></td></tr>
+            <tr><td><b>Old Commission Account</b></td><td><span class="badge neutral">Archived</span></td><td class="num right">—</td>
+              <td class="actions"><button class="rbtn" onclick="toast('Account Restored','Active again in pickers.','ok')">Restore</button><button class="rbtn" onclick="toast('Duplicated','Copy created as "Old Commission Account (2)".')">Duplicate</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="banner warn" style="margin-top:12px"><i data-icon="alert"></i><span><b>Account In Use:</b> accounts with vouchers cannot be deleted — archive instead to keep reports intact.</span></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-acc-del">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="alert"></i></span><h3>Cannot Delete — Account In Use</h3></div>
+    <div class="modal-body"><p style="margin:0">"Freight &amp; Cartage" has 12 vouchers this period. Archive it to remove it from pickers while keeping the history.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Back</button>
+      <button class="btn" onclick="closeModal('modal-acc-del');toast('Account Archived','Removed from pickers; reports intact.','warn')">Archive instead</button>
+    </div>
+  </div>
+</div>
+
+<!-- report -->
+<div class="modal-back" id="modal-report">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="reports"></i></span>
+      <div style="flex:1"><h3>Expense Overview Report</h3><div class="msub">Category split · all expense vouchers · this period</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="row" style="gap:22px;align-items:center">
+        <div class="chart-box" style="width:200px;flex:none" id="chart-exp"></div>
+        <div style="flex:1">
+          <div class="stat-row"><span>Freight &amp; Cartage</span><span class="v">₹22,400 · 25%</span></div>
+          <div class="stat-row"><span>Wages &amp; Labour</span><span class="v">₹19,600 · 22%</span></div>
+          <div class="stat-row"><span>Power &amp; Fuel</span><span class="v">₹12,800 · 14%</span></div>
+          <div class="stat-row"><span>Office Supplies</span><span class="v">₹8,920 · 10%</span></div>
+          <div class="stat-row"><span>Indirect (others)</span><span class="v">₹25,640 · 29%</span></div>
+          <div class="stat-row" style="border-top:2px solid var(--black)"><span><b>Total spend</b></span><span class="v" style="font-size:15px">₹89,360</span></div>
+        </div>
+      </div>
+      <p class="faint" style="font-size:11.5px;margin:14px 0 0">Average voucher ₹1,900 · largest ₹8,400 (freight) · busiest account: Freight &amp; Cartage. The same dialog offers "Account Report" (per-account split) from the table row menu.</p>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button>
+      <button class="btn ghost" onclick="toast('Exported','expense-report.pdf saved.','ok')">Export</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-vdel">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete expense of ₹4,200?</h3></div>
+    <div class="modal-body"><p style="margin:0">"Freight &amp; Cartage — VRL, 18 bales" will be removed from the register and the P&amp;L re-computed.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Keep voucher</button>
+      <button class="btn danger solid" onclick="closeModal('modal-vdel');toast('Expense Deleted','Voucher removed · totals updated.','err')">Delete expense</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  function openVoucher(edit) {
+    openModal('modal-voucher');
+    if (edit) {
+      document.querySelector('#modal-voucher h3').textContent = 'Edit Expense';
+      document.querySelector('#modal-voucher .msub').textContent = 'Amend the voucher — reports re-compute on save.';
+    }
+  }
+  AuroraCharts.donut('chart-exp', { values: [25, 22, 14, 10, 29], colors: ['signal', 'black', 'grey', 'gold', 'muted'], center: '₹89.4k', sub: 'total spend', size: 200 });
+</script>
+</body>
+</html>

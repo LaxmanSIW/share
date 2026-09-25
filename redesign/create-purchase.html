@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Record Purchase Bill | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="create-purchase">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">PURCHASE · RECORD PURCHASE BILL</span>
+      <h1>Record Purchase Bill</h1>
+      <div class="sub">Stock in, input tax credit and payable — computed as you type.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Draft reset','Form cleared.')"><i data-icon="refresh" data-size="sm"></i>Reset</button>
+      <button class="btn" onclick="save(false)"><i data-icon="save" data-size="sm"></i>Save</button>
+      <button class="btn accent" onclick="save(true)"><i data-icon="check" data-size="sm"></i>Mark as Paid</button>
+    </div>
+  </div>
+
+  <div class="banner warn" style="margin-bottom:16px"><i data-icon="alert"></i><span><b>Below usual purchase rate:</b> Cotton shirting averages ₹126.40/kg from this supplier — current cost is 1.6% lower. Info only; nothing is blocked.</span></div>
+
+  <div class="grid g32">
+    <div>
+      <div class="card">
+        <div class="card-head"><div><h3 class="card-title">Supplier &amp; voucher</h3><p class="card-sub">Who you bought from and how it is numbered</p></div></div>
+        <div class="form-grid">
+          <div class="field"><label>Supplier <span class="req">*</span></label>
+            <select class="input"><option>Shree Textile Mills</option><option>Annapurna Yarn Co.</option><option>PackWell Industries</option></select></div>
+          <div class="field"><label>Bill date <span class="req">*</span></label><input class="input mono" value="24/09/2026"></div>
+          <div class="field"><label>Internal voucher no</label><input class="input mono" value="PUR-0032"></div>
+          <div class="field"><label>Supplier's bill no</label><input class="input mono" placeholder="STM/…"></div>
+        </div>
+      </div>
+
+      <div class="section-label">Item lines (stock in)</div>
+      <div class="row wrap" style="margin-bottom:10px">
+        <button class="btn secondary sm" onclick="addRow()"><i data-icon="plus" data-size="sm"></i>Add line item</button>
+        <button class="btn ghost sm" onclick="toast('Catalog picker','Pick stock-tracked items from the catalog (prototype).')"><i data-icon="wallet" data-size="sm"></i>Pick Item from Catalog</button>
+        <span class="spacer"></span>
+        <span class="faint" style="font-size:12px">Click to pick from catalog (stock-tracked)</span>
+      </div>
+      <div class="line-items">
+        <table>
+          <thead><tr><th style="min-width:230px">Item</th><th class="qty">Qty</th><th>Unit</th><th class="rate">Cost ₹</th><th class="rate">GST%</th><th class="rate right">Amount</th><th class="li-x"></th></tr></thead>
+          <tbody id="plBody">
+            <tr>
+              <td><input class="input" value="Cotton shirting — 120 GSM, white"></td>
+              <td><input class="input mono qty" value="400" data-calc="qty"></td>
+              <td><select class="input"><option>MTR</option><option>KG</option><option>PCS</option></select></td>
+              <td><input class="input mono" value="128.40" data-calc="rate"></td>
+              <td><select class="input mono"><option selected>5</option><option>12</option><option>18</option></select></td>
+              <td class="mono right">51,360.00</td>
+              <td class="li-x"><button class="li-del" onclick="delRow(this)"><i data-icon="trash" data-size="sm"></i></button></td>
+            </tr>
+            <tr>
+              <td><input class="input" value="Polyester blend — charcoal"></td>
+              <td><input class="input mono qty" value="120" data-calc="qty"></td>
+              <td><select class="input"><option>MTR</option><option>KG</option><option>PCS</option></select></td>
+              <td><input class="input mono" value="96.00" data-calc="rate"></td>
+              <td><select class="input mono"><option selected>5</option><option>12</option><option>18</option></select></td>
+              <td class="mono right">11,520.00</td>
+              <td class="li-x"><button class="li-del" onclick="delRow(this)"><i data-icon="trash" data-size="sm"></i></button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-label">Charges &amp; notes</div>
+      <div class="form-grid">
+        <div class="field"><label>Freight / other charges (₹)</label><input class="input mono" value="1,200.00"></div>
+        <div class="field"><label>Notes (optional)</label><input class="input" placeholder="Delivery notes, LR reference…"></div>
+      </div>
+    </div>
+
+    <aside>
+      <div class="card rule-top" style="position:sticky;top:0">
+        <div class="card-head"><div><h3 class="card-title">Computation</h3><p class="card-sub">Live totals</p></div></div>
+        <div class="field" style="margin-bottom:14px"><label>GST mode</label>
+          <div class="seg" id="gstMode"><button class="on">CGST / SGST (Intra-State)</button><button>IGST (Inter-State Purchase)</button></div></div>
+        <div class="totals">
+          <div class="t-row"><span>Taxable value</span><span class="v" id="cTax">₹62,880.00</span></div>
+          <div class="t-row"><span>CGST 2.5% + SGST 2.5%</span><span class="v">₹1,572.00 + ₹1,572.00</span></div>
+          <div class="t-row"><span>Freight / other charges</span><span class="v">₹1,200.00</span></div>
+          <div class="t-row t-grand"><span>Payable (incl. freight)</span><span class="v">₹67,224.00</span></div>
+          <div class="t-row" style="border-bottom:0"><span class="muted" style="font-size:12.5px">Input tax credit booked</span><span class="v pos">₹3,144.00</span></div>
+        </div>
+        <div class="divider"></div>
+        <div class="field"><label>Payment status</label>
+          <div class="seg" style="margin-top:2px"><button>Credit (Payable)</button><button class="on">Paid</button></div></div>
+        <div class="field" style="margin-top:12px"><label>Mode</label>
+          <select class="input"><option>Cash</option><option>Bank Transfer</option><option>Cheque</option></select></div>
+        <div class="field" style="margin-top:12px"><label>Reference / Cheque No / UTR</label><input class="input mono" placeholder="Optional"></div>
+        <button class="btn block accent" style="margin-top:16px" onclick="save(true)"><i data-icon="check" data-size="sm"></i>Save &amp; mark paid</button>
+        <button class="btn block secondary" style="margin-top:8px" onclick="save(false)">Save on credit</button>
+      </div>
+    </aside>
+  </div>
+</main></div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  function recalc() {
+    let tax = 0;
+    document.querySelectorAll('#plBody tr').forEach(tr => {
+      const qty = parseFloat(tr.querySelector('[data-calc=qty]').value) || 0;
+      const rate = parseFloat(tr.querySelector('[data-calc=rate]').value) || 0;
+      tax += qty * rate;
+      tr.children[5].textContent = (qty * rate).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    });
+    document.getElementById('cTax').textContent = '₹' + tax.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+  }
+  document.getElementById('plBody').addEventListener('input', recalc);
+  function addRow() {
+    document.getElementById('plBody').insertAdjacentHTML('beforeend',
+      '<tr><td><input class="input" placeholder="Item name (pick from catalog)"></td>' +
+      '<td><input class="input mono qty" value="1" data-calc="qty"></td>' +
+      '<td><select class="input"><option>MTR</option><option>KG</option><option>PCS</option></select></td>' +
+      '<td><input class="input mono" value="0" data-calc="rate"></td>' +
+      '<td><select class="input mono"><option selected>5</option><option>12</option><option>18</option></select></td>' +
+      '<td class="mono right">0.00</td>' +
+      '<td class="li-x"><button class="li-del" onclick="delRow(this)"><i data-icon="trash" data-size="sm"></i></button></td></tr>');
+    AuroraInjectIcons(document.getElementById('plBody'));
+  }
+  function delRow(b) { b.closest('tr').remove(); recalc(); }
+  recalc();
+  function save(paid) {
+    toast(paid ? 'Purchase Saved' : 'Purchase Saved', paid ? 'PUR-0032 recorded · stock in · ITC ₹3,144 · marked paid.' : 'PUR-0032 recorded on credit · payable ₹67,224.', 'ok');
+    setTimeout(() => location.href = 'purchases.html', 900);
+  }
+</script>
+</body>
+</html>

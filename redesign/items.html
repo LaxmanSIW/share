@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Item Catalog | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="items">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">DIRECTORY &amp; CATALOG · REUSABLE ITEM MASTERS</span>
+      <h1>Item Catalog &amp; Reports</h1>
+      <div class="sub">Catalog items with default rates, GST and stock tracking — across active bills.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Exported','catalog-items.csv saved.','ok')"><i data-icon="download" data-size="sm"></i>Export</button>
+      <button class="btn accent" data-modal-open="modal-item"><i data-icon="plus" data-size="sm"></i>New Catalog Item</button>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi lead"><div class="k-label">Catalog items</div><div class="k-value">12</div><span class="k-delta muted">2 services · 10 goods</span></div>
+    <div class="kpi"><div class="k-label">Closing stock value</div><div class="k-value">₹2,42,160</div><span class="k-delta muted">at cost</span></div>
+    <div class="kpi"><div class="k-label">Item sales generated</div><div class="k-value">₹12,57,380</div><span class="k-delta pos">this FY</span></div>
+    <div class="kpi gold"><div class="k-label">Low stock alerts</div><div class="k-value">3</div><span class="k-delta neg">at or below reorder point</span></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="search-inline"><i data-icon="search"></i><input placeholder="Search items by name, HSN/SAC, or unit..."></div>
+      <select class="input"><option>All Categories</option><option>Fabric</option><option>Packaging</option><option>Services</option></select>
+      <span class="spacer"></span>
+      <a class="rbtn" href="stock.html"><i data-icon="stock" data-size="sm"></i>Sales Reports → Stock &amp; Profit</a>
+      <button class="rbtn" onclick="toast('Search cleared','Showing the full catalog.')"><i data-icon="x" data-size="sm"></i>Clear</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th class="sortable">Item / Service <span class="arr">▲</span></th><th>Product Category</th><th>HSN / SAC</th>
+          <th class="right">Default Selling Rate (₹)</th><th class="right">Cost / purchase price</th><th class="right">Default GST Rate (%)</th>
+          <th class="right">Stock on hand</th><th class="right">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Cotton shirting — 120 GSM</b><div class="faint" style="font-size:11.5px">Across active bills: 41</div></td>
+            <td><span class="badge neutral">Fabric</span></td><td class="mono">5208</td>
+            <td class="num right">180.00</td><td class="num right">126.40</td><td>12%</td>
+            <td class="num right">288 MTR</td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-item"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn" onclick="openModal('modal-item-sales')"><i data-icon="reports" data-size="sm"></i>Sales</button>
+              <button class="rbtn" onclick="toast('Creating bill','Create Bill opened with this item pre-filled.','ok');setTimeout(()=>location.href='create-bill.html',700)"><i data-icon="pluscircle" data-size="sm"></i></button>
+              <button class="rbtn danger" data-modal-open="modal-idel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><b>Polyester blend — charcoal</b><div class="faint" style="font-size:11.5px">Across active bills: 26</div></td>
+            <td><span class="badge neutral">Fabric</span></td><td class="mono">5407</td>
+            <td class="num right">120.00</td><td class="num right">96.00</td><td>5%</td>
+            <td class="num right"><span class="badge warn">Low · 18 MTR</span></td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-item"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn" onclick="openModal('modal-item-sales')"><i data-icon="reports" data-size="sm"></i>Sales</button>
+              <button class="rbtn" onclick="toast('Creating bill','Create Bill opened with this item pre-filled.','ok');setTimeout(()=>location.href='create-bill.html',700)"><i data-icon="pluscircle" data-size="sm"></i></button>
+              <button class="rbtn danger" data-modal-open="modal-idel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><b>Corrugated carton 5-ply</b><div class="faint" style="font-size:11.5px">Across active bills: 18</div></td>
+            <td><span class="badge neutral">Packaging</span></td><td class="mono">4819</td>
+            <td class="num right">42.00</td><td class="num right">38.20</td><td>18%</td>
+            <td class="num right">260 PCS</td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-item"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn" onclick="openModal('modal-item-sales')"><i data-icon="reports" data-size="sm"></i>Sales</button>
+              <button class="rbtn" onclick="toast('Creating bill','Create Bill opened with this item pre-filled.','ok');setTimeout(()=>location.href='create-bill.html',700)"><i data-icon="pluscircle" data-size="sm"></i></button>
+              <button class="rbtn danger" data-modal-open="modal-idel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+          <tr>
+            <td><b>Stitching service</b><div class="faint" style="font-size:11.5px">Across active bills: 31</div></td>
+            <td><span class="badge neutral">Services</span></td><td class="mono">SAC 9988</td>
+            <td class="num right">350.00</td><td class="num right">126.00</td><td>18%</td>
+            <td class="faint right">—</td>
+            <td class="actions">
+              <button class="rbtn" data-modal-open="modal-item"><i data-icon="edit" data-size="sm"></i>Edit</button>
+              <button class="rbtn" onclick="openModal('modal-item-sales')"><i data-icon="reports" data-size="sm"></i>Sales</button>
+              <button class="rbtn" onclick="toast('Creating bill','Create Bill opened with this item pre-filled.','ok');setTimeout(()=>location.href='create-bill.html',700)"><i data-icon="pluscircle" data-size="sm"></i></button>
+              <button class="rbtn danger" data-modal-open="modal-idel"><i data-icon="trash" data-size="sm"></i></button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tbl-foot"><span>Showing 4 of 12 catalog items · <a href="#" onclick="return false">no matching items found.</a> when the filter empties</span>
+      <div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>3</button><button>›</button></div></div>
+  </div>
+</main></div>
+
+<!-- item add/edit -->
+<div class="modal-back" id="modal-item">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="wallet"></i></span>
+      <div style="flex:1"><h3>Edit Item Record</h3><div class="msub">Reusable item master used by bills, purchases and stock</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field full"><label>Item name <span class="req">*</span></label><input class="input" value="Cotton shirting — 120 GSM"><span class="hint">Item name is required.</span></div>
+        <div class="field"><label>Product Category</label>
+          <select class="input"><option>Fabric</option><option>Packaging</option><option>Services</option></select></div>
+        <div class="field"><label>HSN / SAC Code</label><input class="input mono" value="5208"></div>
+        <div class="field"><label>Default Selling Rate (₹)</label><input class="input mono" value="180.00"></div>
+        <div class="field"><label>Cost / purchase price (₹)</label><input class="input mono" value="126.40"></div>
+        <div class="field"><label>Default GST Rate (%)</label>
+          <select class="input mono"><option>0</option><option>5</option><option selected>12</option><option>18</option></select></div>
+        <div class="field"><label>Unit</label>
+          <select class="input"><option>MTR</option><option>PCS</option><option>KG</option><option>Bale</option></select></div>
+        <div class="field"><label>Opening Stock Qty</label><input class="input mono" value="180"></div>
+        <div class="field"><label>Low-Stock Reorder Level</label><input class="input mono" value="50"></div>
+      </div>
+      <div class="banner info" style="margin-top:14px"><i data-icon="info"></i><span>Stock-tracked once it has an opening qty or reorder level. Purchases add stock; bills deduct it.</span></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-item');toast('Item saved.','Catalog record updated.','ok')">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- item sales -->
+<div class="modal-back" id="modal-item-sales">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="reports"></i></span>
+      <div style="flex:1"><h3>Sales Report — Cotton shirting</h3><div class="msub">This FY · quantity, revenue and margin</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="grid g3" style="margin-bottom:14px">
+        <span class="kpi" style="padding:12px 16px"><div class="k-label">Qty sold</div><div class="k-value" style="font-size:19px">4,120 MTR</div></span>
+        <span class="kpi" style="padding:12px 16px"><div class="k-label">Revenue</div><div class="k-value" style="font-size:19px">₹7,41,600</div></span>
+        <span class="kpi" style="padding:12px 16px"><div class="k-label">GP %</div><div class="k-value" style="font-size:19px">28.4%</div></span>
+      </div>
+      <div class="chart-box" id="chart-item"></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-close>Close</button></div>
+  </div>
+</div>
+
+<!-- delete -->
+<div class="modal-back" id="modal-idel">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete item?</h3></div>
+    <div class="modal-body"><p style="margin:0">"Cotton shirting — 120 GSM" is used across active bills. Historic bills keep their line copies; the master leaves the catalog.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn danger solid" onclick="closeModal('modal-idel');toast('Item deleted.','Removed from the catalog.','err')">Delete item</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    AuroraCharts.bars('chart-item', {
+      labels: ['Apr','May','Jun','Jul','Aug','Sep'],
+      series: [{ name: 'Qty (MTR)', color: 'signal', values: [620, 700, 660, 780, 705, 655] }],
+      w: 620, h: 220, fmt: v => v
+    });
+  });
+</script>
+</body>
+</html>

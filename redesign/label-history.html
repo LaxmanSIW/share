@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Label Print History | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="label-history">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">DESIGN &amp; PRINT · PRINT QUEUE LOG</span>
+      <h1>Label Print History</h1>
+      <div class="sub">Every label job sent to TSC/TSPL printers — size, strip layout, pages and when.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="openModal('modal-clear')"><i data-icon="trash" data-size="sm"></i>Clear Label Print History</button>
+      <button class="btn" onclick="toast('Test label sent','TSC TA210 · 1 label · calibration tone.','ok')"><i data-icon="printer" data-size="sm"></i>Send test label</button>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi lead"><div class="k-label">Labels printed</div><div class="k-value">1,284</div><span class="k-delta muted">this period</span></div>
+    <div class="kpi"><div class="k-label">Print jobs</div><div class="k-value">37</div><span class="k-delta muted">bulk + single</span></div>
+    <div class="kpi"><div class="k-label">Distinct templates</div><div class="k-value">3</div><span class="k-delta muted">label leelamani · MRP · batch</span></div>
+    <div class="kpi gold"><div class="k-label">Printers used</div><div class="k-value">2</div><span class="k-delta muted">TSC TA210 · TSC TE244</span></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="search-inline"><i data-icon="search"></i><input placeholder="Filter by template or printer…"></div>
+      <select class="input"><option>All printers</option><option>TSC TA210</option><option>TSC TE244</option></select>
+      <span class="spacer"></span>
+      <span class="faint" style="font-size:12px">Newest first</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th class="sortable">When <span class="arr">▲</span></th><th>Template</th><th>Label size</th><th class="right">Cols</th>
+          <th class="right">Pages</th><th class="right">Labels</th><th>Printer</th><th class="right">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">24/09/2026 11:42</td><td><b>label leelamani</b></td><td><span class="lbl-size-chip">20×50 mm</span></td>
+            <td class="num right">3</td><td class="num right">14</td><td class="num right"><b>42</b></td><td>TSC TA210</td>
+            <td class="actions"><button class="rbtn" onclick="toast('Re-sent','Same job re-rendered to TSC TA210.','ok')"><i data-icon="printer" data-size="sm"></i>Reprint</button><button class="rbtn danger" onclick="toast('Entry deleted','History row removed.')"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">24/09/2026 10:05</td><td><b>MRP price labels</b></td><td><span class="lbl-size-chip">33×75 mm</span></td>
+            <td class="num right">1</td><td class="num right">6</td><td class="num right"><b>6</b></td><td>TSC TA210</td>
+            <td class="actions"><button class="rbtn" onclick="toast('Re-sent','Same job re-rendered to TSC TA210.','ok')"><i data-icon="printer" data-size="sm"></i>Reprint</button><button class="rbtn danger" onclick="toast('Entry deleted','History row removed.')"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">23/09/2026 18:20</td><td><b>label leelamani</b></td><td><span class="lbl-size-chip">20×50 mm</span></td>
+            <td class="num right">3</td><td class="num right">4</td><td class="num right"><b>12</b></td><td>TSC TE244</td>
+            <td class="actions"><button class="rbtn" onclick="toast('Re-sent','Same job re-rendered to TSC TE244.','ok')"><i data-icon="printer" data-size="sm"></i>Reprint</button><button class="rbtn danger" onclick="toast('Entry deleted','History row removed.')"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono">22/09/2026 09:15</td><td><b>Batch barcode</b></td><td><span class="lbl-size-chip">25×25 mm</span></td>
+            <td class="num right">4</td><td class="num right">9</td><td class="num right"><b>36</b></td><td>TSC TA210</td>
+            <td class="actions"><button class="rbtn" onclick="toast('Re-sent','Same job re-rendered to TSC TA210.','ok')"><i data-icon="printer" data-size="sm"></i>Reprint</button><button class="rbtn danger" onclick="toast('Entry deleted','History row removed.')"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tbl-foot"><span>Showing 4 of 37 jobs · 1,284 labels total</span>
+      <div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>…</button><button>10</button><button>›</button></div></div>
+  </div>
+</main></div>
+
+<div class="modal-back" id="modal-clear">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Clear Label Print History?</h3></div>
+    <div class="modal-body"><p style="margin:0">All 37 entries will be removed. Templates and print settings are untouched.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Keep history</button>
+      <button class="btn danger solid" onclick="closeModal('modal-clear');toast('History Cleared','Label print history emptied.','err')">Clear history</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+</body>
+</html>

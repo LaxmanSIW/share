@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Create Bill | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+<style>
+  .doc-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--black); margin-bottom: 18px; overflow-x: auto; }
+  .doc-tabs .tab {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px;
+    background: transparent; border: 0; border-bottom: 3px solid transparent; margin-bottom: -2px;
+    color: var(--text-2); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  }
+  .doc-tabs .tab:hover { color: var(--text); }
+  .doc-tabs .tab.on { color: var(--text); font-weight: 700; border-bottom-color: var(--vermilion); }
+  .buyer-head { display: flex; align-items: center; gap: 12px; }
+</style>
+</head>
+<body data-page="create-bill">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content flush">
+<div class="split">
+  <!-- ============ FORM SIDE ============ -->
+  <main class="form-side" id="body">
+    <div class="page" style="max-width:none">
+      <div class="doc-tabs" data-tabs="billdoc" data-tabs-for="[data-pane=doc]">
+        <button class="tab on" data-tab="invoice">Tax Invoice</button>
+        <button class="tab" data-tab="challan">Delivery Challan</button>
+        <button class="tab" data-tab="credit">Credit Note</button>
+        <button class="tab" data-tab="quote">Quotation</button>
+      </div>
+
+      <div class="page-head" style="border-bottom:0;padding-bottom:0;margin-bottom:6px">
+        <div>
+          <h1 style="font-size:22px">Create new document</h1>
+          <div class="sub">Bill numbers run <span class="mono">INV-0031</span> → next <span class="mono"><b>INV-0031</b></span> (prefix &amp; padding from Settings → Billing).</div>
+        </div>
+      </div>
+
+      <div class="section-label">Buyer / recipient details</div>
+      <div class="card" style="padding:16px">
+        <div class="field" style="position:relative">
+          <label>Search buyer <span class="faint">— name, phone or GSTIN</span></label>
+          <div class="input-wrap"><i data-icon="search" data-size="sm"></i>
+            <input class="input" id="buyerSearch" placeholder="Type to search buyers…" autocomplete="off">
+          </div>
+          <div class="suggest" id="buyerSuggest">
+            <div class="sg" data-buyer="Acme Industries"><i data-icon="users" data-size="sm"></i><span><b>Acme Industries</b><br><span class="faint" style="font-size:11px">Plot 14, MIDC Phase 2, Pune 411019</span></span><span class="mono">27AACPA1234C1ZP</span></div>
+            <div class="sg" data-buyer="Gamma Constructions"><i data-icon="users" data-size="sm"></i><span><b>Gamma Constructions</b><br><span class="faint" style="font-size:11px">MG Road, Bengaluru 560001</span></span><span class="mono">29AABCG5678D1ZK</span></div>
+            <div class="sg" data-buyer="Beta Engineers"><i data-icon="users" data-size="sm"></i><span><b>Beta Engineers</b><br><span class="faint" style="font-size:11px">GIDC Estate, Surat 395003</span></span><span class="mono">24AAECB9012F1ZQ</span></div>
+            <div class="sg" onclick="openModal('modal-buyer')"><i data-icon="pluscircle" data-size="sm"></i><span><b>Create new buyer…</b><br><span class="faint" style="font-size:11px">Opens the directory entry form</span></span></div>
+          </div>
+        </div>
+        <div id="buyerFilled" style="display:none;margin-top:12px" class="row">
+          <span class="avatar">AI</span>
+          <div style="flex:1;min-width:0">
+            <b id="bfName" style="font-size:14px">Acme Industries</b>
+            <div class="faint" style="font-size:11.5px">Plot 14, MIDC Phase 2, Pune 411019 · 98220 11223 · <span class="mono">27AACPA1234C1ZP</span> · State 27 (Maharashtra)</div>
+          </div>
+          <button class="rbtn" onclick="openModal('modal-buyer')"><i data-icon="edit" data-size="sm"></i>Edit</button>
+          <button class="rbtn" onclick="toast('Saved to directory','Buyer profile updated with this bill\'s address.','ok')"><i data-icon="save" data-size="sm"></i>Save to directory</button>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-top:14px">
+        <div class="field"><label>Bill number <span class="req">*</span></label><input class="input mono" value="INV-0031"></div>
+        <div class="field"><label>Document date <span class="req">*</span></label><input class="input mono" value="24/09/2026"></div>
+        <div class="field"><label>Due date</label><input class="input mono" value="09/10/2026"></div>
+        <div class="field"><label>Place of supply</label>
+          <select class="input"><option>Maharashtra (27) — CGST+SGST</option><option>Karnataka (29) — IGST</option><option>Gujarat (24) — IGST</option><option>Other territory — IGST</option></select></div>
+      </div>
+
+      <div class="section-label">Line items</div>
+      <div class="row wrap" style="margin-bottom:10px">
+        <button class="btn secondary sm" onclick="addRow()"><i data-icon="plus" data-size="sm"></i>Add line item</button>
+        <button class="btn ghost sm" onclick="openModal('modal-pick')"><i data-icon="wallet" data-size="sm"></i>Pick from catalog</button>
+        <span class="spacer"></span>
+        <span class="faint" style="font-size:12px">3 items · 12.5 qty</span>
+      </div>
+      <div class="line-items" id="liTable">
+        <table>
+          <thead><tr>
+            <th style="min-width:220px">Item / description</th><th class="qty">Qty</th><th>Unit</th>
+            <th class="rate">Rate ₹</th><th class="disc">Disc %</th><th class="rate">GST %</th><th class="rate right">Amount</th><th class="li-x"></th>
+          </tr></thead>
+          <tbody id="liBody">
+            <tr>
+              <td><input class="input" value="Cotton shirting — 120 GSM, white"></td>
+              <td><input class="input mono qty" value="6" data-calc="qty"></td>
+              <td><select class="input"><option>MTR</option><option>PCS</option><option>Bale</option><option>KG</option></select></td>
+              <td><input class="input mono" value="180.00" data-calc="rate"></td>
+              <td><input class="input mono" value="0"></td>
+              <td><select class="input mono"><option>5</option><option selected>12</option><option>18</option><option>0</option></select></td>
+              <td class="mono right" data-amt>1,080.00</td>
+              <td class="li-x"><button class="li-del" title="Remove this line item" onclick="delRow(this)"><i data-icon="trash" data-size="sm"></i></button></td>
+            </tr>
+            <tr>
+              <td><input class="input" value="Polyester blend — charcoal"></td>
+              <td><input class="input mono qty" value="4.5" data-calc="qty"></td>
+              <td><select class="input"><option selected>MTR</option><option>PCS</option><option>Bale</option><option>KG</option></select></td>
+              <td><input class="input mono" value="120.00" data-calc="rate"></td>
+              <td><input class="input mono" value="5"></td>
+              <td><select class="input mono"><option selected>5</option><option>12</option><option>18</option><option>0</option></select></td>
+              <td class="mono right" data-amt>513.00</td>
+              <td class="li-x"><button class="li-del" title="Remove this line item" onclick="delRow(this)"><i data-icon="trash" data-size="sm"></i></button></td>
+            </tr>
+            <tr>
+              <td><input class="input" value="Packaging &amp; stitching charges"></td>
+              <td><input class="input mono qty" value="2" data-calc="qty"></td>
+              <td><select class="input"><option selected>Lot</option><option>PCS</option></select></td>
+              <td><input class="input mono" value="350.00" data-calc="rate"></td>
+              <td><input class="input mono" value="0"></td>
+              <td><select class="input mono"><option>5</option><option>12</option><option selected>18</option><option>0</option></select></td>
+              <td class="mono right" data-amt>700.00</td>
+              <td class="li-x"><button class="li-del" title="Remove this line item" onclick="delRow(this)"><i data-icon="trash" data-size="sm"></i></button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-label">Custom bill fields <span class="faint" style="letter-spacing:0;text-transform:none">(3 defined in Settings → Fields)</span></div>
+      <div class="form-grid">
+        <div class="field"><label>Order reference</label><input class="input" placeholder="PO / contract no."></div>
+        <div class="field"><label>Agent / broker</label><input class="input" placeholder="Name"></div>
+        <div class="field"><label>E-way bill no.</label><input class="input mono" placeholder="12 digits"></div>
+        <div class="field"><label>Dispatch notes</label><input class="input" placeholder="Free text"></div>
+      </div>
+
+      <div class="section-label">Logistics, transport &amp; order references</div>
+      <div class="form-grid">
+        <div class="field"><label>Transport agency</label>
+          <select class="input"><option>— none —</option><option>VRL Logistics</option><option>Gati KWE</option><option>DTDC</option><option>Safexpress</option></select></div>
+        <div class="field"><label>Vehicle / LR number</label><input class="input mono" placeholder="KA01 AB 1234"></div>
+        <div class="field"><label>Total parcels / cartons / bales</label><input class="input mono" placeholder="e.g. 12 bales"></div>
+        <div class="field"><label>Total pieces</label><input class="input mono" placeholder="e.g. 240 pcs"></div>
+      </div>
+
+      <div class="section-label plain">Totals</div>
+      <div class="totals">
+        <div class="t-row"><span>Taxable value</span><span class="v" id="tTaxable">₹2,235.00</span></div>
+        <div class="t-row"><span>CGST 9% + SGST 9% (intra-state)</span><span class="v" id="tCgst">₹201.15 + ₹201.15</span></div>
+        <div class="t-row"><span>Round off</span><span class="v">+ ₹0.45</span></div>
+        <div class="t-row t-grand"><span>Grand total</span><span class="v" id="tGrand">₹2,637.75</span></div>
+        <div class="t-row" style="border-bottom:0"><span class="muted" style="font-size:12.5px">Amount in words</span><span class="muted" style="font-size:12.5px">Two thousand six hundred thirty-seven rupees and seventy-five paise only</span></div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="row wrap" style="gap:10px">
+        <button class="btn" onclick="saveBill(false)"><i data-icon="save" data-size="sm"></i>Save document</button>
+        <button class="btn accent" onclick="saveBill(true)"><i data-icon="printer" data-size="sm"></i>Save &amp; Print</button>
+        <button class="btn secondary" onclick="toast('PDF exported','INV-0031.pdf saved to Documents\\\\InvoiceStudio\\\\pdf.','ok')"><i data-icon="files" data-size="sm"></i>Save &amp; PDF</button>
+        <span class="spacer"></span>
+        <a class="btn ghost" href="invoices.html">Return to history</a>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ LIVE PREVIEW SIDE ============ -->
+  <aside class="preview-side" aria-label="Live document preview">
+    <div class="preview-tools">
+      <span class="eyebrow" style="margin:0">Live document preview</span>
+      <span class="spacer"></span>
+      <button class="icon-btn" title="Zoom out" onclick="zoom(-.1)"><i data-icon="zoomout" data-size="sm"></i></button>
+      <span class="mono" id="zoomVal" style="font-size:12px">100%</span>
+      <button class="icon-btn" title="Zoom in" onclick="zoom(.1)"><i data-icon="zoomin" data-size="sm"></i></button>
+      <button class="rbtn" onclick="setZoom(1)" title="Reset zoom to 100%">100%</button>
+      <button class="rbtn" onclick="setZoom(.68)" title="Fit preview to pane">Fit</button>
+    </div>
+
+    <div class="paper" id="paper">
+      <div class="p-head">
+        <div>
+          <div class="p-brand">LEELAMANI TRADERS</div>
+          <div style="color:var(--text-2);font-size:11px;line-height:1.5">14, Cloth Market, Ring Road<br>Surat, Gujarat 395002<br><span class="mono">GSTIN: 24AAECL9999K1ZM</span></div>
+        </div>
+        <div class="p-meta">
+          <span class="p-eyebrow">Tax Invoice</span><br>
+          <b id="pvNo">INV-0031</b><br>
+          Date: 24/09/2026<br>
+          Due: 09/10/2026
+        </div>
+      </div>
+
+      <h4>Bill to</h4>
+      <div style="display:flex;justify-content:space-between;gap:20px">
+        <div><b id="pvBuyer">Acme Industries</b><br><span style="color:var(--text-2)">Plot 14, MIDC Phase 2, Pune 411019<br>State: Maharashtra (27) · <span class="mono" id="pvGst">27AACPA1234C1ZP</span></span></div>
+        <div style="text-align:right"><span class="p-stamp">ORIGINAL</span></div>
+      </div>
+
+      <table class="p-items">
+        <thead><tr><th>#</th><th>Item &amp; description</th><th>Qty</th><th>Unit</th><th class="right">Rate</th><th class="right">Disc</th><th class="right">GST</th><th class="right">Amount</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Cotton shirting — 120 GSM, white<br><span class="faint mono" style="font-size:10px">HSN 5208</span></td><td>6.00</td><td>MTR</td><td class="mono right">180.00</td><td class="right">—</td><td class="right">12%</td><td class="mono right">1,080.00</td></tr>
+          <tr><td>2</td><td>Polyester blend — charcoal<br><span class="faint mono" style="font-size:10px">HSN 5407</span></td><td>4.50</td><td>MTR</td><td class="mono right">120.00</td><td class="right">5%</td><td class="right">5%</td><td class="mono right">513.00</td></tr>
+          <tr><td>3</td><td>Packaging &amp; stitching charges</td><td>2.00</td><td>Lot</td><td class="mono right">350.00</td><td class="right">—</td><td class="right">18%</td><td class="mono right">700.00</td></tr>
+        </tbody>
+      </table>
+
+      <table class="p-tot" style="width:55%;margin-left:45%">
+        <tr><td>Taxable value</td><td class="mono right">2,235.00</td></tr>
+        <tr><td>CGST 9%</td><td class="mono right">201.15</td></tr>
+        <tr><td>SGST 9%</td><td class="mono right">201.15</td></tr>
+        <tr><td>Round off</td><td class="mono right">0.45</td></tr>
+        <tr class="g"><td>Grand total</td><td class="mono right">₹ 2,637.75</td></tr>
+      </table>
+      <div class="p-words">Two thousand six hundred thirty-seven rupees and seventy-five paise only</div>
+
+      <h4>Bank &amp; payment details</h4>
+      <div style="display:flex;justify-content:space-between;color:var(--text-2)">
+        <span>HDFC Bank · A/c 50100 2233 4455 · IFSC HDFC0001234 · UPI leelamani@hdfcbank</span>
+      </div>
+
+      <h4>Terms &amp; conditions</h4>
+      <p style="color:var(--text-2);font-size:10.5px;line-height:1.5;margin:0">1. Goods once sold will not be taken back. &nbsp;2. Interest @18% p.a. on overdue amounts. &nbsp;3. Subject to Surat jurisdiction. &nbsp;4. Please quote invoice number with payment.</p>
+      <div style="margin-top:22px;display:flex;justify-content:space-between;align-items:flex-end">
+        <span class="faint" style="font-size:10px">This is a computer-generated document.</span>
+        <div style="text-align:center;font-size:10.5px"><div style="border-top:1px solid var(--black);padding-top:4px;min-width:150px">For Leelamani Traders<br>Authorised signatory</div></div>
+      </div>
+    </div>
+  </aside>
+</div>
+</div>
+
+<!-- ============ MODALS ============ -->
+<div class="modal-back" id="modal-buyer">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="users"></i></span>
+      <div style="flex:1"><h3>Edit buyer — Acme Industries</h3><div class="msub">Changes save to the buyer directory and this bill.</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field full"><label>Customer / business name <span class="req">*</span></label><input class="input" value="Acme Industries"></div>
+        <div class="field"><label>Mobile / phone</label><input class="input mono" value="98220 11223"></div>
+        <div class="field"><label>GSTIN <span class="faint">(15 chars)</span></label><input class="input mono" value="27AACPA1234C1ZP" maxlength="15"></div>
+        <div class="field full"><label>Address, city, pincode</label><textarea class="input" rows="2">Plot 14, MIDC Phase 2, Pune 411019</textarea></div>
+        <div class="field"><label>State code</label><input class="input mono" value="27"></div>
+        <div class="field"><label>Manager / contact person</label><input class="input" value="R. Sharma"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-buyer');toast('Buyer saved','Directory updated; bill address refreshed.','ok')">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-pick">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="wallet"></i></span>
+      <div style="flex:1"><h3>Select catalog item</h3><div class="msub">Reusable item masters with default rates &amp; GST — stock-tracked items deduct on save.</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body" style="padding-top:12px">
+      <div class="input-wrap" style="margin-bottom:12px"><i data-icon="search" data-size="sm"></i>
+        <input class="input" placeholder="Type to search items by name or HSN…"></div>
+      <div class="tbl-wrap" style="max-height:320px;overflow:auto">
+        <table class="tbl">
+          <thead><tr><th>Item / service</th><th>Category</th><th class="right">Default rate</th><th>GST %</th><th>Stock</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><b>Cotton shirting — 120 GSM</b><div class="faint mono" style="font-size:11px">HSN 5208</div></td><td><span class="badge neutral">Fabric</span></td><td class="num right">₹180.00</td><td>12%</td><td><span class="badge ok">412 MTR</span></td><td class="right"><button class="rbtn solid" onclick="closeModal('modal-pick');toast('Item added','Cotton shirting added as line 4.','ok')">Add</button></td></tr>
+            <tr><td><b>Polyester blend — charcoal</b><div class="faint mono" style="font-size:11px">HSN 5407</div></td><td><span class="badge neutral">Fabric</span></td><td class="num right">₹120.00</td><td>5%</td><td><span class="badge warn">Low · 18 MTR</span></td><td class="right"><button class="rbtn solid" onclick="closeModal('modal-pick');toast('Item added','Polyester blend added as line 4.','ok')">Add</button></td></tr>
+            <tr><td><b>Stitching service</b></td><td><span class="badge neutral">Service</span></td><td class="num right">₹350.00</td><td>18%</td><td class="faint">—</td><td class="right"><button class="rbtn solid" onclick="closeModal('modal-pick');toast('Item added','Stitching service added as line 4.','ok')">Add</button></td></tr>
+            <tr><td><b>Corrugated carton 5-ply</b><div class="faint mono" style="font-size:11px">HSN 4819</div></td><td><span class="badge neutral">Packaging</span></td><td class="num right">₹42.00</td><td>18%</td><td><span class="badge ok">260 PCS</span></td><td class="right"><button class="rbtn solid" onclick="closeModal('modal-pick');toast('Item added','Carton added as line 4.','ok')">Add</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" onclick="goto2('items.html')">Manage catalog…</button>
+      <button class="btn ghost" data-close>Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-print">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="printer"></i></span>
+      <div style="flex:1"><h3>InvoiceStudio Print — INV-0031</h3><div class="msub">System print dialog · template "GST Tax Invoice — Modern"</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Printer</label>
+          <select class="input"><option>Default printer — HP LaserJet M1136</option><option>Canon LBP2900B</option><option>Microsoft Print to PDF</option></select></div>
+        <div class="field"><label>Copies</label><input class="input mono" value="1"></div>
+        <div class="field"><label>Paper size</label><select class="input"><option>A4</option><option>Letter</option><option>Custom 80mm roll</option></select></div>
+        <div class="field"><label>Orientation</label>
+          <div class="seg" style="margin-top:4px"><button class="on">Portrait</button><button>Landscape</button></div></div>
+      </div>
+      <div class="banner info" style="margin-top:14px"><i data-icon="info"></i><span>Three copies will print: Original for Recipient, Duplicate for Transporter, Triplicate for Supplier.</span></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-print');toast('Sent to printer','INV-0031 · 3 copies · HP LaserJet M1136.','ok')"><i data-icon="printer" data-size="sm"></i>Print</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+<script>
+  /* shell isn't page-absolute: goto helper */
+  function goto2(u){ location.href = u; }
+
+  /* buyer suggest */
+  const bs = document.getElementById('buyerSearch'), sg = document.getElementById('buyerSuggest');
+  bs.addEventListener('focus', () => sg.classList.add('open'));
+  bs.addEventListener('input', () => sg.classList.add('open'));
+  document.addEventListener('click', e => { if (!e.target.closest('#buyerSuggest') && e.target !== bs) sg.classList.remove('open'); });
+  sg.querySelectorAll('.sg[data-buyer]').forEach(el => el.addEventListener('click', () => {
+    document.getElementById('buyerFilled').style.display = 'flex';
+    document.getElementById('bfName').textContent = el.getAttribute('data-buyer');
+    document.getElementById('pvBuyer').textContent = el.getAttribute('data-buyer');
+    sg.classList.remove('open');
+    toast('Buyer selected', el.getAttribute('data-buyer') + ' · address & GSTIN applied.', 'ok');
+  }));
+
+  /* line-item arithmetic (prototype-grade) */
+  function recalc() {
+    let taxable = 0, cg = 0;
+    document.querySelectorAll('#liBody tr').forEach(tr => {
+      const qty = parseFloat(tr.querySelector('[data-calc=qty]').value) || 0;
+      const rate = parseFloat(tr.querySelector('[data-calc=rate]').value) || 0;
+      const gst = parseFloat(tr.querySelector('select').value) || 0;
+      const amt = qty * rate;
+      taxable += amt; cg += amt * gst / 100;
+      tr.querySelector('[data-amt]').textContent = amt.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    });
+    const grand = taxable + 2 * cg;
+    document.getElementById('tTaxable').textContent = '₹' + taxable.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    document.getElementById('tCgst').textContent = '₹' + (cg).toLocaleString('en-IN', { minimumFractionDigits: 2 }) + ' + ₹' + (cg).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    document.getElementById('tGrand').textContent = '₹' + grand.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+  }
+  document.getElementById('liBody').addEventListener('input', recalc);
+  function addRow() {
+    document.getElementById('liBody').insertAdjacentHTML('beforeend',
+      '<tr><td><input class="input" placeholder="Item name / description"></td>' +
+      '<td><input class="input mono qty" value="1" data-calc="qty"></td>' +
+      '<td><select class="input"><option>MTR</option><option>PCS</option><option>Bale</option><option>KG</option><option>Lot</option></select></td>' +
+      '<td><input class="input mono" value="0" data-calc="rate"></td>' +
+      '<td><input class="input mono" value="0"></td>' +
+      '<td><select class="input mono"><option>5</option><option>12</option><option>18</option><option selected>0</option></select></td>' +
+      '<td class="mono right" data-amt>0.00</td>' +
+      '<td class="li-x"><button class="li-del" onclick="delRow(this)"><i data-icon="trash" data-size="sm"></i></button></td></tr>');
+    AuroraInjectIcons(document.getElementById('liBody'));
+    recalc();
+  }
+  function delRow(b) { b.closest('tr').remove(); recalc(); toast('Line removed', 'The line item was removed from the document.'); }
+  recalc();
+
+  /* zoom */
+  let z = 1;
+  function setZoom(v) { z = v; document.getElementById('paper').style.transform = 'scale(' + v + ')'; document.getElementById('zoomVal').textContent = Math.round(v * 100) + '%'; }
+  function zoom(d) { setZoom(Math.min(1.6, Math.max(.5, z + d))); }
+
+  /* save */
+  function saveBill(print) {
+    toast('Bill saved', 'INV-0031 written to the database · stock & ledger updated.', 'ok');
+    if (print) setTimeout(() => openModal('modal-print'), 450);
+  }
+
+  /* doc-type tabs swap the preview eyebrow */
+  document.querySelector('[data-tabs=billdoc]').addEventListener('aurora:tab', e => {
+    const map = { invoice: 'Tax Invoice', challan: 'Delivery Challan', credit: 'Credit Note', quote: 'Quotation' };
+    document.querySelector('.paper .p-eyebrow').textContent = map[e.detail.name] || 'Document';
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Purchase Register | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="purchases">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">PURCHASE · PURCHASE REGISTER</span>
+      <h1>Purchases</h1>
+      <div class="sub">Supplier bills recorded — stock in, input tax credit and payables in one register.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn ghost" onclick="toast('Exported','purchase-register-2026-09.csv saved.','ok')"><i data-icon="download" data-size="sm"></i>Export</button>
+      <a class="btn accent" href="create-purchase.html"><i data-icon="plus" data-size="sm"></i>Record Purchase Bill</a>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi lead"><div class="k-label">Purchase value</div><div class="k-value">₹2,14,800</div><span class="k-delta muted">supplier bills recorded</span></div>
+    <div class="kpi"><div class="k-label">Input tax credit</div><div class="k-value">₹21,340</div><span class="k-delta muted">GST paid on purchases (ITC)</span></div>
+    <div class="kpi"><div class="k-label">Payable</div><div class="k-value">₹68,420</div><span class="k-delta neg">owed to suppliers</span></div>
+    <div class="kpi"><div class="k-label">Paid</div><div class="k-value">₹1,46,380</div><span class="k-delta pos">68% settled</span></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="input-wrap" style="min-width:230px"><i data-icon="search" data-size="sm"></i><input class="input" placeholder="Search voucher, supplier…"></div>
+      <select class="input"><option>All Statuses</option><option>Paid</option><option>On Credit (Payable)</option></select>
+      <select class="input"><option>All suppliers</option><option>Shree Textile Mills</option><option>Annapurna Yarn Co.</option><option>PackWell Industries</option></select>
+      <span class="spacer"></span>
+      <button class="rbtn" onclick="toast('Filters cleared','Showing all purchase bills.')"><i data-icon="x" data-size="sm"></i>Clear</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr>
+          <th class="sortable">Voucher <span class="arr">▲</span></th><th>Date</th><th>Supplier</th><th class="right">Purchase value</th>
+          <th class="right">ITC (GST)</th><th class="right">Payable</th><th>Status</th><th>Reference</th><th class="right">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono"><b>PUR-0031</b></td><td class="mono">23/09/2026</td><td><b>Shree Textile Mills</b></td>
+            <td class="num right">₹64,200.00</td><td class="num right">₹7,704.00</td><td class="num right">₹64,200.00</td>
+            <td><span class="badge warn"><span class="b-dot"></span>On Credit (Payable)</span></td><td class="mono">STM/1182</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">Edit</button><button class="rbtn accent" data-modal-open="modal-pay">Pay Supplier</button><button class="rbtn danger" data-modal-open="modal-del"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono"><b>PUR-0030</b></td><td class="mono">21/09/2026</td><td><b>Annapurna Yarn Co.</b></td>
+            <td class="num right">₹88,000.00</td><td class="num right">₹4,400.00</td><td class="num right">₹0.00</td>
+            <td><span class="badge hl">Paid</span></td><td class="mono">AY/8841</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">Edit</button><button class="rbtn" disabled>Pay Supplier</button><button class="rbtn danger" data-modal-open="modal-del"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono"><b>PUR-0029</b></td><td class="mono">18/09/2026</td><td><b>PackWell Industries</b></td>
+            <td class="num right">₹10,920.00</td><td class="num right">₹1,965.60</td><td class="num right">₹4,220.00</td>
+            <td><span class="badge warn"><span class="b-dot"></span>On Credit (Payable)</span></td><td class="mono">PW/2210</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">Edit</button><button class="rbtn accent" data-modal-open="modal-pay">Pay Supplier</button><button class="rbtn danger" data-modal-open="modal-del"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+          <tr>
+            <td class="mono"><b>PUR-0028</b></td><td class="mono">12/09/2026</td><td><b>Shree Textile Mills</b></td>
+            <td class="num right">₹51,680.00</td><td class="num right">₹6,201.60</td><td class="num right">₹0.00</td>
+            <td><span class="badge hl">Paid</span></td><td class="mono">STM/1176</td>
+            <td class="actions"><button class="rbtn" onclick="openModal('modal-view')">Edit</button><button class="rbtn" disabled>Pay Supplier</button><button class="rbtn danger" data-modal-open="modal-del"><i data-icon="trash" data-size="sm"></i></button></td>
+          </tr>
+        </tbody>
+        <tfoot><tr><td colspan="3">Filtered totals — 5 bills</td><td class="num right">₹2,14,800.00</td><td class="num right">₹21,340.00</td><td class="num right">₹68,420.00</td><td colspan="3"></td></tr></tfoot>
+      </table>
+    </div>
+    <div class="tbl-foot"><span>Showing 5 of 34 purchase bills · nothing due on 29 bills</span>
+      <div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>…</button><button>7</button><button>›</button></div></div>
+  </div>
+
+  <p class="faint" style="margin-top:18px;font-size:11.5px;line-height:1.6">Deleting a purchase reverses its stock and payable (documented behaviour of the register). Payments write to the expense side and reduce supplier outstanding. Freight is included in the payable but excluded from taxable value.</p>
+</main></div>
+
+<!-- pay supplier -->
+<div class="modal-back" id="modal-pay">
+  <div class="modal" style="width:520px">
+    <div class="modal-head"><span class="mic ok"><i data-icon="wallet"></i></span>
+      <div style="flex:1"><h3>Record payment for PUR-0031</h3><div class="msub">Shree Textile Mills · payable ₹64,200.00</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Amount <span class="req">*</span></label><input class="input mono" value="64,200.00"></div>
+        <div class="field"><label>Payment date</label><input class="input mono" value="24/09/2026"></div>
+        <div class="field"><label>Mode</label><select class="input"><option>Bank Transfer</option><option>Cash</option><option>Cheque</option></select></div>
+        <div class="field"><label>Reference / Cheque No / UTR</label><input class="input mono" placeholder="UTR"></div>
+      </div>
+      <label class="checkbox" style="margin-top:12px"><input type="checkbox" checked><span class="box"><i data-icon="check" data-size="sm"></i></span>Mark purchase as fully paid</label>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-pay');toast('Payment Recorded','₹64,200 paid to Shree Textile Mills · payable cleared.','ok')">Record payment</button>
+    </div>
+  </div>
+</div>
+
+<!-- view/edit -->
+<div class="modal-back" id="modal-view">
+  <div class="modal w-lg">
+    <div class="modal-head"><span class="mic"><i data-icon="purchases"></i></span>
+      <div style="flex:1"><h3>Edit Purchase — PUR-0031</h3><div class="msub">Opens the full purchase form in the app; stock lines re-apply on save.</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Supplier</label><input class="input" value="Shree Textile Mills" readonly class="ro"></div>
+        <div class="field"><label>Bill date</label><input class="input mono" value="23/09/2026"></div>
+        <div class="field"><label>Internal voucher no</label><input class="input mono" value="PUR-0031"></div>
+        <div class="field"><label>Supplier's bill no</label><input class="input mono" value="STM/1182"></div>
+      </div>
+      <div class="section-label">Item lines (stock in)</div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Item (catalog)</th><th class="right">Qty</th><th class="right">Cost ₹</th><th>GST%</th><th class="right">Amount</th></tr></thead>
+          <tbody>
+            <tr><td>Cotton shirting — 120 GSM</td><td class="num right">400 MTR</td><td class="num right">128.40</td><td>5%</td><td class="num right">₹51,360.00</td></tr>
+            <tr><td>Polyester blend — charcoal</td><td class="num right">120 MTR</td><td class="num right">96.00</td><td>5%</td><td class="num right">₹11,520.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="banner info" style="margin-top:14px"><i data-icon="info"></i><span>Possible duplicate purchase check runs on save (supplier + date + amount window).</span></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Close</button>
+      <a class="btn" href="create-purchase.html">Open full form</a>
+    </div>
+  </div>
+</div>
+
+<!-- delete -->
+<div class="modal-back" id="modal-del">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete purchase PUR-0031?</h3></div>
+    <div class="modal-body"><p style="margin:0">Deletes the bill and <b>reverses stock and payable</b> created by it. This cannot be undone.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Keep bill</button>
+      <button class="btn danger solid" onclick="closeModal('modal-del');toast('Purchase Deleted','Stock reversed · payable reduced by ₹64,200.','err')">Delete purchase</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+</body>
+</html>

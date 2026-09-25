@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Variables &amp; Placeholders | InvoiceStudio — Redesign Prototype</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body data-page="variables">
+<a class="skip-link" href="#body">Skip to content</a>
+
+<div class="content"><main class="page" id="body">
+
+  <div class="page-head">
+    <div>
+      <span class="eyebrow">DIRECTORY &amp; CATALOG · TEMPLATE VARIABLES</span>
+      <h1>Variables &amp; Placeholders</h1>
+      <div class="sub">Every <span class="code-pill">{{placeholder}}</span> available to the template designer — built-in, business, buyer-custom, fixed and barcode.</div>
+    </div>
+    <span class="spacer"></span>
+    <div class="actions">
+      <button class="btn accent" data-modal-open="modal-var"><i data-icon="plus" data-size="sm"></i>Add Custom Variable</button>
+    </div>
+  </div>
+
+  <div class="banner info" style="margin-bottom:16px"><i data-icon="info"></i><span>Insert variables in the designer via the <b>Variable picker</b>; the same list is available per text element. Buyer custom fields come from Settings → Fields.</span></div>
+
+  <div class="tbl-wrap">
+    <div class="filters-row">
+      <div class="search-inline"><i data-icon="search"></i><input placeholder="Search key or description…"></div>
+      <div class="seg sm" id="varScope"><button class="on">All</button><button>Built-in</button><button>My business</button><button>Buyer custom</button><button>Fixed</button><button>Barcode</button></div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr><th>Key (placeholder)</th><th>Description</th><th>Data type</th><th>Default value (optional)</th><th class="right">Action</th></tr></thead>
+        <tbody>
+          <tr class="var-group-head"><td colspan="5">Built-in bill variables</td></tr>
+          <tr><td><span class="code-pill">{{invoice_number}}</span></td><td>Invoice Number</td><td>Auto</td><td class="mono muted">INV-0031</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{invoice_date}}</span></td><td>Invoice Date</td><td>Auto</td><td class="mono muted">24/09/2026</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{due_date}}</span></td><td>Due Date</td><td>Auto</td><td class="mono muted">09/10/2026</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{buyer_name}}</span></td><td>Buyer / Customer Name</td><td>Auto</td><td class="mono muted">Acme Industries</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{buyer_gstin}}</span></td><td>Buyer GSTIN</td><td>Auto</td><td class="mono muted">27AACPA1234C1ZP</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{buyer_address}}</span></td><td>Buyer Address</td><td>Auto</td><td class="mono muted">Plot 14, MIDC…</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{buyer_email}}</span></td><td>Buyer Email</td><td>Auto</td><td class="mono muted">accounts@acme.in</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{buyer_phone}}</span></td><td>Buyer Phone</td><td>Auto</td><td class="mono muted">98220 11223</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{buyer_state}}</span></td><td>Buyer State</td><td>Auto</td><td class="mono muted">Maharashtra</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{buyer_state_code}}</span></td><td>Buyer State Code (2-digit)</td><td>Auto</td><td class="mono muted">27</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{buyer_trade_name}}</span></td><td>Buyer Trade Name</td><td>Auto</td><td class="mono muted">ACME</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{total_words}}</span></td><td>Amount in Words (Zero Rupees Only fallback)</td><td>Auto</td><td class="mono muted">Two thousand six hundred…</td><td class="right"><span class="faint">built-in</span></td></tr>
+          <tr><td><span class="code-pill">{{page_no}}</span></td><td>Current Page Number</td><td>Auto</td><td class="mono muted">1</td><td class="right"><span class="faint">built-in</span></td></tr>
+
+          <tr class="var-group-head"><td colspan="5">My business / fixed variables</td></tr>
+          <tr><td><span class="code-pill">{{my_business_name}}</span></td><td>My Business Name</td><td>Fixed</td><td class="mono muted">Leelamani Traders</td><td class="right"><span class="faint">Settings → Profile</span></td></tr>
+          <tr><td><span class="code-pill">{{my_business_gstin}}</span></td><td>My Business GSTIN</td><td>Fixed</td><td class="mono muted">24AAECL9999K1ZM</td><td class="right"><span class="faint">Settings → Profile</span></td></tr>
+          <tr><td><span class="code-pill">{{my_business_phone}}</span></td><td>My Business Phone</td><td>Fixed</td><td class="mono muted">98251 00011</td><td class="right"><span class="faint">Settings → Profile</span></td></tr>
+          <tr><td><span class="code-pill">{{my_bank_name}}</span></td><td>My Bank Name</td><td>Fixed</td><td class="mono muted">HDFC Bank</td><td class="right"><span class="faint">Settings → Bank</span></td></tr>
+          <tr><td><span class="code-pill">{{my_account_no}}</span></td><td>My Account No</td><td>Fixed</td><td class="mono muted">5010 0223 3445</td><td class="right"><span class="faint">Settings → Bank</span></td></tr>
+
+          <tr class="var-group-head"><td colspan="5">Buyer custom fields (Settings → Fields)</td></tr>
+          <tr><td><span class="code-pill">{{cf_region}}</span></td><td>Buyer custom field: Region</td><td>Text</td><td class="mono muted">MIDC Belt</td>
+            <td class="right"><button class="rbtn" data-modal-open="modal-var"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-vdel"><i data-icon="trash" data-size="sm"></i></button></td></tr>
+          <tr><td><span class="code-pill">{{cf_manager}}</span></td><td>Buyer custom field: Manager</td><td>Text</td><td class="mono muted">R. Sharma</td>
+            <td class="right"><button class="rbtn" data-modal-open="modal-var"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-vdel"><i data-icon="trash" data-size="sm"></i></button></td></tr>
+
+          <tr class="var-group-head"><td colspan="5">Custom user variables</td></tr>
+          <tr><td><span class="code-pill">{{wagon_no}}</span></td><td>Rake / wagon reference for dispatch notes</td><td>Text</td><td class="mono muted">—</td>
+            <td class="right"><button class="rbtn" data-modal-open="modal-var"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-vdel"><i data-icon="trash" data-size="sm"></i></button></td></tr>
+          <tr><td><span class="code-pill">{{batch_label}}</span></td><td>Barcode batch reference (Batch No. (label))</td><td>Barcode</td><td class="mono muted">BARCODE</td>
+            <td class="right"><button class="rbtn" data-modal-open="modal-var"><i data-icon="edit" data-size="sm"></i></button><button class="rbtn danger" data-modal-open="modal-vdel"><i data-icon="trash" data-size="sm"></i></button></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tbl-foot"><span>25 variables · built-in 13 · business 5 · custom 7</span></div>
+  </div>
+</main></div>
+
+<div class="modal-back" id="modal-var">
+  <div class="modal w-sm">
+    <div class="modal-head"><span class="mic"><i data-icon="code"></i></span>
+      <div style="flex:1"><h3>Add Custom Variable</h3><div class="msub">Becomes a designer placeholder immediately</div></div>
+      <button class="icon-btn" data-close><i data-icon="x" data-size="sm"></i></button></div>
+    <div class="modal-body">
+      <div class="stack">
+        <div class="field"><label>Key (placeholder) <span class="req">*</span></label>
+          <div class="input-wrap"><span style="position:absolute;left:11px;color:var(--text-2);font-family:var(--mono)">{{</span>
+            <input class="input" style="padding-left:34px" placeholder="wagon_no"><span style="position:absolute;right:11px;color:var(--text-2);font-family:var(--mono)">}}</span></div></div>
+        <div class="field"><label>Description</label><input class="input" placeholder="What does it hold?"></div>
+        <div class="field"><label>Data type</label>
+          <select class="input"><option>Text</option><option>Number</option><option>Date</option><option>Barcode</option></select></div>
+        <div class="field"><label>Default value (optional)</label><input class="input" placeholder="Pre-filled on every bill"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn" onclick="closeModal('modal-var');toast('Variable added','{{wagon_no}} is now available in the designer.','ok')">Add variable</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="modal-vdel">
+  <div class="modal w-sm danger-modal">
+    <div class="modal-head"><span class="mic danger"><i data-icon="trash"></i></span><h3>Delete Variable</h3></div>
+    <div class="modal-body"><p style="margin:0">Template elements referencing <span class="code-pill">{{cf_region}}</span> will render empty. Built-in variables cannot be deleted.</p></div>
+    <div class="modal-foot"><span class="spacer"></span>
+      <button class="btn ghost" data-close>Keep variable</button>
+      <button class="btn danger solid" onclick="closeModal('modal-vdel');toast('Variable deleted','Designer placeholders updated.','err')">Delete variable</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/shell.js"></script>
+</body>
+</html>
