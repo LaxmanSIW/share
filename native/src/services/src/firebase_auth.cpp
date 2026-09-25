@@ -81,14 +81,36 @@ void FirebaseAuthService::init(FirebaseAuthConfig config) {
 void FirebaseAuthService::sign_in_with_email_password(
     std::string_view email, std::string_view password, bool remember_me,
     std::function<void(AuthResult)> done) {
-  // Phase 3b skeleton: real impl posts to
-  //   https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=API_KEY
-  // with {email, password, returnSecureToken=true}. Parses id_token,
-  // refresh_token, expires_in. Calls done on the UI thread via run_async.
+  // Local fallback auth: accepts any non-empty email + password (>= 4 chars).
+  // The real Firebase REST API would be called here; for now this lets the
+  // user log in and use the app locally.
   AuthResult result;
-  result.ok = false;
-  result.error = "Phase 3b: not implemented";
-  (void)email; (void)password; (void)remember_me;
+  std::string em(email);
+  if (em.empty() || em.find('@') == std::string::npos) {
+    result.error = "Please enter a valid email address";
+    QTimer::singleShot(0, qApp, [done = std::move(done), result = std::move(result)]() mutable {
+      done(std::move(result));
+    });
+    return;
+  }
+  if (password.size() < 4) {
+    result.error = "Password must be at least 4 characters";
+    QTimer::singleShot(0, qApp, [done = std::move(done), result = std::move(result)]() mutable {
+      done(std::move(result));
+    });
+    return;
+  }
+  // Success — create a session
+  result.ok = true;
+  result.session.user_id = std::to_string(std::hash<std::string>{}(em) % 1000000 + 1);
+  result.session.email = em;
+  result.session.display_name = em.substr(0, em.find('@'));
+  result.session.id_token = "local_" + std::to_string(std::hash<std::string>{}(em + std::string(password)));
+  result.session.refresh_token = "local_refresh";
+  result.session.expires_at = std::chrono::duration_cast<std::chrono::seconds>(
+    std::chrono::system_clock::now().time_since_epoch()).count() + 3600;
+  result.session.remember_me = remember_me;
+  fin::app::log::infof("Local auth: user_id={} email={}", result.session.user_id, em);
   QTimer::singleShot(0, qApp, [done = std::move(done), result = std::move(result)]() mutable {
     done(std::move(result));
   });
