@@ -109,6 +109,7 @@ public class StudioApp extends Application {
         if (css != null) {
             scene.getStylesheets().add(css);
         }
+        ThemeManager.getInstance().applyToScene(scene);
 
         stage.setScene(scene);
         stage.setTitle("InvoiceStudio — Bill Design & Print");

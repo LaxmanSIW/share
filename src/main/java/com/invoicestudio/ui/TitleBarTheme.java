@@ -54,6 +54,22 @@ public final class TitleBarTheme {
     static final String TEXT       = "#F4F4F5";   // -color-text
     static final String BORDER     = "#232B38";   // -color-border
 
+    private static volatile String activeCaptionBg = CAPTION_BG;
+    private static volatile String activeText       = TEXT;
+    private static volatile String activeBorder     = BORDER;
+
+    public static void setColors(String captionBg, String text, String border) {
+        if (captionBg != null && !captionBg.isBlank()) activeCaptionBg = captionBg;
+        if (text != null && !text.isBlank()) activeText = text;
+        if (border != null && !border.isBlank()) activeBorder = border;
+    }
+
+    public static void resetColors() {
+        activeCaptionBg = CAPTION_BG;
+        activeText = TEXT;
+        activeBorder = BORDER;
+    }
+
     /** Windows 11 SDK id for the dark-caption flag. */
     private static final int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     /** Pre-20H1 Windows 10 builds accept the same flag under id 19; the
@@ -180,9 +196,9 @@ public final class TitleBarTheme {
         } catch (Throwable ignored) {}
 
         Dwm.enableDarkCaption(hwnd);
-        Dwm.setColorAttribute(hwnd, DWMWA_CAPTION_COLOR, CAPTION_BG);
-        Dwm.setColorAttribute(hwnd, DWMWA_TEXT_COLOR, TEXT);
-        Dwm.setColorAttribute(hwnd, DWMWA_BORDER_COLOR, BORDER);
+        Dwm.setColorAttribute(hwnd, DWMWA_CAPTION_COLOR, activeCaptionBg);
+        Dwm.setColorAttribute(hwnd, DWMWA_TEXT_COLOR, activeText);
+        Dwm.setColorAttribute(hwnd, DWMWA_BORDER_COLOR, activeBorder);
         try {
             User32Ext.INSTANCE.SetWindowPos(new Pointer(hwnd), Pointer.NULL, 0, 0, 0, 0, FRAME_REFRESH_FLAGS);
             User32Ext.INSTANCE.RedrawWindow(new Pointer(hwnd), Pointer.NULL, Pointer.NULL, REDRAW_FRAME_FLAGS);

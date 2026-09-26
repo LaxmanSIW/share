@@ -637,4 +637,34 @@ All colors across the entire application are now declared in the `.root` block o
 
 ---
 
+## 13. Theme Vault & Dynamic Theme Engine (`Settings → Themes`)
+
+InvoiceStudio features an integrated **Theme Vault** under `Settings → Themes` with real-time dynamic stylesheet switching, native Windows titlebar synchronization, and strict CSS variable validation.
+
+### 13.1 Built-in Palettes
+- **Obsidian & Gold (Default):** Signature obsidian dark surface (`#0B0E13`) with brand gold accents (`#D9A13B`).
+- **Midnight Sapphire:** Deep slate navy (`#0B1120`) with electric ice and sapphire blue highlights (`#38BDF8`).
+- **Emerald Forest:** Deep obsidian jade (`#07150E`) paired with luminous emerald accents (`#10B981`).
+- **Amethyst Night:** Velvet dark violet (`#100918`) with radiant royal amethyst highlights (`#A855F7`).
+- **Crimson Forge:** Smoky ruby carbon (`#12090B`) accented with high-energy crimson rose (`#F43F5E`).
+- **Nordic Cyan:** Arctic dark slate (`#0A1014`) with crisp electric cyan accents (`#06B6D4`).
+
+### 13.2 Creating & Editing Custom Themes
+- Users can create custom themes by pasting a `.root { ... }` CSS block.
+- Built-in themes can be duplicated and customized with one click.
+- Each theme displays interactive live color swatches (Background, Surface, Accent, Accent Text, Border, Success, Text).
+
+### 13.3 Strict Token Validator
+Every theme must define all required tokens in its `.root` scope. The integrated validator verifies the presence of every required variable before saving:
+- **Instant Live Feedback:** As you edit or paste CSS in the Theme Editor, a status banner indicates whether all required tokens are present.
+- **Missing Token Diagnostics:** If even a single required variable is missing, saving is prevented and a clear diagnostic report lists the exact missing variable names.
+- **One-Click Template:** The editor includes an "Insert Default Template" button and "Copy .root Template" toolbar action to quickly start from the canonical 85-token set.
+
+### 13.4 Real-Time Live Application & OS Chrome Sync
+- Clicking **Apply Theme** dynamically cascades the selected palette across all active application windows and dialogs without restarting.
+- On Windows 10/11, native title bar colors (caption background, window text, and border) are synchronized via DWM/UxTheme APIs to match the active theme.
+- Selections and custom themes persist across restarts in `%APPDATA%\InvoiceStudio\themes.json`.
+
+---
+
 *Built with Java 21 + JavaFX 21 · Obsidian & Gold theme · SQLite · PDFBox · ZXing*

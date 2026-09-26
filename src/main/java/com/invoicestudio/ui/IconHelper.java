@@ -17,6 +17,7 @@ public class IconHelper {
     public static final String ICON_SETTINGS = "settings";
     public static final String ICON_PLUS = "plus";
     public static final String ICON_TAG = "tag";
+    public static final String ICON_THEME = "theme";
     public static final String ICON_TRENDING_UP = "trending";
     public static final String ICON_BAR_CHART = "chart";
     public static final String ICON_SPARKLES = "sparkles";
@@ -234,6 +235,7 @@ public class IconHelper {
             case "billing": return "📄";
             case "font": return "🔤";
             case "backup": return "💾";
+            case "theme": return "🎨";
             default: return "•";
         }
     }
@@ -241,6 +243,8 @@ public class IconHelper {
     private static String getSvgPath(String name) {
         if (name == null) return null;
         switch (name.toLowerCase()) {
+            case "theme":
+                return "M12 2C6.49 2 2 6.49 2 12c0 4.41 3.59 8 8 8h1.2c.99 0 1.8-.81 1.8-1.8 0-.46-.17-.89-.48-1.21-.31-.32-.52-.77-.52-1.24 0-.99.81-1.8 1.8-1.8H15c3.86 0 7-3.14 7-7 0-4.96-4.49-8.95-10-8.95zM5.5 11c-.83 0-1.5-.67-1.5-1.5S4.67 8 5.5 8 7 8.67 7 9.5 6.33 11 5.5 11zm3-4c-.83 0-1.5-.67-1.5-1.5S7.67 4 8.5 4s1.5.67 1.5 1.5S9.33 7 8.5 7zm6 0c-.83 0-1.5-.67-1.5-1.5S13.67 4 14.5 4s1.5.67 1.5 1.5S15.33 7 14.5 7zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 8 17.5 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z";
             case "chat":
                 // Rounded chat bubble with three dots (readable at 20px+).
                 return "M12 3C6.9 3 2.8 6.4 2.8 10.6c0 2.4 1.3 4.5 3.4 5.9-.1 1-.5 2.2-1.6 3.2 1.9-.1 3.5-.8 4.6-1.6 .9.2 1.8.3 2.8.3 5.1 0 9.2-3.4 9.2-7.7S17.1 3 12 3zM8.6 12.1c-.7 0-1.3-.6-1.3-1.3s.6-1.3 1.3-1.3 1.3.6 1.3 1.3-.6 1.3-1.3 1.3zm3.4 0c-.7 0-1.3-.6-1.3-1.3s.6-1.3 1.3-1.3 1.3.6 1.3 1.3-.6 1.3-1.3 1.3zm3.4 0c-.7 0-1.3-.6-1.3-1.3s.6-1.3 1.3-1.3 1.3.6 1.3 1.3-.6 1.3-1.3 1.3z";

@@ -4033,3 +4033,26 @@ Label {
 .menu-button-sm > .arrow-button {
     -fx-padding: 0 0 0 4;
 }
+
+/* ---------------------------------------------------------------------------
+   Theme Vault — Theme Card & Palette Swatches
+   --------------------------------------------------------------------------- */
+.theme-card {
+    -fx-background-color: -color-surface;
+    -fx-border-color: -color-border;
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+}
+
+.theme-card-active {
+    -fx-border-color: -color-accent;
+    -fx-border-width: 1.5px;
+}
+
+.theme-swatch {
+    -fx-border-color: -color-white-border;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+

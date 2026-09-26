@@ -135,6 +135,7 @@ public class SettingsView extends VBox {
         tabPane.getTabs().clear();
         tabPane.getTabs().addAll(
             createTab("Profile", IconHelper.ICON_BUSINESS, buildProfileTabContent()),
+            createTab("Themes", IconHelper.ICON_THEME, new com.invoicestudio.ui.ThemeVaultPanel(app)),
             createTab("Bank", IconHelper.ICON_BANK, buildBankSection()),
             createTab("Billing", IconHelper.ICON_BILLING, buildBillingPrefsSection()),
             createTab("Fields", IconHelper.ICON_FIELDS, buildBuyerFieldsSection()),

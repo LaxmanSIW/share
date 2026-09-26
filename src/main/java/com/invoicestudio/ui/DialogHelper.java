@@ -130,6 +130,7 @@ public class DialogHelper {
                     if (css != null && !pane.getScene().getStylesheets().contains(css)) {
                         pane.getScene().getStylesheets().add(css);
                     }
+                    ThemeManager.getInstance().applyToScene(pane.getScene());
                 }
             } catch (Exception ignored) {
             AppLog.debug(ignored); }
@@ -165,6 +166,7 @@ public class DialogHelper {
         if (css != null && !scene.getStylesheets().contains(css)) {
             scene.getStylesheets().add(css);
         }
+        ThemeManager.getInstance().applyToScene(scene);
         if (scene.getWindow() instanceof Stage stage) {
             styleStage(stage);
         }
