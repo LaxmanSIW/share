@@ -35,6 +35,7 @@ wrapped in a custom dark **“Obsidian & Gold”** theme with a VS Code-style si
 9. [Smoke / UI tests (optional, for developers)](#9-smoke--ui-tests-optional-for-developers)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Release checklist (version bump)](#11-release-checklist-version-bump)
+12. [CSS Design Token System](#12-css-design-token-system)
 
 ---
 
@@ -530,6 +531,109 @@ When the version changes (e.g. `4.0.0` → `4.0.1`), update it in **one** place:
    - `packaging/InvoiceStudio.iss` accepts `/DAppVersion=...` from the build script (falls back to a hardcoded default only if invoked manually without `/D`)
 2. Tag the release: `git tag v4.0.1 && git push origin v4.0.1` → CI builds the MSI
    and attaches it to a GitHub Release automatically (§7.2, step 5).
+
+---
+
+## 12. CSS Design Token System (`globalfile.css`)
+
+All colors across the entire application are now declared in the `.root` block of [`src/main/resources/css/globalfile.css`](src/main/resources/css/globalfile.css) and categorized with explicit documentation:
+
+### 1. Core Surfaces & Backgrounds (Obsidian Dark Theme)
+- `-color-bg-deep` (`#07090C`): Deepest obsidian black for root container backgrounds, canvas surroundings, and deep scroll regions.
+- `-color-bg` (`#0B0E13`): Primary application window background (StudioApp window shell and primary view panes).
+- `-color-bg-subtle` (`#12161D`): Subtle background for sidebars, sub-headers, and dark toolbars.
+- `-color-bg-alt` (`#0E131B`): Alternate dark background for zebra table rows, item header strips, and secondary toolbars.
+- **`-color-bg-glass` (`rgba(11, 14, 19, 0.92)`):** Semi-transparent dark wash for topbar glass effects.
+- `-color-surface` (`#151B25`): Base card, panel, modal dialog, and popover container background.
+- `-color-surface-raised` (`#1A222D`): Slightly raised surface for nested cards, search bars, inputs, and list item cards.
+- `-color-surface-elevated` (`#1E2530`): Elevated surface for floating modals, tooltips, toasts, and dropdown menus.
+- `-color-surface-hover` (`#202B3D`): Hover state surface for interactive cards, table rows, and secondary buttons.
+- `-color-surface-active` (`#243044`): Active / selected / pressed surface for filter pills and chips.
+- **`-color-surface-hover-subtle` (`rgba(32, 43, 61, 0.55)`):** Faint semi-transparent hover wash for dense table rows and nav items.
+- `-color-canvas-sheet` (`#FFFFFF`): Canvas sheet background for invoice template canvas and preview paper.
+
+### 2. Borders & Dividers
+- `-color-border-subtle` (`#1E2738`): Faint hairline border between table rows, toolbar strips, and headers.
+- `-color-border` (`#232B38`): Standard card, text field, dropdown, and panel container borders.
+- `-color-border-strong` (`#2E3A4E`): Emphasized border for active sections, table headers, and scroll tracks.
+- `-color-border-muted` (`#334155`): Muted border for secondary outlines, disabled borders, and segmented controls.
+- `-color-border-focus` (`#D9A13B`): Focused control outline border (brand gold highlight).
+
+### 3. Typography & Text
+- `-color-text-pure-white` (`#FFFFFF`): Pure white for prominent headings, active pill text, and high-contrast titles.
+- `-color-text-bright` (`#F8FAFC`): Crisp bright text for view titles, card titles, and section headings.
+- `-color-text` (`#F4F4F5`): Primary body text for general UI elements, tables, and forms.
+- `-color-text-light` (`#CBD5E1`): Soft light text for secondary table content, inputs, and breadcrumbs.
+- `-color-text-secondary` (`#94A3B8`): Secondary text for labels, descriptions, subheadings, and captions.
+- `-color-text-tertiary` (`#64748B`): Tertiary / dimmed text for hints, placeholders, and keyboard shortcuts.
+- `-color-text-inverse` (`#0B0E13`): Inverse dark text for badges or buttons with bright gold/yellow backgrounds.
+- `-color-text-black` (`#000000`): Solid black text for tool-active indicators and pure contrast elements.
+
+### 4. Brand Accent (Gold Theme)
+- `-color-accent` (`#D9A13B`): Core brand gold for primary buttons, active tabs, and main accents.
+- `-color-accent-text` (`#F2CA6B`): Bright legible gold for text labels, stat values, and badges on dark surfaces.
+- `-color-accent-hover` (`#E5B055`): Highlight gold for hover states on buttons and links.
+- `-color-accent-bright` (`#FBBF24`): High-luminance gold for active slider thumbs and calendar day highlights.
+- `-color-accent-pressed` (`#C48F2A`): Darker gold for pressed buttons and active states.
+- `-color-accent-metallic` (`#D4AF37`): Classic metallic gold for auth logos and decorative badges.
+- `-color-accent-deep` (`#B8860B`): Deep gold for gradient bottom stops and pressed states.
+- **`-color-accent-subtle` (`rgba(217, 161, 59, 0.14)`):** Faint gold background wash for badges and active tab headers.
+- **`-color-accent-subtle-light` (`rgba(242, 202, 107, 0.12)`):** Light gold background wash for hover chips.
+- **`-color-accent-badge` (`rgba(217, 161, 59, 0.18)`):** Medium gold tint for badges and selected table cells.
+- **`-color-accent-glow` (`rgba(217, 161, 59, 0.35)`):** Gold outline/glow for focused borders, key pills, and active highlights.
+- **`-color-accent-glow-strong` (`rgba(217, 161, 59, 0.50)`):** Strong gold glow for focused day cells and elevated buttons.
+- **`-color-accent-border-bright` (`rgba(242, 202, 107, 0.80)`):** High-intensity gold border for today cells.
+
+### 5. Semantic Status Colors
+
+#### Success (Green / Emerald)
+- `-color-success` (`#10B981`): Base emerald for paid status, save confirmations, and success icons.
+- `-color-success-text` (`#34D399`): Bright emerald text for positive totals, profits, and profit badges.
+- `-color-success-bright` (`#6EE7B7`): Vibrant light green for success banners and highlighted text.
+- `-color-success-subtle` (`rgba(16, 185, 129, 0.12)`): Translucent green wash for paid status chips and success alerts.
+- `-color-success-border` (`rgba(16, 185, 129, 0.35)`): Translucent green border for success cards and badges.
+
+#### Warning (Amber / Orange)
+- `-color-warning` (`#F59E0B`): Base amber for pending bills, warnings, and attention badges.
+- `-color-warning-dark` (`#D97706`): Dark amber for pressed warning buttons and slider tracks.
+- `-color-warning-deep` (`#B45309`): Deep amber for pressed slider thumbs.
+- `-color-warning-subtle` (`rgba(245, 158, 11, 0.13)`): Translucent amber wash for warning notification backgrounds.
+- `-color-warning-border` (`rgba(245, 158, 11, 0.38)`): Translucent amber border for warning badges.
+
+#### Danger & Error (Red)
+- `-color-error` (`#EF4444`): Base red for delete buttons, overdue bills, and destructive actions.
+- `-color-error-text` (`#F87171`): Bright red text for negative amounts, expenses, and danger labels.
+- `-color-error-light` (`#FCA5A5`): Soft red text for hover states on danger menu items.
+- `-color-error-dark` (`#DC2626`): Deep red for hovered/pressed danger buttons.
+- `-color-error-bg-dark` (`#2D1515`): Very dark red background for danger chip containers.
+- `-color-error-bg-hover` (`#3A1A1A`): Hovered background for danger chip containers.
+- `-color-error-subtle` (`rgba(239, 68, 68, 0.12)`): Translucent red wash for error banner and badge backgrounds.
+- `-color-error-subtle-hover` (`rgba(239, 68, 68, 0.20)`): Translucent red wash for hovered danger badges.
+- `-color-error-border` (`rgba(239, 68, 68, 0.35)`): Translucent red border for danger buttons and error inputs.
+- `-color-error-glow` (`rgba(239, 68, 68, 0.55)`): Translucent red glow for danger button hover states.
+
+#### Info (Sky / Blue)
+- `-color-info` (`#38BDF8`): Base sky blue for information tooltips, links, and draft status.
+- `-color-info-accent` (`#3B82F6`): Standard blue accent for printable margin guidelines and selection blue.
+- `-color-info-subtle` (`rgba(56, 189, 248, 0.12)`): Translucent sky blue wash for info badge backgrounds.
+- `-color-info-border` (`rgba(56, 189, 248, 0.35)`): Translucent sky blue border for info badges.
+- `-color-text-selection-fill` (`rgba(59, 130, 246, 0.28)`): Text selection highlight fill for the template designer inline editor.
+
+### 6. Shadows, Overlays & Gradients
+- `-color-shadow-subtle` (`rgba(0, 0, 0, 0.28)`): Elevation shadow for cards and small dropdowns.
+- `-color-shadow-medium` (`rgba(0, 0, 0, 0.35)`): Drop shadow for popovers, context menus, and toolbars.
+- `-color-shadow-deep` (`rgba(0, 0, 0, 0.60)`): Deep shadow for modals, dialogs, and preview paper sheets.
+- `-color-shadow-heavy` (`rgba(0, 0, 0, 0.75)`): Heavy shadow for popups and backdrop modals.
+- `-color-white-subtle` (`rgba(255, 255, 255, 0.05)`): Faint white wash for subtle tab and cell hover states.
+- `-color-white-border` (`rgba(255, 255, 255, 0.08)`): Faint white border for card highlights and tab separators.
+- `-color-scrollbar-thumb` (`rgba(85, 102, 130, 0.45)`): Semi-transparent thumb for custom scrollbars.
+- `-color-scrollbar-thumb-hover` (`rgba(142, 158, 181, 0.65)`): Hovered thumb for custom scrollbars.
+- `-gradient-accent`: Primary gold gradient for highlighted buttons and dates.
+- `-gradient-accent-hover`: Hovered gold gradient.
+- `-gradient-accent-active`: Active gold gradient.
+- `-gradient-accent-bright`: Bright gold gradient.
+- `-gradient-metallic`: Metallic gold gradient for brand logo and auth badge.
+- `-gradient-metallic-hover`: Metallic gold hover gradient.
 
 ---
 
