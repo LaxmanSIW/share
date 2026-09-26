@@ -2509,6 +2509,69 @@ Label {
     -fx-background-radius: 6;
 }
 
+/* Inline text editing overlay on template canvas (double-click) */
+.designer-inline-editor {
+    -fx-padding: 0;
+    -fx-background-insets: 0;
+    -fx-highlight-fill: rgba(59, 130, 246, 0.28);
+    -fx-accent: #3B82F6;
+}
+
+.designer-inline-editor:focused {
+    -fx-padding: 0;
+    -fx-background-insets: 0;
+}
+
+.designer-inline-editor .scroll-pane {
+    -fx-hbar-policy: never;
+    -fx-vbar-policy: never;
+    -fx-padding: 0;
+    -fx-background-insets: 0;
+    -fx-background-color: transparent;
+}
+
+.designer-inline-editor .scroll-pane .viewport {
+    -fx-padding: 0;
+    -fx-background-insets: 0;
+    -fx-background-color: transparent;
+}
+
+.designer-inline-editor .scroll-pane .content {
+    -fx-padding: 0;
+    -fx-background-insets: 0;
+    -fx-background-color: transparent;
+}
+
+.designer-inline-editor .scroll-bar {
+    -fx-pref-width: 0;
+    -fx-pref-height: 0;
+    -fx-max-width: 0;
+    -fx-max-height: 0;
+    -fx-min-width: 0;
+    -fx-min-height: 0;
+    -fx-opacity: 0;
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+    -fx-shape: null;
+}
+
+.designer-inline-editor .scroll-bar .thumb,
+.designer-inline-editor .scroll-bar .track,
+.designer-inline-editor .scroll-bar .track-background,
+.designer-inline-editor .scroll-bar .increment-button,
+.designer-inline-editor .scroll-bar .decrement-button {
+    -fx-pref-width: 0;
+    -fx-pref-height: 0;
+    -fx-max-width: 0;
+    -fx-max-height: 0;
+    -fx-min-width: 0;
+    -fx-min-height: 0;
+    -fx-opacity: 0;
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+    -fx-shape: null;
+}
+
 .var-section {
     -fx-background-color: #121720;
     -fx-border-color: -color-border;

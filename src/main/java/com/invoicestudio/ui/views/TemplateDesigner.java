@@ -1913,15 +1913,7 @@ public class TemplateDesigner extends BorderPane {
         double w = Math.max(4.0, el.getW() * MM_PX);
         double h = Math.max(4.0, el.getH() * MM_PX);
 
-        TextArea editor = new TextArea(el.getText() != null ? el.getText() : "");
-        editor.setWrapText(true);
-        editor.setLayoutX(x);
-        editor.setLayoutY(y);
-        editor.setPrefSize(w, h);
-        editor.setMinSize(w, h);
-        editor.setMaxSize(w, h); // hard-capped so the editor can never outgrow the element
-        editor.setRotate(el.getRotation());
-
+        String initialText = el.getText() != null ? el.getText() : "";
         String colorHex = el.getColor() != null && !el.getColor().isBlank() ? el.getColor() : "#1a1a1a";
         String family = el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI";
         int weight = el.getFontWeight() > 0 ? el.getFontWeight() : (el.isBold() ? 700 : 400);
@@ -1931,20 +1923,65 @@ public class TemplateDesigner extends BorderPane {
         double fontSize = el.getFontSize() > 0 ? el.getFontSize() * 1.3 : 14.0;
         String bg = (el.getBg() != null && !el.getBg().isBlank() && !"transparent".equalsIgnoreCase(el.getBg())) ? el.getBg() : "#ffffff";
 
-        // ZERO padding and a 1-screen-px border: the old 3×6 px padding + 2 px
-        // border are design-space values that zoom blew up into a fat frame
-        // around the text (reported: "padding which should not be there").
+        // Measure text geometry so the editor box is NEVER smaller than required
+        // to render font ascenders/descenders without clipping or vertical scroll.
+        Font textFont = Font.font(family,
+                weight >= 700 ? FontWeight.BOLD : FontWeight.NORMAL,
+                el.isItalic() ? FontPosture.ITALIC : FontPosture.REGULAR,
+                fontSize);
+        Text measureText = new Text(initialText.isEmpty() ? "W" : initialText);
+        measureText.setFont(textFont);
+        double measuredTextW = measureText.getLayoutBounds().getWidth();
+        double measuredTextH = measureText.getLayoutBounds().getHeight();
+
+        int initialLines = Math.max(1, initialText.split("\r\n|\r|\n", -1).length);
+        double minLineHeight = Math.max(measuredTextH, fontSize * 1.25);
+        double initialRequiredH = Math.max(h, Math.ceil(minLineHeight * initialLines + 2.0));
+        double initialRequiredW = Math.max(w, Math.ceil(measuredTextW + 8.0));
+
+        TextArea editor = new TextArea(initialText);
+        editor.getStyleClass().add("designer-inline-editor");
+        editor.setWrapText(false);
+        editor.setLayoutX(x);
+        editor.setLayoutY(y);
+        editor.setPrefSize(initialRequiredW, initialRequiredH);
+        editor.setMinSize(initialRequiredW, initialRequiredH);
+        editor.setRotate(el.getRotation());
+
+        // Dynamic expansion when user types so text never clips or shows scrollbars
+        editor.textProperty().addListener((obs, oldV, newV) -> {
+            String curText = newV != null ? newV : "";
+            measureText.setText(curText.isEmpty() ? "W" : curText);
+            double curW = measureText.getLayoutBounds().getWidth();
+            double curH = measureText.getLayoutBounds().getHeight();
+            int curLines = Math.max(1, curText.split("\r\n|\r|\n", -1).length);
+            double needW = Math.max(w, Math.ceil(curW + 8.0));
+            double needH = Math.max(h, Math.ceil(Math.max(curH, fontSize * 1.25) * curLines + 2.0));
+            if (needW > editor.getWidth()) {
+                editor.setPrefWidth(needW);
+                editor.setMinWidth(needW);
+            }
+            if (needH > editor.getHeight()) {
+                editor.setPrefHeight(needH);
+                editor.setMinHeight(needH);
+            }
+        });
+
+        // ZERO padding and a 1-screen-px border at any zoom level.
         double inv = 1.0 / Math.max(0.3, zoom);
+        // Soft modern blue selection highlight and crisp blue accent border (looks great with black text, not too rich/heavy)
+        String blueHighlight = "rgba(59, 130, 246, 0.28)";
+        String blueBorder = "#3B82F6";
+
         editor.setStyle(String.format(java.util.Locale.US,
                 "-fx-font-family: '%s'; -fx-font-size: %.1fpx; -fx-font-weight: %d; -fx-font-style: %s; "
                 + "-fx-text-fill: %s; -fx-background-color: %s; -fx-background-insets: 0; "
-                + "-fx-border-color: #D9A13B; -fx-border-width: %.2fpx; -fx-border-radius: %.2fpx; "
+                + "-fx-border-color: %s; -fx-border-width: %.2fpx; -fx-border-radius: %.2fpx; "
                 + "-fx-background-radius: %.2fpx; -fx-padding: 0; "
-                // Selection highlight + caret in brand gold instead of the
-                // light-blue system default (reported: ugly highlight color).
-                + "-fx-highlight-fill: #D9A13B55; -fx-highlight-text-fill: %s; "
-                + "-fx-accent: #D9A13B;",
-                family, fontSize, weight, fs, colorHex, bg, 1.0 * inv, 2.0 * inv, 2.0 * inv, colorHex));
+                + "-fx-highlight-fill: %s; -fx-highlight-text-fill: %s; "
+                + "-fx-accent: %s;",
+                family, fontSize, weight, fs, colorHex, bg, blueBorder, 1.0 * inv, 2.0 * inv, 2.0 * inv,
+                blueHighlight, colorHex, blueBorder));
 
         editor.setOnKeyPressed(ke -> {
             if (ke.getCode() == KeyCode.ESCAPE) {
@@ -1965,28 +2002,45 @@ public class TemplateDesigner extends BorderPane {
         activeInlineEditor = editor;
         activeInlineEditingElement = el;
 
+        // Clear existing selection box so dashed handles don't conflict with active editor
+        selectionPane.getChildren().clear();
+        activeSelectionBox = null;
         selectionPane.getChildren().add(editor);
 
-        // The TextArea skin's inner .content region carries its own opaque
-        // background + padding from the user-agent stylesheet — it painted the
-        // white frame around the text (and pushed the text down/up so the top
-        // line could clip). Zero it so the editor shows exactly the element's
-        // background and the text sits flush at the top-left, 1:1 with canvas.
+        // Neutralize TextArea internal ScrollPane and scrollbars
         editor.applyCss();
-        javafx.scene.Node content = editor.lookup(".content");
+        editor.layout();
+        ScrollPane sp = (ScrollPane) editor.lookup(".scroll-pane");
+        if (sp != null) {
+            sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+            sp.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+            sp.setStyle("-fx-background-color: transparent; -fx-padding: 0; -fx-background-insets: 0;");
+        }
+        Node content = editor.lookup(".content");
         if (content != null) {
             content.setStyle("-fx-padding: 0; -fx-background-color: transparent; "
                     + "-fx-background-radius: 0; -fx-background-insets: 0;");
+        }
+        for (Node sb : editor.lookupAll(".scroll-bar")) {
+            sb.setVisible(false);
+            sb.setManaged(false);
+            sb.setStyle("-fx-pref-width: 0; -fx-pref-height: 0; -fx-max-width: 0; -fx-max-height: 0; "
+                    + "-fx-opacity: 0; -fx-padding: 0; -fx-background-color: transparent;");
         }
 
         javafx.application.Platform.runLater(() -> {
             if (activeInlineEditor == editor) {
                 editor.requestFocus();
                 editor.selectAll();
-                // selectAll can leave the caret/viewport scrolled so the first
-                // line hides above the clip (reported: text cut at the top).
                 editor.setScrollTop(0);
                 editor.setScrollLeft(0);
+                ScrollPane innerSp = (ScrollPane) editor.lookup(".scroll-pane");
+                if (innerSp != null) {
+                    innerSp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+                    innerSp.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+                    innerSp.setVvalue(0.0);
+                    innerSp.setHvalue(0.0);
+                }
             }
         });
     }
