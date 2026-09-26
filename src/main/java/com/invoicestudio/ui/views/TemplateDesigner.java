@@ -25,6 +25,8 @@ import javafx.animation.PauseTransition;
 import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
+import javafx.geometry.VPos;
+import javafx.scene.text.TextAlignment;
 import javafx.scene.Cursor;
 import javafx.scene.Group;
 import javafx.scene.Node;
@@ -116,6 +118,10 @@ public class TemplateDesigner extends BorderPane {
     private final Pane rulerTop = new Pane();
     private final Pane rulerLeft = new Pane();
     private final Pane rulerCorner = new Pane();
+    private final Canvas rulerTopCanvas = new Canvas();
+    private final Canvas rulerLeftCanvas = new Canvas();
+    private final Line cursorIndicatorX = new Line();
+    private final Line cursorIndicatorY = new Line();
     /** Plain wrapper Group: a Group's layoutBounds = union of its children's
      *  boundsInParent (transforms INCLUDED), so scaling canvasContainer makes
      *  the scaled size visible to layout — the StackPane/ScrollPane then centre
@@ -196,8 +202,8 @@ public class TemplateDesigner extends BorderPane {
     private Label pageFormatLabel;
     private Slider zoomSlider;
     private boolean updatingZoom = false;
-    private double currentCursorXMm = -1;
-    private double currentCursorYMm = -1;
+    private double currentCursorXMm = Double.NaN;
+    private double currentCursorYMm = Double.NaN;
 
     private static final double MM_PX = 3.7795275591; // ~96 DPI screen pixels per mm
     private static final double RULER_SIZE = 22.0;
@@ -224,7 +230,7 @@ public class TemplateDesigner extends BorderPane {
         marginLayer.setMouseTransparent(true);
         selectionPane.setPickOnBounds(false);
 
-        canvasContainer.getChildren().addAll(rulerTop, rulerLeft, rulerCorner, canvas);
+        canvasContainer.getChildren().add(canvas);
 
         setTop(createToolbar());
 
@@ -676,7 +682,9 @@ public class TemplateDesigner extends BorderPane {
             rebuildGridForZoom();
         } else {
             buildMarginGuides(); // keep guide hairline scale in sync with zoom
+            scheduleRulerRepaint();
         }
+        drawRulers();
 
         // Rebuild the selection overlay so handles/border/rotate-stem rescale
         // with the new zoom (they are 1/zoom design px — screen-constant).
@@ -761,6 +769,7 @@ public class TemplateDesigner extends BorderPane {
             }
             canvasScrollPane.setVvalue(vv);
         }
+        drawRulers();
     }
 
     /** Schedules the anchor correction shortly after the zoom/centre change.
@@ -803,8 +812,8 @@ public class TemplateDesigner extends BorderPane {
         if (canvasScrollPane == null) { setZoom(0.85); centerView(); return; }
         Bounds vp = canvasScrollPane.getViewportBounds();
         PageConfig page = template.getPage();
-        double w = page.getWidth() * MM_PX + RULER_SIZE;
-        double h = page.getHeight() * MM_PX + RULER_SIZE;
+        double w = page.getWidth() * MM_PX;
+        double h = page.getHeight() * MM_PX;
         double z = Math.min((vp.getWidth() - 70) / w, (vp.getHeight() - 70) / h);
         setZoom(z);
         centerView();
@@ -838,14 +847,7 @@ public class TemplateDesigner extends BorderPane {
         }
         buildGridCanvas(pageW, pageH);
         buildMarginGuides(); // guides keep hairline stroke & legend size in sync with zoom
-        // Rulers are screen-constant (tick lengths & fonts are 1/zoom local px)
-        // AND their 1-2-5 scale adapts to zoom — they must be redrawn on every
-        // zoom change, but NOT once per wheel notch: a full rebuild clears and
-        // recreates hundreds of Line/Label nodes mid-gesture, which is exactly
-        // the jank Ctrl+scroll feels. Industry pattern (canvas editors, map
-        // tiles): keep the scene valid during the gesture and schedule ONE
-        // trailing-edge repaint after the last zoom change settles.
-        scheduleRulerRepaint(pageW, pageH);
+        scheduleRulerRepaint();
     }
 
     /**
@@ -855,18 +857,21 @@ public class TemplateDesigner extends BorderPane {
      * swaps them for the exact new scale. {@link #flushPendingRulerRepaint()}
      * forces the swap immediately (used by tests and full re-renders).
      */
-    private void scheduleRulerRepaint(double pageW, double pageH) {
+    private void scheduleRulerRepaint() {
         rulerRepaintPending = true;
         if (rulerRepaintDebounce == null) {
             rulerRepaintDebounce = new PauseTransition(Duration.millis(150));
             rulerRepaintDebounce.setOnFinished(e -> {
                 if (!rulerRepaintPending) return;
                 rulerRepaintPending = false;
-                PageConfig pg = template.getPage();
-                buildRulers(pg.getWidth() * MM_PX, pg.getHeight() * MM_PX);
+                drawRulers();
             });
         }
         rulerRepaintDebounce.playFromStart();
+    }
+
+    private void scheduleRulerRepaint(double pageW, double pageH) {
+        scheduleRulerRepaint();
     }
 
     /** Runs a pending coalesced ruler repaint NOW (no-op if none pending). */
@@ -984,8 +989,8 @@ public class TemplateDesigner extends BorderPane {
         double pageW = page.getWidth() * MM_PX;
         double pageH = page.getHeight() * MM_PX;
 
-        double totalContainerW = pageW + RULER_SIZE;
-        double totalContainerH = pageH + RULER_SIZE;
+        double totalContainerW = pageW;
+        double totalContainerH = pageH;
 
         canvasContainer.setPrefSize(totalContainerW, totalContainerH);
         canvasContainer.setMinSize(totalContainerW, totalContainerH);
@@ -1120,13 +1125,65 @@ public class TemplateDesigner extends BorderPane {
                     selectedElement.getW(),
                     selectedElement.getH(),
                     selectedElement.getRotation()));
-        } else if (currentCursorXMm >= 0 && currentCursorYMm >= 0) {
+        } else if (!Double.isNaN(currentCursorXMm) && !Double.isNaN(currentCursorYMm)) {
             coordStatusLabel.setText(String.format(Locale.US,
                     "X: %.1f mm   Y: %.1f mm",
                     currentCursorXMm,
                     currentCursorYMm));
         } else {
             coordStatusLabel.setText("X: -- mm   Y: -- mm");
+        }
+    }
+
+    private void handleGlobalCursorMove(MouseEvent e) {
+        if (canvas == null || rulerTop == null || rulerLeft == null) return;
+        double sceneX = e.getSceneX();
+        double sceneY = e.getSceneY();
+
+        Bounds vp = (canvasScrollPane != null) ? canvasScrollPane.getViewportBounds() : null;
+        double maxVpW = (vp != null && vp.getWidth() > 0) ? vp.getWidth() : rulerTop.getWidth();
+        double maxVpH = (vp != null && vp.getHeight() > 0) ? vp.getHeight() : rulerLeft.getHeight();
+
+        // 1. Update yellow hairline on horizontal (top) ruler
+        Point2D topPt = rulerTop.sceneToLocal(sceneX, sceneY);
+        if (topPt != null && topPt.getX() >= 0 && topPt.getX() <= maxVpW) {
+            double sx = Math.floor(topPt.getX()) + 0.5;
+            cursorIndicatorX.setStartX(sx);
+            cursorIndicatorX.setEndX(sx);
+            cursorIndicatorX.setVisible(true);
+        } else {
+            cursorIndicatorX.setVisible(false);
+        }
+
+        // 2. Update yellow hairline on vertical (left) ruler
+        Point2D leftPt = rulerLeft.sceneToLocal(sceneX, sceneY);
+        if (leftPt != null && leftPt.getY() >= 0 && leftPt.getY() <= maxVpH) {
+            double sy = Math.floor(leftPt.getY()) + 0.5;
+            cursorIndicatorY.setStartY(sy);
+            cursorIndicatorY.setEndY(sy);
+            cursorIndicatorY.setVisible(true);
+        } else {
+            cursorIndicatorY.setVisible(false);
+        }
+
+        // 3. Update status bar coordinates in true mm (supports negative coordinates!)
+        Point2D canvasPt = canvas.sceneToLocal(sceneX, sceneY);
+        if (canvasPt != null) {
+            currentCursorXMm = canvasPt.getX() / MM_PX;
+            currentCursorYMm = canvasPt.getY() / MM_PX;
+            if (selectedElement == null) {
+                updateStatusBarCoords();
+            }
+        }
+    }
+
+    private void handleGlobalCursorExit() {
+        if (cursorIndicatorX != null) cursorIndicatorX.setVisible(false);
+        if (cursorIndicatorY != null) cursorIndicatorY.setVisible(false);
+        currentCursorXMm = Double.NaN;
+        currentCursorYMm = Double.NaN;
+        if (selectedElement == null) {
+            updateStatusBarCoords();
         }
     }
 
@@ -1145,6 +1202,97 @@ public class TemplateDesigner extends BorderPane {
         canvasScrollPane.setContent(centerWrapper);
         updateCenterWrapperSize();
 
+        // 1. rulerCorner (22x22 fixed)
+        rulerCorner.setPrefSize(RULER_SIZE, RULER_SIZE);
+        rulerCorner.setMinSize(RULER_SIZE, RULER_SIZE);
+        rulerCorner.setMaxSize(RULER_SIZE, RULER_SIZE);
+        rulerCorner.setStyle("-fx-background-color: #0d121b; -fx-border-color: #2e3a4e; -fx-border-width: 0 1 1 0;");
+        rulerCorner.getChildren().clear();
+        Label mmLbl = new Label("mm");
+        mmLbl.setStyle("-fx-font-size: 8.5px; -fx-text-fill: #d9a13b; -fx-font-weight: bold; -fx-padding: 3 0 0 3;");
+        rulerCorner.getChildren().add(mmLbl);
+        rulerCorner.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) fitToView();
+        });
+        Tooltip.install(rulerCorner, new Tooltip("Double-click to Fit to View (Ctrl 0)"));
+
+        // 2. rulerTop (height 22 fixed, width fills available space)
+        rulerTop.setPrefHeight(RULER_SIZE);
+        rulerTop.setMinHeight(RULER_SIZE);
+        rulerTop.setMaxHeight(RULER_SIZE);
+        rulerTop.setMaxWidth(Double.MAX_VALUE);
+        rulerTop.setStyle("-fx-background-color: #121824;");
+
+        rulerTopCanvas.setManaged(false);
+        rulerLeftCanvas.setManaged(false);
+
+        cursorIndicatorX.setStroke(Color.web("#F59E0B"));
+        cursorIndicatorX.setStrokeWidth(1.0);
+        cursorIndicatorX.setStartY(0);
+        cursorIndicatorX.setEndY(RULER_SIZE);
+        cursorIndicatorX.setManaged(false);
+        cursorIndicatorX.setMouseTransparent(true);
+        cursorIndicatorX.setVisible(false);
+
+        rulerTop.getChildren().setAll(rulerTopCanvas, cursorIndicatorX);
+        rulerTop.widthProperty().addListener((obs, oldVal, newVal) -> {
+            rulerTopCanvas.setWidth(newVal.doubleValue());
+            drawRulerTop();
+        });
+
+        // 3. rulerLeft (width 22 fixed, height fills available space)
+        rulerLeft.setPrefWidth(RULER_SIZE);
+        rulerLeft.setMinWidth(RULER_SIZE);
+        rulerLeft.setMaxWidth(RULER_SIZE);
+        rulerLeft.setMaxHeight(Double.MAX_VALUE);
+        rulerLeft.setStyle("-fx-background-color: #121824;");
+
+        cursorIndicatorY.setStroke(Color.web("#F59E0B"));
+        cursorIndicatorY.setStrokeWidth(1.0);
+        cursorIndicatorY.setStartX(0);
+        cursorIndicatorY.setEndX(RULER_SIZE);
+        cursorIndicatorY.setManaged(false);
+        cursorIndicatorY.setMouseTransparent(true);
+        cursorIndicatorY.setVisible(false);
+
+        rulerLeft.getChildren().setAll(rulerLeftCanvas, cursorIndicatorY);
+        rulerLeft.heightProperty().addListener((obs, oldVal, newVal) -> {
+            rulerLeftCanvas.setHeight(newVal.doubleValue());
+            drawRulerLeft();
+        });
+
+        // Viewport-pinned rulers layout:
+        // Top row: rulerCorner (22px) + rulerTop (hgrow ALWAYS)
+        HBox topBar = new HBox(rulerCorner, rulerTop);
+        topBar.setPrefHeight(RULER_SIZE);
+        topBar.setMinHeight(RULER_SIZE);
+        topBar.setMaxHeight(RULER_SIZE);
+        HBox.setHgrow(rulerTop, Priority.ALWAYS);
+        HBox.setHgrow(rulerCorner, Priority.NEVER);
+
+        // Center area: rulerLeft (22px) + canvasScrollPane (hgrow ALWAYS, vgrow ALWAYS)
+        HBox centerArea = new HBox(rulerLeft, canvasScrollPane);
+        HBox.setHgrow(canvasScrollPane, Priority.ALWAYS);
+        HBox.setHgrow(rulerLeft, Priority.NEVER);
+        VBox.setVgrow(canvasScrollPane, Priority.ALWAYS);
+        VBox.setVgrow(rulerLeft, Priority.ALWAYS);
+        centerArea.setFillHeight(true);
+
+        BorderPane rulerContainer = new BorderPane();
+        rulerContainer.getStyleClass().add("bg-base");
+        rulerContainer.setTop(topBar);
+        rulerContainer.setCenter(centerArea);
+
+        // Listen for scroll pane scroll & viewport changes
+        canvasScrollPane.hvalueProperty().addListener((obs, o, v) -> drawRulerTop());
+        canvasScrollPane.vvalueProperty().addListener((obs, o, v) -> drawRulerLeft());
+        canvasScrollPane.viewportBoundsProperty().addListener((obs, o, v) -> drawRulers());
+
+        // Global cursor tracking on rulerContainer
+        rulerContainer.addEventFilter(MouseEvent.MOUSE_MOVED, this::handleGlobalCursorMove);
+        rulerContainer.addEventFilter(MouseEvent.MOUSE_DRAGGED, this::handleGlobalCursorMove);
+        rulerContainer.addEventFilter(MouseEvent.MOUSE_EXITED, e -> handleGlobalCursorExit());
+
         // Event filters for Pen Tool mode so clicks anywhere on canvas (even over existing elements) register reliably
         canvas.addEventFilter(MouseEvent.MOUSE_PRESSED, e -> {
             if (isPenToolMode) {
@@ -1161,20 +1309,6 @@ public class TemplateDesigner extends BorderPane {
         canvas.addEventFilter(MouseEvent.MOUSE_MOVED, e -> {
             if (isPenToolMode) {
                 handlePenCanvasMove(e);
-            }
-            Point2D pt = canvas.sceneToLocal(e.getSceneX(), e.getSceneY());
-            currentCursorXMm = Math.max(0, pt.getX() / MM_PX);
-            currentCursorYMm = Math.max(0, pt.getY() / MM_PX);
-            if (selectedElement == null) {
-                updateStatusBarCoords();
-            }
-        });
-
-        canvas.addEventFilter(MouseEvent.MOUSE_EXITED, e -> {
-            currentCursorXMm = -1;
-            currentCursorYMm = -1;
-            if (selectedElement == null) {
-                updateStatusBarCoords();
             }
         });
 
@@ -1275,7 +1409,7 @@ public class TemplateDesigner extends BorderPane {
             }
         });
 
-        return canvasScrollPane;
+        return rulerContainer;
     }
 
     private Node createSidebar() {
@@ -1467,120 +1601,181 @@ public class TemplateDesigner extends BorderPane {
         return major / 2;
     }
 
+    void drawRulers() {
+        rulerRepaintPending = false;
+        drawRulerTop();
+        drawRulerLeft();
+    }
+
+    private void buildRulers() {
+        drawRulers();
+    }
+
     private void buildRulers(double pageW, double pageH) {
-        rulerRepaintPending = false; // a synchronous rebuild supersedes any queued one
-        rulerTop.getChildren().clear();
-        rulerLeft.getChildren().clear();
-        rulerCorner.getChildren().clear();
+        drawRulers();
+    }
 
-        rulerTop.setPrefSize(pageW, RULER_SIZE);
-        rulerTop.setMinSize(pageW, RULER_SIZE);
-        rulerTop.setMaxSize(pageW, RULER_SIZE);
-        rulerTop.setStyle("-fx-background-color: #121824; -fx-border-color: #2e3a4e; -fx-border-width: 0 0 1 0;");
+    private void drawRulerTop() {
+        double w = rulerTop.getWidth();
+        if (w <= 0 || canvas == null || canvas.getScene() == null || rulerTop.getScene() == null) return;
+        if (rulerTopCanvas.getWidth() != w) {
+            rulerTopCanvas.setWidth(w);
+        }
+        if (rulerTopCanvas.getHeight() != RULER_SIZE) {
+            rulerTopCanvas.setHeight(RULER_SIZE);
+        }
+        GraphicsContext gc = rulerTopCanvas.getGraphicsContext2D();
+        gc.setFill(Color.web("#121824"));
+        gc.fillRect(0, 0, w, RULER_SIZE);
+        gc.setStroke(Color.web("#2e3a4e"));
+        gc.setLineWidth(1.0);
+        gc.strokeLine(0, RULER_SIZE - 0.5, w, RULER_SIZE - 0.5);
 
-        rulerLeft.setPrefSize(RULER_SIZE, pageH);
-        rulerLeft.setMinSize(RULER_SIZE, pageH);
-        rulerLeft.setMaxSize(RULER_SIZE, pageH);
-        rulerLeft.setStyle("-fx-background-color: #121824; -fx-border-color: #2e3a4e; -fx-border-width: 0 1 0 0;");
+        Point2D originInScene = canvas.localToScene(0, 0);
+        if (originInScene == null) return;
+        Point2D originInRuler = rulerTop.sceneToLocal(originInScene);
+        if (originInRuler == null) return;
+        double originX = originInRuler.getX();
 
-        rulerCorner.setStyle("-fx-background-color: #0d121b; -fx-border-color: #2e3a4e; -fx-border-width: 0 1 1 0;");
-        Label mmLbl = new Label("mm");
-        mmLbl.setStyle("-fx-font-size: 8px; -fx-text-fill: #d9a13b; -fx-font-weight: bold; -fx-padding: 3 0 0 4;");
-        rulerCorner.getChildren().add(mmLbl);
-
-        double totalMmW = template.getPage().getWidth();
-        double totalMmH = template.getPage().getHeight();
+        double pxPerMm = MM_PX * zoom;
+        if (pxPerMm <= 0.001) return;
 
         double majorStep = rulerMajorStepMm();
         double minorStep = rulerMinorStepMm(majorStep);
-        buildRulerTicks(rulerTop, true, totalMmW, majorStep, minorStep);
-        buildRulerTicks(rulerLeft, false, totalMmH, majorStep, minorStep);
+
+        Bounds vp = (canvasScrollPane != null) ? canvasScrollPane.getViewportBounds() : null;
+        double maxDrawW = (vp != null && vp.getWidth() > 0) ? Math.min(w, vp.getWidth()) : w;
+
+        double minMm = (0 - originX) / pxPerMm;
+        double maxMm = (maxDrawW - originX) / pxPerMm;
+
+        long firstIdx = (long) Math.floor(minMm / minorStep);
+        long lastIdx = (long) Math.ceil(maxMm / minorStep);
+        long sub = Math.round(majorStep / minorStep);
+        boolean hasMid = sub % 2 == 0 && sub > 2;
+        long midEvery = hasMid ? sub / 2 : -1;
+
+        Color cMajor = Color.web("#94a3b8");
+        Color cMid = Color.web("#5b6b82");
+        Color cMinor = Color.web("#3d4a5e");
+        Color cOrigin = Color.web("#d9a13b");
+
+        gc.setFont(Font.font("Segoe UI", FontWeight.NORMAL, 8.5));
+        gc.setTextAlign(TextAlignment.LEFT);
+        gc.setTextBaseline(VPos.TOP);
+        gc.setLineWidth(1.0);
+
+        for (long i = firstIdx; i <= lastIdx; i++) {
+            double vMm = i * minorStep;
+            double x = originX + vMm * pxPerMm;
+            double sx = Math.floor(x) + 0.5;
+            if (sx < -1 || sx > maxDrawW + 1) continue;
+
+            boolean isOrigin = (Math.abs(vMm) < 1e-6);
+            boolean isMajor = (Math.abs(i) % sub == 0);
+            boolean isMid = !isMajor && (midEvery > 0) && (Math.abs(i) % midEvery == 0);
+
+            double tickLen = isOrigin ? 12.0 : (isMajor ? 10.0 : (isMid ? 6.5 : 4.0));
+            Color tickColor = isOrigin ? cOrigin : (isMajor ? cMajor : (isMid ? cMid : cMinor));
+
+            gc.setStroke(tickColor);
+            gc.strokeLine(sx, RULER_SIZE - tickLen, sx, RULER_SIZE);
+
+            if (isMajor || isOrigin) {
+                String text = isOrigin ? "0"
+                        : (vMm == Math.rint(vMm) ? String.valueOf((long) vMm) : String.format(Locale.US, "%.1f", vMm));
+                gc.setFill(isOrigin ? cOrigin : cMajor);
+                gc.fillText(text, sx + 2.0, 2.0);
+            }
+        }
+
+        if (maxDrawW < w) {
+            gc.setFill(Color.web("#0d121b"));
+            gc.fillRect(maxDrawW, 0, w - maxDrawW, RULER_SIZE);
+            gc.setStroke(Color.web("#2e3a4e"));
+            gc.strokeLine(maxDrawW + 0.5, 0, maxDrawW + 0.5, RULER_SIZE);
+        }
     }
 
-    /**
-     * Draws one ruler as a 3-tier tick system (researched standard): MINOR
-     * ticks are short, MID ticks (major/2) medium, MAJOR ticks longest and the
-     * only ones carrying numbers — so a long strip always means a labelled,
-     * true-millimetre position. Positions snap to whole device pixels, keeping
-     * every tick 1 device px hairline-sharp at any zoom; duplicate snapped
-     * positions skip themselves so minors never pile up when zoomed far out.
-     *
-     * <p>Tick lengths and number size: SCREEN px = base × max(1, zoom).
-     * Zoomed OUT (≤100%) keeps the previous screen-constant sizes (readability
-     * floor, behavior unchanged). Zoomed IN the ruler strip itself scales with
-     * the page (22 px → 22·zoom), so the old constant 10 px ticks / 8 px
-     * numbers looked lost inside a 44–66 px strip — now they grow with it so
-     * numbers and tick heights stay readable at every zoom level.</p>
-     */
-    private void buildRulerTicks(Pane ruler, boolean horizontal, double totalMm,
-                                 double majorStep, double minorStep) {
-        double z = Math.max(0.3, zoom);
-        double k = Math.max(1.0, z) / z;   // local px = base·k  →  screen px = base·max(1, z)
-        double lenMajor = 10.0 * k, lenMid = 6.5 * k, lenMinor = 4.0 * k;
+    private void drawRulerLeft() {
+        double h = rulerLeft.getHeight();
+        if (h <= 0 || canvas == null || canvas.getScene() == null || rulerLeft.getScene() == null) return;
+        if (rulerLeftCanvas.getWidth() != RULER_SIZE) {
+            rulerLeftCanvas.setWidth(RULER_SIZE);
+        }
+        if (rulerLeftCanvas.getHeight() != h) {
+            rulerLeftCanvas.setHeight(h);
+        }
+        GraphicsContext gc = rulerLeftCanvas.getGraphicsContext2D();
+        gc.setFill(Color.web("#121824"));
+        gc.fillRect(0, 0, RULER_SIZE, h);
+        gc.setStroke(Color.web("#2e3a4e"));
+        gc.setLineWidth(1.0);
+        gc.strokeLine(RULER_SIZE - 0.5, 0, RULER_SIZE - 0.5, h);
+
+        Point2D originInScene = canvas.localToScene(0, 0);
+        if (originInScene == null) return;
+        Point2D originInRuler = rulerLeft.sceneToLocal(originInScene);
+        if (originInRuler == null) return;
+        double originY = originInRuler.getY();
+
+        double pxPerMm = MM_PX * zoom;
+        if (pxPerMm <= 0.001) return;
+
+        double majorStep = rulerMajorStepMm();
+        double minorStep = rulerMinorStepMm(majorStep);
+
+        Bounds vp = (canvasScrollPane != null) ? canvasScrollPane.getViewportBounds() : null;
+        double maxDrawH = (vp != null && vp.getHeight() > 0) ? Math.min(h, vp.getHeight()) : h;
+
+        double minMm = (0 - originY) / pxPerMm;
+        double maxMm = (maxDrawH - originY) / pxPerMm;
+
+        long firstIdx = (long) Math.floor(minMm / minorStep);
+        long lastIdx = (long) Math.ceil(maxMm / minorStep);
         long sub = Math.round(majorStep / minorStep);
-        boolean hasMid = sub % 2 == 0 && sub > 2;      // mid tier only if exactly halfway exists
+        boolean hasMid = sub % 2 == 0 && sub > 2;
         long midEvery = hasMid ? sub / 2 : -1;
-        Color cMajor = Color.web("#94a3b8"), cMid = Color.web("#5b6b82"), cMinor = Color.web("#3d4a5e");
-        double strokeWidth = 1.0 / z;
-        double lastSnapped = -1e9;
 
-        for (long i = 0; ; i++) {
-            double v = i * minorStep;
-            if (v > totalMm + 1e-9) break;
-            boolean isMajor = i % sub == 0;
-            boolean isMid = !isMajor && midEvery > 0 && i % midEvery == 0;
+        Color cMajor = Color.web("#94a3b8");
+        Color cMid = Color.web("#5b6b82");
+        Color cMinor = Color.web("#3d4a5e");
+        Color cOrigin = Color.web("#d9a13b");
 
-            // Snap to whole device pixels (local = device / zoom) for crisp hairlines
-            double snapped = Math.round(v * MM_PX * zoom) / zoom;
-            if (snapped <= lastSnapped + 1e-9 && i > 0) continue; // dedupe sub-pixel pile-up
-            lastSnapped = snapped;
+        gc.setFont(Font.font("Segoe UI", FontWeight.NORMAL, 7.5));
+        gc.setTextAlign(TextAlignment.LEFT);
+        gc.setTextBaseline(VPos.TOP);
+        gc.setLineWidth(1.0);
 
-            double tickLen = isMajor ? lenMajor : (isMid ? lenMid : lenMinor);
-            Color tickColor = isMajor ? cMajor : (isMid ? cMid : cMinor);
-            Line tick = horizontal
-                    ? new Line(snapped, RULER_SIZE - tickLen, snapped, RULER_SIZE)
-                    : new Line(RULER_SIZE - tickLen, snapped, RULER_SIZE, snapped);
-            tick.setStroke(tickColor);
-            tick.setStrokeWidth(strokeWidth);
-            ruler.getChildren().add(tick);
+        for (long i = firstIdx; i <= lastIdx; i++) {
+            double vMm = i * minorStep;
+            double y = originY + vMm * pxPerMm;
+            double sy = Math.floor(y) + 0.5;
+            if (sy < -1 || sy > maxDrawH + 1) continue;
 
-            // Numbers ONLY on major ticks — the exact measure the long strip marks
-            if (isMajor && v > 1e-9) {
-                String text = v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
-                double fontPx = 8.0 * k;
-                double extent = horizontal ? ruler.getPrefWidth() : ruler.getPrefHeight();
-                // Space the label occupies along the ruler axis: width for the
-                // top ruler, line-box height for the left ruler. Both track the
-                // font scale (k) so the clip guard stays correct at any zoom.
-                double labelExtent = horizontal
-                        ? text.length() * 4.7 * k + 3.0 * k
-                        : 11.5 * k;
-                double pos = snapped + 2.0 * k;
-                boolean isLastMajor = v + majorStep > totalMm + 1e-9;
-                if (pos + labelExtent > extent) {
-                    if (isLastMajor) {
-                        // Page-end label: align flush with the edge instead of
-                        // clipping, so the page's exact size stays readable.
-                        pos = Math.max(0, extent - labelExtent);
-                    } else {
-                        // Interior label would clip past the edge — drop it;
-                        // the major tick itself still marks the position.
-                        continue;
-                    }
-                }
-                Label lbl = new Label(text);
-                lbl.setStyle(String.format(java.util.Locale.US,
-                        "-fx-font-size: %.2fpx; -fx-text-fill: #94a3b8; -fx-font-family: 'Segoe UI', sans-serif;",
-                        fontPx));
-                if (horizontal) {
-                    lbl.setLayoutX(pos);
-                    lbl.setLayoutY(1);
-                } else {
-                    lbl.setLayoutX(1);
-                    lbl.setLayoutY(pos);
-                }
-                ruler.getChildren().add(lbl);
+            boolean isOrigin = (Math.abs(vMm) < 1e-6);
+            boolean isMajor = (Math.abs(i) % sub == 0);
+            boolean isMid = !isMajor && (midEvery > 0) && (Math.abs(i) % midEvery == 0);
+
+            double tickLen = isOrigin ? 12.0 : (isMajor ? 8.0 : (isMid ? 5.5 : 3.5));
+            Color tickColor = isOrigin ? cOrigin : (isMajor ? cMajor : (isMid ? cMid : cMinor));
+
+            gc.setStroke(tickColor);
+            gc.strokeLine(RULER_SIZE - tickLen, sy, RULER_SIZE, sy);
+
+            if (isMajor || isOrigin) {
+                String text = isOrigin ? "0"
+                        : (vMm == Math.rint(vMm) ? String.valueOf((long) vMm) : String.format(Locale.US, "%.1f", vMm));
+                gc.setFill(isOrigin ? cOrigin : cMajor);
+                gc.fillText(text, 1.0, sy + 1.0);
             }
+        }
+
+        if (maxDrawH < h) {
+            gc.setFill(Color.web("#0d121b"));
+            gc.fillRect(0, maxDrawH, RULER_SIZE, h - maxDrawH);
+            gc.setStroke(Color.web("#2e3a4e"));
+            gc.strokeLine(0, maxDrawH + 0.5, RULER_SIZE, maxDrawH + 0.5);
         }
     }
 
@@ -1589,25 +1784,15 @@ public class TemplateDesigner extends BorderPane {
         double pageW = page.getWidth() * MM_PX;
         double pageH = page.getHeight() * MM_PX;
 
-        canvas.setLayoutX(RULER_SIZE);
-        canvas.setLayoutY(RULER_SIZE);
+        canvas.setLayoutX(0);
+        canvas.setLayoutY(0);
         canvas.setPrefSize(pageW, pageH);
         canvas.setMinSize(pageW, pageH);
         canvas.setMaxSize(pageW, pageH);
         canvas.setStyle("-fx-background-color: white; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 24, 0, 0, 8);");
 
-        rulerTop.setLayoutX(RULER_SIZE);
-        rulerTop.setLayoutY(0);
-        rulerLeft.setLayoutX(0);
-        rulerLeft.setLayoutY(RULER_SIZE);
-        rulerCorner.setLayoutX(0);
-        rulerCorner.setLayoutY(0);
-        rulerCorner.setPrefSize(RULER_SIZE, RULER_SIZE);
-        rulerCorner.setMinSize(RULER_SIZE, RULER_SIZE);
-        rulerCorner.setMaxSize(RULER_SIZE, RULER_SIZE);
-
-        buildRulers(pageW, pageH);
         updateCenterWrapperSize();
+        drawRulers();
 
         // 1. Background Grid (rendered on a single Canvas for maximum layout performance;
         //    the cell size adapts to zoom: 10 -> 5 -> 2 -> 1 mm)
@@ -1829,7 +2014,7 @@ public class TemplateDesigner extends BorderPane {
                 }
             }
             if (bestDistX < snapThreshold) {
-                newX = Math.max(0, bestSnapX);
+                newX = bestSnapX;
                 snappedGuideX = newX;
             }
 
@@ -1858,7 +2043,7 @@ public class TemplateDesigner extends BorderPane {
                 }
             }
             if (bestDistY < snapThreshold) {
-                newY = Math.max(0, bestSnapY);
+                newY = bestSnapY;
                 snappedGuideY = newY;
             }
         }
@@ -2172,8 +2357,8 @@ public class TemplateDesigner extends BorderPane {
             double dx = (e.getScreenX() - moveStart[0]) / zoom / MM_PX;
             double dy = (e.getScreenY() - moveStart[1]) / zoom / MM_PX;
 
-            double newX = Math.max(0, moveStart[2] + dx);
-            double newY = Math.max(0, moveStart[3] + dy);
+            double newX = Math.max(-2000.0, moveStart[2] + dx);
+            double newY = Math.max(-2000.0, moveStart[3] + dy);
 
             double[] snapped = applySnapping(el, newX, newY);
             double finalDx = snapped[0] - moveStart[2];
@@ -2182,8 +2367,8 @@ public class TemplateDesigner extends BorderPane {
             for (Map.Entry<TemplateElement, double[]> entry : groupOrigins.entrySet()) {
                 TemplateElement sibling = entry.getKey();
                 double[] orig = entry.getValue();
-                double nx = Math.max(0, orig[0] + finalDx);
-                double ny = Math.max(0, orig[1] + finalDy);
+                double nx = Math.max(-2000.0, orig[0] + finalDx);
+                double ny = Math.max(-2000.0, orig[1] + finalDy);
                 sibling.setX(nx);
                 sibling.setY(ny);
                 for (Node n : elementsPane.getChildren()) {
@@ -2493,8 +2678,8 @@ public class TemplateDesigner extends BorderPane {
             double dx = (e.getScreenX() - moveStart[0]) / zoom / MM_PX;
             double dy = (e.getScreenY() - moveStart[1]) / zoom / MM_PX;
 
-            double newX = Math.max(0, moveStart[2] + dx);
-            double newY = Math.max(0, moveStart[3] + dy);
+            double newX = Math.max(-2000.0, moveStart[2] + dx);
+            double newY = Math.max(-2000.0, moveStart[3] + dy);
 
             double[] snapped = applySnapping(el, newX, newY);
             double finalDx = snapped[0] - moveStart[2];
@@ -2503,8 +2688,8 @@ public class TemplateDesigner extends BorderPane {
             for (Map.Entry<TemplateElement, double[]> entry : groupOrigins.entrySet()) {
                 TemplateElement sibling = entry.getKey();
                 double[] orig = entry.getValue();
-                double nx = Math.max(0, orig[0] + finalDx);
-                double ny = Math.max(0, orig[1] + finalDy);
+                double nx = Math.max(-2000.0, orig[0] + finalDx);
+                double ny = Math.max(-2000.0, orig[1] + finalDy);
                 sibling.setX(nx);
                 sibling.setY(ny);
                 for (Node n : elementsPane.getChildren()) {
@@ -2713,7 +2898,7 @@ public class TemplateDesigner extends BorderPane {
             if (el.isLocked()) return;
             double dx = (e.getScreenX() - resizeStart[0]) / zoom / MM_PX;
             double newW = Math.max(5.0, resizeStart[2] - dx);
-            double newX = Math.max(0, resizeStart[4] + (resizeStart[2] - newW));
+            double newX = Math.max(-2000.0, resizeStart[4] + (resizeStart[2] - newW));
             if (snapToGrid) { newW = Math.round(newW); newX = Math.round(newX); }
             el.setW(newW); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
@@ -2737,7 +2922,7 @@ public class TemplateDesigner extends BorderPane {
             if (el.isLocked()) return;
             double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
             double newH = Math.max(3.0, resizeStart[3] - dy);
-            double newY = Math.max(0, resizeStart[5] + (resizeStart[3] - newH));
+            double newY = Math.max(-2000.0, resizeStart[5] + (resizeStart[3] - newH));
             if (snapToGrid) { newH = Math.round(newH); newY = Math.round(newY); }
             el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
@@ -2766,8 +2951,8 @@ public class TemplateDesigner extends BorderPane {
             String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
             double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
             newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
-            double newX = Math.max(0, resizeStart[4] + (resizeStart[2] - newW));
-            double newY = Math.max(0, resizeStart[5] + (resizeStart[3] - newH));
+            double newX = Math.max(-2000.0, resizeStart[4] + (resizeStart[2] - newW));
+            double newY = Math.max(-2000.0, resizeStart[5] + (resizeStart[3] - newH));
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newX = Math.round(newX); newY = Math.round(newY); }
             el.setW(newW); el.setH(newH); el.setX(newX); el.setY(newY);
             selBox.setLayoutX(newX * MM_PX); selBox.setLayoutY(newY * MM_PX);
@@ -2796,7 +2981,7 @@ public class TemplateDesigner extends BorderPane {
             String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
             double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
             newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
-            double newY = Math.max(0, resizeStart[5] + (resizeStart[3] - newH));
+            double newY = Math.max(-2000.0, resizeStart[5] + (resizeStart[3] - newH));
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newY = Math.round(newY); }
             el.setW(newW); el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
@@ -2825,7 +3010,7 @@ public class TemplateDesigner extends BorderPane {
             String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
             double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
             newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
-            double newX = Math.max(0, resizeStart[4] + (resizeStart[2] - newW));
+            double newX = Math.max(-2000.0, resizeStart[4] + (resizeStart[2] - newW));
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newX = Math.round(newX); }
             el.setW(newW); el.setH(newH); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
@@ -3111,12 +3296,12 @@ public class TemplateDesigner extends BorderPane {
             Label wLbl = new Label("W:");
             Label hLbl = new Label("H:");
 
-            Spinner<Double> xSpin = new Spinner<>(0.0, 5000.0, el.getX(), 1.0);
+            Spinner<Double> xSpin = new Spinner<>(-2000.0, 5000.0, el.getX(), 1.0);
             xSpin.setPrefWidth(85);
             xSpin.setTooltip(new Tooltip("Horizontal position (X) from the left edge of the page"));
             configureNumberSpinner(xSpin);
 
-            Spinner<Double> ySpin = new Spinner<>(0.0, 5000.0, el.getY(), 1.0);
+            Spinner<Double> ySpin = new Spinner<>(-2000.0, 5000.0, el.getY(), 1.0);
             ySpin.setPrefWidth(85);
             ySpin.setTooltip(new Tooltip("Vertical position (Y) from the top edge of the page"));
             configureNumberSpinner(ySpin);
@@ -3145,8 +3330,8 @@ public class TemplateDesigner extends BorderPane {
                 double wVal = UnitConverter.fromMm(el.getW(), u);
                 double hVal = UnitConverter.fromMm(el.getH(), u);
                 double step = (u == UnitConverter.Unit.IN || u == UnitConverter.Unit.INCH) ? 0.1 : (u == UnitConverter.Unit.CM ? 0.5 : 1.0);
-                xSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 5000.0, Math.round(xVal * 100.0) / 100.0, step));
-                ySpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 5000.0, Math.round(yVal * 100.0) / 100.0, step));
+                xSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(-2000.0, 5000.0, Math.round(xVal * 100.0) / 100.0, step));
+                ySpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(-2000.0, 5000.0, Math.round(yVal * 100.0) / 100.0, step));
                 wSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.1, 5000.0, Math.round(wVal * 100.0) / 100.0, step));
                 hSpin.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0.1, 5000.0, Math.round(hVal * 100.0) / 100.0, step));
                 configureNumberSpinner(xSpin);
@@ -7646,6 +7831,7 @@ public class TemplateDesigner extends BorderPane {
             if (newS != null) {
                 newS.addEventFilter(KeyEvent.KEY_PRESSED, sceneKeyFilter);
                 newS.addEventFilter(KeyEvent.KEY_RELEASED, sceneKeyReleaseFilter);
+                javafx.application.Platform.runLater(this::drawRulers);
             }
         });
     }
@@ -7882,7 +8068,7 @@ public class TemplateDesigner extends BorderPane {
         } else if (selectedElement != null && !selectedElement.isLocked()) {
             double step = e.isShiftDown() ? 5.0 : 1.0;
             if (e.getCode() == KeyCode.LEFT) {
-                selectedElement.setX(Math.max(0, selectedElement.getX() - step));
+                selectedElement.setX(Math.max(-2000.0, selectedElement.getX() - step));
                 updateElementVisualInPlace(selectedElement);
                 updateSelectionOverlay();
                 syncGeoSpinnersIfPresent();
@@ -7896,7 +8082,7 @@ public class TemplateDesigner extends BorderPane {
                 saveState();
                 e.consume();
             } else if (e.getCode() == KeyCode.UP) {
-                selectedElement.setY(Math.max(0, selectedElement.getY() - step));
+                selectedElement.setY(Math.max(-2000.0, selectedElement.getY() - step));
                 updateElementVisualInPlace(selectedElement);
                 updateSelectionOverlay();
                 syncGeoSpinnersIfPresent();
