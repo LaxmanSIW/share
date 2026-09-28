@@ -140,13 +140,13 @@ public class IconHelper {
             String normalColor = "#94A3B8";
             String activeColor = "#F2CA6B";
             svg.setFill(Color.web(normalColor));
-            svg.setScaleX(13.0 / 24.0);
-            svg.setScaleY(13.0 / 24.0);
+            svg.setScaleX(18.0 / 24.0);
+            svg.setScaleY(18.0 / 24.0);
             javafx.scene.Group grp = new javafx.scene.Group(svg);
             javafx.scene.layout.StackPane box = new javafx.scene.layout.StackPane(grp);
-            box.setPrefSize(14, 14);
-            box.setMinSize(14, 14);
-            box.setMaxSize(14, 14);
+            box.setPrefSize(19, 19);
+            box.setMinSize(19, 19);
+            box.setMaxSize(19, 19);
             box.setAlignment(javafx.geometry.Pos.CENTER);
             if (selectedProp != null) {
                 selectedProp.addListener((obs, wasSelected, isSelected) -> {
@@ -159,19 +159,19 @@ public class IconHelper {
             return box;
         }
         Label lbl = new Label(getFallbackGlyph(name));
-        lbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8; -fx-alignment: center;");
+        lbl.setStyle("-fx-font-size: 15px; -fx-text-fill: #94A3B8; -fx-alignment: center;");
         if (selectedProp != null) {
             selectedProp.addListener((obs, wasSelected, isSelected) -> {
-                lbl.setStyle("-fx-font-size: 11px; -fx-text-fill: " + (isSelected ? "#F2CA6B" : "#94A3B8") + "; -fx-alignment: center;");
+                lbl.setStyle("-fx-font-size: 15px; -fx-text-fill: " + (isSelected ? "#F2CA6B" : "#94A3B8") + "; -fx-alignment: center;");
             });
             if (Boolean.TRUE.equals(selectedProp.getValue())) {
-                lbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #F2CA6B; -fx-alignment: center;");
+                lbl.setStyle("-fx-font-size: 15px; -fx-text-fill: #F2CA6B; -fx-alignment: center;");
             }
         }
         javafx.scene.layout.StackPane box = new javafx.scene.layout.StackPane(lbl);
-        box.setPrefSize(14, 14);
-        box.setMinSize(14, 14);
-        box.setMaxSize(14, 14);
+        box.setPrefSize(19, 19);
+        box.setMinSize(19, 19);
+        box.setMaxSize(19, 19);
         box.setAlignment(javafx.geometry.Pos.CENTER);
         return box;
     }
