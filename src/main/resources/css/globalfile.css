@@ -405,6 +405,18 @@ Label {
     -fx-effect: dropshadow(gaussian, -color-shadow-medium, 3, 0, 0, 2);
 }
 
+.card-kpi-mini {
+    -fx-background-color: -color-surface;
+    -fx-background-radius: 8;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+}
+
+.card-kpi-mini:hover {
+    -fx-border-color: -color-accent-glow-strong;
+}
+
 .kpi-value {
     -fx-font-size: 21px;
     -fx-font-weight: bold;
@@ -3047,7 +3059,7 @@ Label {
 .accent-gold    { -fx-text-fill: -color-accent; }
 .accent-emerald { -fx-text-fill: -color-success; }
 .accent-red     { -fx-text-fill: -color-error; }
-.accent-sky     { -fx-text-fill: -color-info; }
+.accent-sky, .accent-blue { -fx-text-fill: -color-info; }
 .accent-amber   { -fx-text-fill: -color-warning; }
 
 /* --- Custom Color Picker Button & Layer Row Controls --- */

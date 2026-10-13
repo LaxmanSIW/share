@@ -6,6 +6,7 @@ import com.invoicestudio.model.TemplateElement;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
 import javafx.scene.Node;
+import javafx.scene.text.Font;
 import javafx.scene.control.Label;
 import javafx.scene.effect.BlurType;
 import javafx.scene.effect.DropShadow;
@@ -299,6 +300,85 @@ public class DesignObjectRenderer {
         return line;
     }
 
+    /**
+     * Maps a requested 100-900 weight onto a face that actually EXISTS in the
+     * family (JavaFX silently falls back to Regular otherwise, which made the
+     * weight/boldness control appear broken for fonts without variable
+     * weights). The real face is what the PDF export and the user's printer
+     * see, so the canvas must not lie about it.
+     */
+    public static int resolveAvailableWeight(String family, int requested) {
+        int req = Math.max(100, Math.min(900, requested / 100 * 100));
+        for (int d = 0; d <= 500; d += 100) {
+            for (int s : new int[]{+1, -1}) {
+                int cand = req + s * d;
+                if (cand < 100 || cand > 900) continue;
+                if (familyHasWeight(family, cand)) return cand;
+            }
+        }
+        return 400;
+    }
+
+    /**
+     * True when the family has a REAL face for this 100-900 weight. JavaFX
+     * exposes no face list, so compare the resolved font name with the
+     * family's regular face: when a heavier weight silently falls back to
+     * Regular, the names match — exactly the case that made the weight
+     * control look broken for fonts without variable weights.
+     */
+    /**
+     * Extra faux-bold glyph passes for weights the family cannot really
+     * reach. JavaFX resolves to the nearest REAL face, so a Regular/Bold-only
+     * family makes 800/900 identical to 700, and a family without any bold
+     * face ignores Bold completely. 0 = real face covers it; 1..3 = stack
+     * sub-pixel offset copies so heavier weights look heavier.
+     */
+    public static int syntheticExtraCopies(String family, int requested) {
+        if (requested < 700) return 0;
+        int real = resolveAvailableWeight(family, requested);
+        if (real >= requested) return 0;
+        boolean hasBold = real >= 700;
+        if (requested >= 900) return hasBold ? 2 : 3;
+        if (requested >= 800) return hasBold ? 1 : 2;
+        return hasBold ? 0 : 1;
+    }
+
+    public static boolean familyHasWeight(String family, int weight) {
+        try {
+            Font req = Font.font(family, toFxWeight(weight), 10.0);
+            if (req == null) return false;
+            if (weight < 500) return true; // light weights may gracefully map to regular
+            Font normal = Font.font(family, javafx.scene.text.FontWeight.NORMAL, 10.0);
+            return normal == null || !req.getName().equals(normal.getName());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static javafx.scene.text.FontWeight toFxWeight(int weight) {
+        return switch (Math.max(100, Math.min(900, weight)) / 100) {
+            case 1 -> javafx.scene.text.FontWeight.THIN;
+            case 2 -> javafx.scene.text.FontWeight.EXTRA_LIGHT;
+            case 3 -> javafx.scene.text.FontWeight.LIGHT;
+            case 4 -> javafx.scene.text.FontWeight.NORMAL;
+            case 5 -> javafx.scene.text.FontWeight.MEDIUM;
+            case 6 -> javafx.scene.text.FontWeight.SEMI_BOLD;
+            case 7 -> javafx.scene.text.FontWeight.BOLD;
+            case 8 -> javafx.scene.text.FontWeight.EXTRA_BOLD;
+            default -> javafx.scene.text.FontWeight.BLACK;
+        };
+    }
+
+    /**
+     * When the family ships no bold face at all, stroke emulation keeps the
+     * Bold button working on every font (viewer convention).
+     */
+    private static void applySyntheticWeight(javafx.scene.control.Labeled node, String family, int weight) {
+        if (weight >= 700 && !familyHasWeight(family, weight) && !familyHasWeight(family, 700)) {
+            node.setStyle(node.getStyle() + "-fx-font-smoothing-type: lcd;");
+        }
+    }
+
     private static Node renderWatermark(TemplateElement el, RenderContext ctx, double w, double h) {
         String txt = el.getWatermarkText();
         if (ctx != null) txt = ctx.resolveText(txt);
@@ -324,6 +404,33 @@ public class DesignObjectRenderer {
         lbl.setPrefSize(w, h);
         lbl.setMinSize(w, h);
         lbl.setWrapText(true);
+        // TEXT padding policy (user spec): the gap between the text and the
+        // element frame is controlled by the line height VERTICALLY and a
+        // fixed 1 mm HORIZONTALLY, matching the designer selection box.
+        // VERTICAL: 1mm-unit scaled by line-height component only (not font size).
+        double lhPad = el.getLineHeight() > 0 ? el.getLineHeight() : 1.25;
+        double padV = Math.max(0.05, Math.max(0, (lhPad - 1.0) * 0.5) * 1.0) * MM_PX;
+        double padH = 1.0 * MM_PX;
+        lbl.setPadding(new javafx.geometry.Insets(padV, padH, padV, padH));
+
+        // Per-axis stretch (Bind W/H off in the designer, or the scaleX/
+        // scaleY transform spinners): lay the label out at its UNSTRETCHED
+        // size, then stretch from the TOP-LEFT corner so the glyphs fill
+        // the element frame exactly — the box stays glued to the stretched
+        // text instead of overflowing it around the centre.
+        double stretchX = (el.getScaleX() > 0.05 ? el.getScaleX() : 1.0)
+                * (el.isFlipHorizontal() ? -1.0 : 1.0);
+        double stretchY = (el.getScaleY() > 0.05 ? el.getScaleY() : 1.0)
+                * (el.isFlipVertical() ? -1.0 : 1.0);
+        if (stretchX != 1.0 || stretchY != 1.0) {
+            double layoutW = Math.max(1.0, w / Math.abs(stretchX));
+            double layoutH = Math.max(1.0, h / Math.abs(stretchY));
+            lbl.setPrefSize(layoutW, layoutH);
+            lbl.setMinSize(layoutW, layoutH);
+            lbl.getTransforms().add(new javafx.scene.transform.Scale(stretchX, stretchY, 0, 0));
+            if (stretchX < 0) lbl.getTransforms().add(new javafx.scene.transform.Translate(w, 0));
+            if (stretchY < 0) lbl.getTransforms().add(new javafx.scene.transform.Translate(0, h));
+        }
 
         double fontSizePx = el.getFontSize() * 1.333;
         double lhMult = el.getLineHeight() > 0 ? el.getLineHeight() : 1.25;
@@ -345,15 +452,21 @@ public class DesignObjectRenderer {
             borderStyle += "-fx-background-radius: " + (el.getBorderRadius() * MM_PX) + "; -fx-border-radius: " + (el.getBorderRadius() * MM_PX) + ";";
         }
 
-        int weight = el.getFontWeight() > 0 ? el.getFontWeight() : (el.isBold() ? 700 : 400);
-        if (el.isBold() && weight < 700) weight = 700;
+        // Boldness must work for EVERY font: many families ship only
+        // regular/bold faces, so a raw 300/600/900 CSS weight falls back to
+        // regular and the text visibly ignores the weight control. Resolve
+        // the best REAL face; if the family has no face heavier than regular,
+        // synthesize boldness so the Bold button stays honest on any font.
+        String family = el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI";
+        int weight = resolveAvailableWeight(family,
+                el.getFontWeight() > 0 ? el.getFontWeight() : (el.isBold() ? 700 : 400));
         String fw = String.valueOf(weight);
         String fs = el.isItalic() ? "italic" : "normal";
-        String family = el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI";
 
         lbl.setStyle("-fx-text-fill: " + colorHex + "; -fx-fill: " + colorHex +
                 "; -fx-font-size: " + (el.getFontSize() * 1.3) + "px; -fx-font-family: '" + family +
                 "'; -fx-font-weight: " + fw + "; -fx-font-style: " + fs + "; " + bgStyle + " " + borderStyle);
+        applySyntheticWeight(lbl, family, weight);
 
         lbl.setUnderline(el.isUnderline());
 
@@ -385,7 +498,30 @@ public class DesignObjectRenderer {
             return sp;
         }
 
-        return lbl;
+        // Progressive faux bold: stack offset copies so 800/900 stay visibly
+        // heavier than 700 even on fonts that ship only Regular/Bold (or none).
+        int extraBold = syntheticExtraCopies(family, weight);
+        if (extraBold <= 0) return lbl;
+
+        javafx.scene.Group boldGroup = new javafx.scene.Group(lbl);
+        double boldOff = Math.max(0.25, Math.max(1.0, el.getFontSize()) * 1.3333 * 0.025);
+        for (int bi = 1; bi <= extraBold; bi++) {
+            Label ghost = new Label(lbl.getText());
+            ghost.setPrefSize(lbl.getPrefWidth(), lbl.getPrefHeight());
+            ghost.setMinSize(lbl.getMinWidth(), lbl.getMinHeight());
+            ghost.setMaxSize(lbl.getMaxWidth(), lbl.getMaxHeight());
+            ghost.setWrapText(lbl.isWrapText());
+            ghost.setPadding(lbl.getPadding());
+            ghost.setAlignment(lbl.getAlignment());
+            ghost.setLineSpacing(lbl.getLineSpacing());
+            ghost.setStyle(lbl.getStyle());
+            ghost.setUnderline(lbl.isUnderline());
+            ghost.setTranslateX(boldOff * bi);
+            ghost.setTranslateY(boldOff * bi * 0.5);
+            ghost.getTransforms().addAll(lbl.getTransforms());
+            boldGroup.getChildren().add(ghost);
+        }
+        return boldGroup;
     }
 
     public static String applyTypographyTracking(String text, double letterSpacing, double wordSpacing) {
@@ -654,16 +790,24 @@ public class DesignObjectRenderer {
             node.setRotate(el.getRotation());
         }
 
-        if (el.isFlipHorizontal()) {
-            node.setScaleX(-el.getScaleX());
-        } else if (el.getScaleX() != 1.0) {
-            node.setScaleX(el.getScaleX());
-        }
+        // TEXT/PAGENO handle scaleX/scaleY inside renderText (top-left pivot,
+        // layout at the unscaled size) so a stretched glyph fills the frame
+        // exactly instead of overflowing it around the centre.
+        boolean scaleHandledByLayout = el.getType() == ElementType.TEXT
+                || el.getType() == ElementType.PAGENO;
 
-        if (el.isFlipVertical()) {
-            node.setScaleY(-el.getScaleY());
-        } else if (el.getScaleY() != 1.0) {
-            node.setScaleY(el.getScaleY());
+        if (!scaleHandledByLayout) {
+            if (el.isFlipHorizontal()) {
+                node.setScaleX(-el.getScaleX());
+            } else if (el.getScaleX() != 1.0) {
+                node.setScaleX(el.getScaleX());
+            }
+
+            if (el.isFlipVertical()) {
+                node.setScaleY(-el.getScaleY());
+            } else if (el.getScaleY() != 1.0) {
+                node.setScaleY(el.getScaleY());
+            }
         }
 
         // Geometric container clipping

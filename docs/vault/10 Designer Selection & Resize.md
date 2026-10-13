@@ -140,14 +140,24 @@ monitor A and dragged to monitor B.
    (JDKFX 21+ / 23+); test `-Dglass.win.uiScale=1.0` and
    `-Dprism.allowhidpi=false` as **diagnostic flags only**.
 
-**Candidate fixes (for a future decision, not implemented).**
-- Clamp restored window position/size to `Screen.getScreensForRectangle`
-  / `Screen.getPrimary().getVisualBounds()` in `WindowStateManager`.
-- Replace hard-coded px paddings with em-based values in `globalfile.css`
-  (the stylesheet already uses px everywhere — same audit that
-  `menu-button-sm` started).
-- Set the stage `minWidth/minHeight` to the smallest supported layout and let
-  content scroll (several views already assume ≥ 1280 px).
+**Resolution (implemented).** The geometry half of the bug is fixed in
+`WindowStateManager`:
+- `fitToScreen(...)` clamps the saved rectangle to fit ENTIRELY inside the
+  screen it most overlaps (size capped to visual bounds, position pinned so
+  top + bottom edges stay visible). Previously `isVisibleOnAnyScreen` only
+  demanded ~100 px of overlap, so a mostly-off-screen window passed the guard
+  and opened clipped — taking the bottom-right chatbot button with it.
+- Stage `minWidth/minHeight` are clamped to the smallest connected screen in
+  `applyAndTrack(...)` (floors 320×240); `StudioApp` no longer sets a fixed
+  1024×640 minimum that overflows a scaled laptop's logical desktop.
+- Covered by `WindowStateManagerGeometryTest` (8 pure-geometry tests).
+
+**Still open (separate work):** replace hard-coded px paddings with em-based
+values in `globalfile.css` (the stylesheet uses px everywhere — same audit
+that `menu-button-sm` started), and if a laptop still mis-renders content
+*inside* a correctly-sized window (JavaFX per-monitor-DPI, JDKFX 21.0.4),
+try upgrading JavaFX or run once with `-Dglass.win.uiScale=1.0` /
+`-Dprism.allowhidpi=false` as diagnostics.
 
 ## 8. Verification & rollback
 
@@ -160,3 +170,85 @@ monitor A and dragged to monitor B.
 - Rollback: revert the single commit; all changes are additive methods plus
   handler rewrites in the two documented files. No schema, no persisted
   format change.
+
+## 2026-10-07 — Text frame shrink-wrap + honest padding policy
+
+User-reported bug: after scaling, the selection box was much larger than the
+text (screenshot: small NERROW inside a big gold box). Root causes found:
+
+- `ensureTextFrame` only ever GREW the frame, so slack from an earlier large
+  scale was never removed (and its text measurements were mixed px/mm units).
+- The selection border added another 1 mm/line-height pad OUTSIDE a frame that
+  already contained the renderer padding — i.e. double padding.
+
+Policy now (single source of truth, shared by overlay, canvas and PDF):
+
+- Horizontal gap text→frame: exactly 1 mm per side.
+- Vertical gap: line-height driven, `(lh - 1) * 0.5 mm` per side, with a
+  0.05 mm anti-clip floor (applies for lh <= 1.0 too).
+- The frame shrink-wraps BOTH ways from real JavaFX font metrics (bold-aware,
+  +4% for synthesized bold faces), so the box always hugs the text and the
+  gap stays constant at any font size (scale).
+- Scale releases re-run: shrink-wrap → re-render visual → rebuild overlay.
+- New TEXT gets a no-clip default line height: `1.2 + 1 mm / font-size(mm)`
+  (clamped 1.2..2.5); the line-height spinner accepts any value (editable,
+  0.1..200).
+- PDF text export insets by the same pad so print matches canvas (WYSIWYG).
+
+Verification: `TextFramePaddingTest` (7, headless JavaFX, real font metrics)
+asserts no clipping, 1 mm horizontal gap constant across 6/10/18/36 pt,
+line-height-driven vertical gap, and shrink-back after a stale oversized
+frame. `MultiSelectSupportTest` (14) and `DesignerResizeSemanticsTest` (7)
+green; full `mvn compile` clean.
+
+## 2026-10-07 — Bind W/H now drives every handle (finite scaling)
+
+Reported: scaling from a selection vertex always grew BOTH dimensions, even
+though the Position & Size panel offers a Bind W/H (aspect) checkbox, and the
+side handles never consulted it at all.
+
+- `aspectLock` (Bind W/H) now DEFAULTS TO ON, and all eight handles route
+  through `applyHandleDrag` → `applyConstrain`, so the lock really governs
+  side handles too (side handles previously ignored it).
+- Bound: the drag scales the FONT, so width, height and glyphs grow together
+  (crisp text, no distortion).
+- Unbound: only the dragged axis changes — the frame takes the drag and the
+  glyphs STRETCH via scaleX/scaleY (top-left pivot), so X and Y each follow
+  the drag and the selection box still hugs the text with no clipping.
+- Corner + Shift still toggles constraint independently of the lock.
+- Typed W/H edits follow the same rule (bound → font scales, unbound →
+  stretch), so the frame never desyncs from the glyphs.
+- PDF export matches: text is laid out at its unscaled size and stretched
+  from the element top-left, pivoting like the canvas.
+
+Verification: `TextHandleScalePolicyTest` (5) pins bound-vs-free drag
+behaviour and the release-time hug; `TextStretchRenderTest` (4, headless
+JavaFX) proves stretched text fills the frame exactly on each axis;
+`DesignerResizeSemanticsTest` (7) still green.
+
+## 2026-10-07 — Overlay badge, multi-select help, real progressive bold
+
+- Canvas delete badge ("x") on the multi-selection box was unstyled: it inherited
+  the app themes large default font AND scaled with canvas zoom, so it rendered
+  huge. It now has an explicit, zoom-invariant footprint (~15 px on screen,
+  same inverse-zoom rule as the resize handles) plus its own font size,
+  padding and corner radius.
+- Multi-select spacing panel now explains itself: a "How this works" card
+  describes Set (equalise to typed mm), -/+ (nudge every gap by 1 mm),
+  Distribute (even spread, endpoints fixed), that "now" is the average gap,
+  that only each elements X/Y is stored, and that each action is one undo step.
+  The disabled hint also spells out Ctrl+Click / marquee selection.
+- Font weight above 700 was effectively ignored on families without heavier
+  faces. Cause: JavaFX resolves to the nearest REAL face, so Regular/Bold-only
+  families map 800/900 onto the same bold face, and the previous "synthesis"
+  only added LCD smoothing (crispness, not weight). Now the renderer stacks
+  sub-pixel offset glyph copies, progressively: 1 pass for a missing bold,
+  1-2 for 800, 2-3 for 900 (0 when a real face exists). PDF export prints the
+  same passes, so 800/900 are visibly heavier on canvas and paper.
+
+Verification: `FontWeightSynthesisTest` (4) pins the policy + the stacked
+  rendering; also green: TextFramePaddingTest (7), TextHandleScalePolicyTest
+  (5), TextStretchRenderTest (4), MultiSelectSupportTest (14),
+  DesignerResizeSemanticsTest (7), TemplateDesignerEnhancementsTest (3).
+  JavaFX test classes no longer call Platform.exit() (it crashed the forked
+  VM for later classes in the same JVM).

@@ -47,6 +47,12 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.CornerRadii;
+import javafx.scene.layout.GridPane;
+import javafx.geometry.HPos;
+import javafx.geometry.VPos;
 import javafx.scene.transform.Scale;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.event.EventHandler;
@@ -72,6 +78,172 @@ import javafx.scene.Parent;
 import javafx.embed.swing.SwingFXUtils;
 import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
+
+// F3-F5: pure geometry/logic helpers shared by multi-selection, group drag and the
+// multi-property spacing panel. No scene-graph dependency, so it is unit-testable.
+final class MultiSelectSupport {
+
+    private MultiSelectSupport() {
+    }
+
+    /** Bounding box [x, y, w, h] in mm; [0,0,0,0] when the list is empty. */
+    static double[] unionBounds(List<TemplateElement> els) {
+        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE;
+        double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE;
+        for (TemplateElement e : els) {
+            minX = Math.min(minX, e.getX());
+            minY = Math.min(minY, e.getY());
+            maxX = Math.max(maxX, e.getX() + e.getW());
+            maxY = Math.max(maxY, e.getY() + e.getH());
+        }
+        if (els.isEmpty()) {
+            return new double[]{0, 0, 0, 0};
+        }
+        return new double[]{minX, minY, maxX - minX, maxY - minY};
+    }
+
+    /** Elements whose mm-rect intersects the given marquee rect. */
+    static List<TemplateElement> elementsInMarquee(List<TemplateElement> all,
+                                                   double mx, double my, double mw, double mh) {
+        List<TemplateElement> hit = new ArrayList<>();
+        for (TemplateElement e : all) {
+            if (e.isHidden() || e.isLocked()) continue;
+            if (e.getX() < mx + mw && e.getX() + e.getW() > mx
+                    && e.getY() < my + mh && e.getY() + e.getH() > my) {
+                hit.add(e);
+            }
+        }
+        return hit;
+    }
+
+    /** Gaps between consecutive rows (sorted top to bottom), in mm. */
+    static List<Double> verticalGaps(List<TemplateElement> els) {
+        List<TemplateElement> sorted = new ArrayList<>(els);
+        sorted.sort(Comparator.comparingDouble(TemplateElement::getY));
+        List<Double> gaps = new ArrayList<>();
+        for (int i = 1; i < sorted.size(); i++) {
+            gaps.add(sorted.get(i).getY() - (sorted.get(i - 1).getY() + sorted.get(i - 1).getH()));
+        }
+        return gaps;
+    }
+
+    /** Gaps between consecutive columns (sorted left to right), in mm. */
+    static List<Double> horizontalGaps(List<TemplateElement> els) {
+        List<TemplateElement> sorted = new ArrayList<>(els);
+        sorted.sort(Comparator.comparingDouble(TemplateElement::getX));
+        List<Double> gaps = new ArrayList<>();
+        for (int i = 1; i < sorted.size(); i++) {
+            gaps.add(sorted.get(i).getX() - (sorted.get(i - 1).getX() + sorted.get(i - 1).getW()));
+        }
+        return gaps;
+    }
+
+    /**
+     * Rewrites Y so every vertical gap equals {@code gap}. With 3+ elements the
+     * stack is packed downward from the common top; with 2 only the lower moves.
+     *
+     * @return the elements whose Y actually changed (for visual refresh).
+     */
+    static List<TemplateElement> applyEqualVerticalGap(List<TemplateElement> els, double gap) {
+        return applyEqualGap(els, gap, true);
+    }
+
+    /** Horizontal counterpart of {@link #applyEqualVerticalGap}. */
+    static List<TemplateElement> applyEqualHorizontalGap(List<TemplateElement> els, double gap) {
+        return applyEqualGap(els, gap, false);
+    }
+
+    /** Shifts every vertical gap by {@code delta} (may be negative). */
+    static List<TemplateElement> applyVerticalGapDelta(List<TemplateElement> els, double delta) {
+        return applyGapDelta(els, delta, true);
+    }
+
+    /** Shifts every horizontal gap by {@code delta} (may be negative). */
+    static List<TemplateElement> applyHorizontalGapDelta(List<TemplateElement> els, double delta) {
+        return applyGapDelta(els, delta, false);
+    }
+
+    private static List<TemplateElement> applyEqualGap(List<TemplateElement> els, double gap, boolean vertical) {
+        if (els.size() < 2) {
+            return Collections.emptyList();
+        }
+        List<TemplateElement> sorted = new ArrayList<>(els);
+        if (vertical) {
+            sorted.sort(Comparator.comparingDouble(TemplateElement::getY));
+        } else {
+            sorted.sort(Comparator.comparingDouble(TemplateElement::getX));
+        }
+        List<TemplateElement> changed = new ArrayList<>();
+        if (sorted.size() == 2) {
+            TemplateElement lower = sorted.get(1);
+            TemplateElement first = sorted.get(0);
+            double nPos = vertical
+                    ? first.getY() + first.getH() + gap
+                    : first.getX() + first.getW() + gap;
+            if (vertical) {
+                if (Math.abs(nPos - lower.getY()) > 1e-9) {
+                    changed.add(lower);
+                }
+                lower.setY(nPos);
+            } else {
+                if (Math.abs(nPos - lower.getX()) > 1e-9) {
+                    changed.add(lower);
+                }
+                lower.setX(nPos);
+            }
+            return changed;
+        }
+        double cursor = vertical ? sorted.get(0).getY() : sorted.get(0).getX();
+        for (int i = 1; i < sorted.size(); i++) {
+            TemplateElement prev = sorted.get(i - 1);
+            TemplateElement e = sorted.get(i);
+            cursor += vertical ? prev.getH() + gap : prev.getW() + gap;
+            if (vertical) {
+                if (Math.abs(cursor - e.getY()) > 1e-9) {
+                    changed.add(e);
+                }
+                e.setY(cursor);
+            } else {
+                if (Math.abs(cursor - e.getX()) > 1e-9) {
+                    changed.add(e);
+                }
+                e.setX(cursor);
+            }
+        }
+        return changed;
+    }
+
+    private static List<TemplateElement> applyGapDelta(List<TemplateElement> els, double delta, boolean vertical) {
+        if (els.size() < 2) {
+            return Collections.emptyList();
+        }
+        List<TemplateElement> sorted = new ArrayList<>(els);
+        if (vertical) {
+            sorted.sort(Comparator.comparingDouble(TemplateElement::getY));
+        } else {
+            sorted.sort(Comparator.comparingDouble(TemplateElement::getX));
+        }
+        List<TemplateElement> changed = new ArrayList<>();
+        for (int i = 1; i < sorted.size(); i++) {
+            TemplateElement e = sorted.get(i);
+            double shift = delta * i;
+            if (vertical) {
+                double ny = e.getY() + shift;
+                if (Math.abs(ny - e.getY()) > 1e-9) {
+                    changed.add(e);
+                }
+                e.setY(ny);
+            } else {
+                double nx = e.getX() + shift;
+                if (Math.abs(nx - e.getX()) > 1e-9) {
+                    changed.add(e);
+                }
+                e.setX(nx);
+            }
+        }
+        return changed;
+    }
+}
 
 public class TemplateDesigner extends BorderPane {
 
@@ -103,6 +275,13 @@ public class TemplateDesigner extends BorderPane {
 
     private Template template;
     private TemplateElement selectedElement;
+    // F3: Ctrl+click multi-selection. selectedElement stays the anchor (primary
+    // target for properties/keyboard), multiSelectedElements is the full set.
+    private final java.util.LinkedHashSet<TemplateElement> multiSelectedElements = new java.util.LinkedHashSet<>();
+    private boolean multiSelectionEnabled = false; // F5: opt-in via properties panel
+    private Pane marqueeRect = null;
+    private double marqueeStartX, marqueeStartY;
+    private final Map<TemplateElement, double[]> dragOrigins = new HashMap<>();
     private final DesignerState designerState = new DesignerState();
 
     private final Pane canvasContainer = new Pane();
@@ -155,7 +334,7 @@ public class TemplateDesigner extends BorderPane {
      * element's width:height ratio, the Figma-style aspect lock exposed in the
      * Position & Size panel. Session-scoped, not persisted per element.
      */
-    private boolean aspectLock = false;
+    private boolean aspectLock = true;
     private boolean magnetSnapping = true;
     private boolean showGrid = true;
     private boolean isPanMode = false;
@@ -1318,10 +1497,30 @@ public class TemplateDesigner extends BorderPane {
                 if (activeInlineEditor != null) {
                     commitInlineTextEdit(true);
                 }
+                if (e.isControlDown()) {
+                    beginMarquee(e.getX(), e.getY());
+                    e.consume();
+                    return;
+                }
                 selectedElement = null;
+                multiSelectedElements.clear();
                 updateSelectionOverlay();
                 updatePropertiesPanel();
                 syncLayersListSelection();
+            }
+        });
+
+        canvas.setOnMouseDragged(e -> {
+            if (marqueeRect != null && e.isPrimaryButtonDown() && e.isControlDown()) {
+                updateMarquee(e.getX(), e.getY());
+                e.consume();
+            }
+        });
+
+        canvas.setOnMouseReleased(e -> {
+            if (marqueeRect != null) {
+                finishMarquee(e.isControlDown());
+                e.consume();
             }
         });
 
@@ -1830,7 +2029,7 @@ public class TemplateDesigner extends BorderPane {
      * out, exactly like every professional design tool.
      */
     private double handleSizePx() {
-        return Math.max(3.0, 10.0 / Math.max(0.3, zoom));
+        return Math.max(3.0, 11.0 / Math.max(0.3, zoom));
     }
 
     /**
@@ -2095,8 +2294,10 @@ public class TemplateDesigner extends BorderPane {
         // EXACT element footprint (was: design-space floors of 60×30 that blew
         // up small text boxes at high zoom and made the editor visibly change
         // the element's size while editing). Editing must never resize.
-        double w = Math.max(4.0, el.getW() * MM_PX);
-        double h = Math.max(4.0, el.getH() * MM_PX);
+        // Text sits INSIDE the editor with the shared padding policy
+        // (line-height vertical, 1 mm horizontal) so editing never clips.
+        double w = Math.max(4.0, el.getW() * MM_PX + 2.0 * textVisualPadW() * MM_PX);
+        double h = Math.max(4.0, el.getH() * MM_PX + 2.0 * textVisualPadH(el) * MM_PX);
 
         String initialText = el.getText() != null ? el.getText() : "";
         String colorHex = el.getColor() != null && !el.getColor().isBlank() ? el.getColor() : "#1a1a1a";
@@ -2121,8 +2322,8 @@ public class TemplateDesigner extends BorderPane {
 
         int initialLines = Math.max(1, initialText.split("\r\n|\r|\n", -1).length);
         double minLineHeight = Math.max(measuredTextH, fontSize * 1.25);
-        double initialRequiredH = Math.max(h, Math.ceil(minLineHeight * initialLines + 2.0));
-        double initialRequiredW = Math.max(w, Math.ceil(measuredTextW + 8.0));
+        double initialRequiredH = Math.max(h, Math.ceil(minLineHeight * initialLines + 2.0 * textVisualPadH(el) * MM_PX));
+        double initialRequiredW = Math.max(w, Math.ceil(measuredTextW + 2.0 * textVisualPadW() * MM_PX));
 
         TextArea editor = new TextArea(initialText);
         editor.getStyleClass().add("designer-inline-editor");
@@ -2140,8 +2341,8 @@ public class TemplateDesigner extends BorderPane {
             double curW = measureText.getLayoutBounds().getWidth();
             double curH = measureText.getLayoutBounds().getHeight();
             int curLines = Math.max(1, curText.split("\r\n|\r|\n", -1).length);
-            double needW = Math.max(w, Math.ceil(curW + 8.0));
-            double needH = Math.max(h, Math.ceil(Math.max(curH, fontSize * 1.25) * curLines + 2.0));
+            double needW = Math.max(w, Math.ceil(curW + 2.0 * textVisualPadW() * MM_PX));
+            double needH = Math.max(h, Math.ceil(Math.max(curH, fontSize * 1.25) * curLines + 2.0 * textVisualPadH(el) * MM_PX));
             if (needW > editor.getWidth()) {
                 editor.setPrefWidth(needW);
                 editor.setMinWidth(needW);
@@ -2162,10 +2363,11 @@ public class TemplateDesigner extends BorderPane {
                 "-fx-font-family: '%s'; -fx-font-size: %.1fpx; -fx-font-weight: %d; -fx-font-style: %s; "
                 + "-fx-text-fill: %s; -fx-background-color: %s; -fx-background-insets: 0; "
                 + "-fx-border-color: %s; -fx-border-width: %.2fpx; -fx-border-radius: %.2fpx; "
-                + "-fx-background-radius: %.2fpx; -fx-padding: 0; "
+                + "-fx-background-radius: %.2fpx; -fx-padding: %.3fpx %.3fpx %.3fpx %.3fpx; "
                 + "-fx-highlight-fill: %s; -fx-highlight-text-fill: %s; "
                 + "-fx-accent: %s;",
                 family, fontSize, weight, fs, colorHex, bg, blueBorder, 1.0 * inv, 2.0 * inv, 2.0 * inv,
+                textVisualPadH(el) * MM_PX, textVisualPadW() * MM_PX, textVisualPadH(el) * MM_PX, textVisualPadW() * MM_PX,
                 blueHighlight, colorHex, blueBorder));
 
         editor.setOnKeyPressed(ke -> {
@@ -2318,7 +2520,23 @@ public class TemplateDesigner extends BorderPane {
         wrapper.setOnMousePressed(e -> {
             if (isPanMode || isSpaceDown || e.getButton() == MouseButton.MIDDLE) return;
             if (e.getClickCount() == 2 && e.getButton() == MouseButton.PRIMARY && (el.getType() == ElementType.TEXT || el.getType() == ElementType.PAGENO)) {
+                ensureTextFrame(el);
                 startInlineTextEdit(el);
+                e.consume();
+                return;
+            }
+            if (e.isControlDown() && e.isPrimaryButtonDown()) {
+                // F3: Ctrl+click toggles membership in the multi-selection.
+                if (multiSelectedElements.contains(el)) {
+                    multiSelectedElements.remove(el);
+                } else {
+                    multiSelectedElements.add(el);
+                }
+                selectedElement = multiSelectedElements.isEmpty() ? el
+                        : multiSelectedElements.iterator().next();
+                updateSelectionOverlay();
+                updatePropertiesPanel();
+                syncLayersListSelection();
                 e.consume();
                 return;
             }
@@ -2329,6 +2547,9 @@ public class TemplateDesigner extends BorderPane {
                 moveStart[3] = el.getY();
                 isMoved[0] = false;
                 groupOrigins.clear();
+                // F3: plain click collapses the multi-selection to this element.
+                multiSelectedElements.clear();
+                multiSelectedElements.add(el);
 
                 if (el.isGrouped()) {
                     for (TemplateElement sibling : template.getElements()) {
@@ -2379,6 +2600,25 @@ public class TemplateDesigner extends BorderPane {
                     }
                 }
             }
+            // F3: when other elements share the multi-selection, move them too.
+            for (TemplateElement extra : multiSelectedElements) {
+                if (extra == el || extra.isLocked()) continue;
+                if (groupOrigins.containsKey(extra)) continue;
+                double[] orig = dragOrigins.computeIfAbsent(extra,
+                        k -> new double[]{k.getX(), k.getY()});
+                double nx = Math.max(-2000.0, orig[0] + finalDx);
+                double ny = Math.max(-2000.0, orig[1] + finalDy);
+                extra.setX(nx);
+                extra.setY(ny);
+                for (Node n : elementsPane.getChildren()) {
+                    if (n.getUserData() == extra) {
+                        n.setLayoutX(nx * MM_PX);
+                        n.setLayoutY(ny * MM_PX);
+                        break;
+                    }
+                }
+            }
+            dragOrigins.clear();
 
             updateSelectionOverlayPos(el.getX() * MM_PX, el.getY() * MM_PX);
             e.consume();
@@ -2398,6 +2638,153 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private Pane activeSelectionBox = null;
+
+    // ── F3: Ctrl+drag marquee (rubber-band) selection ──
+
+    private void beginMarquee(double x, double y) {
+        marqueeStartX = x;
+        marqueeStartY = y;
+        marqueeRect = new Pane();
+        marqueeRect.setBorder(new Border(new BorderStroke(
+                Color.web("#D9A13B"), BorderStrokeStyle.DASHED, CornerRadii.EMPTY, new BorderWidths(1))));
+        marqueeRect.setBackground(new Background(new BackgroundFill(
+                Color.web("#D9A13B", 0.08), CornerRadii.EMPTY, Insets.EMPTY)));
+        marqueeRect.setMouseTransparent(true);
+        marqueeRect.setLayoutX(x);
+        marqueeRect.setLayoutY(y);
+        guideLayer.getChildren().add(marqueeRect);
+    }
+
+    private void updateMarquee(double x, double y) {
+        if (marqueeRect == null) return;
+        double mx = Math.min(marqueeStartX, x);
+        double my = Math.min(marqueeStartY, y);
+        marqueeRect.setLayoutX(mx);
+        marqueeRect.setLayoutY(my);
+        marqueeRect.setPrefSize(Math.abs(x - marqueeStartX), Math.abs(y - marqueeStartY));
+        marqueeRect.setMinSize(Math.abs(x - marqueeStartX), Math.abs(y - marqueeStartY));
+        marqueeRect.setVisible(true);
+    }
+
+    private void finishMarquee(boolean additive) {
+        if (marqueeRect == null) return;
+        double mx = marqueeRect.getLayoutX() / zoom;
+        double my = marqueeRect.getLayoutY() / zoom;
+        double mw = marqueeRect.getWidth() / zoom;
+        double mh = marqueeRect.getHeight() / zoom;
+        guideLayer.getChildren().remove(marqueeRect);
+        marqueeRect = null;
+        List<TemplateElement> hits = MultiSelectSupport.elementsInMarquee(
+                template.getElements(), mx, my, mw, mh);
+        if (!additive) {
+            multiSelectedElements.clear();
+        }
+        multiSelectedElements.addAll(hits);
+        multiSelectedElements.removeIf(TemplateElement::isHidden);
+        if (!multiSelectedElements.isEmpty()) {
+            selectedElement = multiSelectedElements.iterator().next();
+            updateSelectionOverlay();
+            updatePropertiesPanel();
+            syncLayersListSelection();
+        }
+    }
+
+    /** F4: overlay for 2+ selected elements — per-element tint + union box. */
+    private void buildMultiSelectionOverlay() {
+        List<TemplateElement> els = new ArrayList<>(multiSelectedElements);
+        for (TemplateElement e : els) {
+            javafx.scene.shape.Rectangle tint = new javafx.scene.shape.Rectangle(
+                    e.getW() * MM_PX, e.getH() * MM_PX);
+            tint.setLayoutX(e.getX() * MM_PX);
+            tint.setLayoutY(e.getY() * MM_PX);
+            tint.setFill(Color.web("#D9A13B", 0.10));
+            tint.setStroke(Color.web("#D9A13B", 0.6));
+            tint.setStrokeWidth(0.8);
+            tint.setMouseTransparent(true);
+            selectionPane.getChildren().add(tint);
+        }
+        double[] b = MultiSelectSupport.unionBounds(els);
+        Pane unionBox = new Pane();
+        unionBox.setLayoutX(b[0] * MM_PX);
+        unionBox.setLayoutY(b[1] * MM_PX);
+        unionBox.setPrefSize(b[2] * MM_PX, b[3] * MM_PX);
+        unionBox.setMinSize(b[2] * MM_PX, b[3] * MM_PX);
+        unionBox.setBorder(new Border(new BorderStroke(
+                Color.web("#D9A13B"), BorderStrokeStyle.SOLID, CornerRadii.EMPTY,
+                new BorderWidths(1.2), Insets.EMPTY)));
+        Rectangle hit = new Rectangle(b[2] * MM_PX, b[3] * MM_PX);
+        hit.setFill(Color.web("#FFFFFF", 0.005));
+        hit.setPickOnBounds(true);
+        hit.setCursor(Cursor.MOVE);
+        // Compact delete badge: a constant on-screen footprint (inverse-zoom
+        // sized like the resize handles) with an explicit font size, so the app
+        // theme's large default font can never blow the "✕" up again.
+        double delPx = Math.max(11.0, 15.0 / Math.max(0.3, zoom));
+        Button delBtn = new Button("✕");
+        delBtn.getStyleClass().add("overlay-delete-btn");
+        delBtn.setFocusTraversable(false);
+        delBtn.setMinSize(delPx, delPx);
+        delBtn.setPrefSize(delPx, delPx);
+        delBtn.setMaxSize(delPx, delPx);
+        delBtn.setStyle("-fx-font-size: " + String.format(java.util.Locale.US, "%.1f", delPx * 0.6) + "px;"
+                + " -fx-padding: 0; -fx-alignment: center;"
+                + " -fx-background-radius: " + String.format(java.util.Locale.US, "%.1f", delPx * 0.3) + ";");
+        delBtn.setTooltip(new Tooltip("Delete all selected elements (Delete)"));
+        delBtn.setOnAction(ev -> { deleteSelected(); ev.consume(); });
+        delBtn.setLayoutX(Math.max(0, b[2] * MM_PX - delPx));
+        delBtn.setLayoutY(-delPx - 2);
+        unionBox.getChildren().addAll(hit, delBtn);
+        final double[] mStart = new double[4];
+        final boolean[] mMoved = new boolean[1];
+        hit.setOnMousePressed(ev -> {
+            if (isPanMode || isSpaceDown || ev.getButton() != MouseButton.PRIMARY) return;
+            mStart[0] = ev.getScreenX();
+            mStart[1] = ev.getScreenY();
+            mStart[2] = b[0];
+            mStart[3] = b[1];
+            mMoved[0] = false;
+            dragOrigins.clear();
+            for (TemplateElement e2 : multiSelectedElements) {
+                if (!e2.isLocked()) {
+                    dragOrigins.put(e2, new double[]{e2.getX(), e2.getY()});
+                }
+            }            ev.consume();
+        });
+        hit.setOnMouseDragged(ev -> {
+            if (isPanMode || isSpaceDown || !ev.isPrimaryButtonDown()) return;
+            mMoved[0] = true;
+            double ddx = (ev.getScreenX() - mStart[0]) / zoom / MM_PX;
+            double ddy = (ev.getScreenY() - mStart[1]) / zoom / MM_PX;
+            for (Map.Entry<TemplateElement, double[]> en : dragOrigins.entrySet()) {
+                TemplateElement e2 = en.getKey();
+                double[] o = en.getValue();
+                double nx = Math.max(-2000.0, o[0] + ddx);
+                double ny = Math.max(-2000.0, o[1] + ddy);
+                e2.setX(nx);
+                e2.setY(ny);
+                for (Node n : elementsPane.getChildren()) {
+                    if (n.getUserData() == e2) {
+                        n.setLayoutX(nx * MM_PX);
+                        n.setLayoutY(ny * MM_PX);
+                        break;
+                    }
+                }
+            }
+            unionBox.setLayoutX((b[0] + ddx) * MM_PX);
+            unionBox.setLayoutY((b[1] + ddy) * MM_PX);
+            ev.consume();
+        });
+        hit.setOnMouseReleased(ev -> {
+            if (mMoved[0]) {
+                saveState();
+                syncGeoSpinnersIfPresent();
+            }
+            ev.consume();
+        });
+        selectionPane.getChildren().add(unionBox);
+        activeSelectionBox = unionBox;
+        updateStatusBarCoords();
+    }
 
     private void updateSelectionOverlayPos(double px, double py) {
         if (activeSelectionBox != null) {
@@ -2485,6 +2872,17 @@ public class TemplateDesigner extends BorderPane {
     /** Element → the size its visual was rendered at (identity: elements are unique instances). */
     private final java.util.Map<TemplateElement, double[]> renderedSizes = new java.util.IdentityHashMap<>();
 
+    private static Label findTextLabel(Node node) {
+        if (node instanceof Label l) return l;
+        if (node instanceof Parent parent) {
+            for (Node c : parent.getChildrenUnmodifiable()) {
+                Label l = findTextLabel(c);
+                if (l != null) return l;
+            }
+        }
+        return null;
+    }
+
     private void updateLiveElementVisual(TemplateElement el, double newW, double newH, double newX, double newY) {
         double wPx = newW * MM_PX;
         double hPx = newH * MM_PX;
@@ -2525,12 +2923,199 @@ public class TemplateDesigner extends BorderPane {
                             }
                         }
                     }
+                    if (isTextLike(el.getType())) {
+                        Label lbl = findTextLabel(child);
+                        if (lbl != null) {
+                            double sizePx = el.getFontSize() > 0 ? el.getFontSize() * 1.333 : 13.333;
+                            Font cur = lbl.getFont();
+                            String fam = cur != null ? cur.getFamily() : "Segoe UI";
+                            lbl.setFont(Font.font(fam, sizePx));
+                            double lhMult = el.getLineHeight() > 0 ? el.getLineHeight() : 1.25;
+                            double effLineSpacing = (lhMult - 1.20) * sizePx + (el.getLineSpacing() * 1.333);
+                            lbl.setLineSpacing(Math.max(-sizePx * 0.4, effLineSpacing));
+                        }
+                    }
                 }
                 break;
             }
         }
         updateStatusBarCoords();
     }
+
+    /**
+     * TEXT selection-box padding policy (user spec): the gap between the
+     * text and the selection box is controlled by the line height
+     * VERTICALLY and is a fixed 1 mm HORIZONTALLY (left and right).
+     * Single source of truth shared by the selection overlay, the canvas
+     * renderer and the inline text editor so all three wrap identically.
+     */
+    /**
+     * No-clip default line height (multiplier): natural 1.2x leading plus
+     * about 1 mm of breathing room per line, derived from the font size.
+     */
+    public static double defaultLineHeightFor(TemplateElement el) {
+        double fsMm = (el.getFontSize() > 0 ? el.getFontSize() : 11.0) * 0.352778; // pt -> mm
+        return Math.min(2.5, Math.max(1.2, 1.2 + 1.0 / Math.max(0.5, fsMm)));
+    }
+
+    static double textVisualPadW() {
+        return 1.0;
+    }
+
+    /**
+     * Vertical padding (mm) for the text frame and selection box, controlled
+     * ONLY by the line height value (not by font size), matching the user spec:
+     * top/bottom padding = (lineHeight - 1.0) * 0.5 * 1mm-unit, so at the
+     * default 1.25x line height the padding is 0.125mm top + 0.125mm bottom.
+     */
+    static double textVisualPadH(TemplateElement el) {
+        double lh = el.getLineHeight() > 0 ? el.getLineHeight() : 1.25;
+        // Line-height component, with a small floor so the frame always has
+        // anti-clip headroom even when lineHeight <= 1.0.
+        return Math.max(0.05, Math.max(0, (lh - 1.0) * 0.5) * 1.0); // mm
+    }
+
+    /** TEXT-like types (PAGENO renders exactly like TEXT). */
+    static boolean isTextLike(ElementType t) {
+        return t == ElementType.TEXT || t == ElementType.PAGENO;
+    }
+
+    /**
+     * TEXT-only: guarantee the frame is never smaller than the minimum padded
+     * text bounds; also prevents the frame from being smaller than the text
+     * itself so the selection box always CONTAINS the text (user-reported:
+     * box misplaced / oversized after scaling).
+     */
+    /**
+     * Keeps a TEXT frame coherent after a numeric W/H edit: with the aspect
+     * lock on the FONT scales with the box change (crisp glyphs); with it off
+     * the glyphs stretch to fill the box (Bind W/H off = per-axis scaling).
+     */
+    private void applyTextSizeFromBox(TemplateElement el, double startW, double startH) {
+        if (!isTextLike(el.getType())) return;
+        if (aspectLock && startW > 0.0001 && startH > 0.0001) {
+            double factor = Math.max(0.01, Math.max(el.getW() / startW, el.getH() / startH));
+            el.setFontSize(Math.max(0.5, el.getFontSize() * factor));
+        }
+        double[] base = naturalTextFrame(el);
+        el.setScaleX(Math.max(0.05, el.getW() / Math.max(0.01, base[0])));
+        el.setScaleY(Math.max(0.05, el.getH() / Math.max(0.01, base[1])));
+    }
+
+    /** Natural (unstretched) TEXT frame in mm: measured text + padding policy. */
+    static double[] naturalTextFrame(TemplateElement el) {
+        double padW = textVisualPadW();
+        double padH = textVisualPadH(el);
+        double w = estimateTextWidth(el) / MM_PX + 2.0 * padW;
+        double h = estimateTextHeight(el) / MM_PX + 2.0 * padH;
+        return new double[]{Math.max(1.0, w), Math.max(0.5, h)};
+    }
+
+    /**
+     * Applies a resolved handle drag to a TEXT-like element.
+     *
+     * <p>Constrained ("Bind W/H" on, or a Shift-bound corner): the FONT
+     * scales, so both dimensions grow together and the glyphs stay crisp.
+     * Free (Bind W/H off): the frame takes the drag exactly and the glyphs
+     * STRETCH along each axis via scaleX/scaleY — dragging one handle then
+     * changes only that axis, and the box still hugs the text.</p>
+     */
+    static void applyTextDrag(TemplateElement el, double newW, double newH,
+                                     double startW, double startH, double startFont,
+                                     boolean constrained) {
+        double fontBase = startFont > 0 ? startFont : (el.getFontSize() > 0 ? el.getFontSize() : 10.0);
+        if (constrained) {
+            double factor = Math.max(0.01, newH / Math.max(0.0001, startH));
+            el.setFontSize(Math.max(0.5, fontBase * factor));
+            el.setW(Math.max(1.0, newW));
+            el.setH(Math.max(0.5, newH));
+        } else {
+            double[] base = naturalTextFrame(el);
+            el.setScaleX(Math.max(0.05, newW / Math.max(0.01, base[0])));
+            el.setScaleY(Math.max(0.05, newH / Math.max(0.01, base[1])));
+            el.setW(Math.max(1.0, newW));
+            el.setH(Math.max(0.5, newH));
+        }
+    }
+
+    /**
+     * Shared entry point for all eight resize handles: resolves the raw drag
+     * through the "Bind W/H" lock and then applies it (font-scaled or
+     * glyph-stretched for TEXT, plain box resize for everything else).
+     * Returns the applied {width, height} in mm.
+     */
+    private double[] applyHandleDrag(TemplateElement el, double startW, double startH,
+                                     double rawW, double rawH, boolean corner,
+                                     boolean shift, String axis, double startFont) {
+        double[] wh = applyConstrain(el, startW, startH, rawW, rawH, corner, shift, axis);
+        double w = Math.max(1.0, wh[0]);
+        double h = Math.max(0.5, wh[1]);
+        if (isTextLike(el.getType())) {
+            boolean constrained = aspectLock
+                    || (corner && (isCornerProportional(el.getType()) != shift));
+            applyTextDrag(el, w, h, startW, startH, startFont, constrained);
+            return new double[]{Math.max(1.0, el.getW()), Math.max(0.5, el.getH())};
+        }
+        el.setW(w);
+        el.setH(h);
+        return new double[]{w, h};
+    }
+
+    static void ensureTextFrame(TemplateElement el) {
+        if (el == null || !isTextLike(el.getType())) return;
+        // Shrink-wrap BOTH ways: the frame must EXACTLY hold the measured
+        // text plus the shared padding policy (1 mm horizontal, line-height
+        // vertical). A grow-only check left stale slack after scale-down,
+        // which made the selection box bigger than the text (user-reported).
+        double padW = textVisualPadW();
+        double padH = textVisualPadH(el);
+        double[] base = naturalTextFrame(el);
+        // A stretched text (Bind W/H off) keeps its per-axis stretch, so the
+        // frame is the natural footprint times that stretch — the box still
+        // hugs the glyphs with no clipping.
+        double sx = el.getScaleX() > 0.05 ? el.getScaleX() : 1.0;
+        double sy = el.getScaleY() > 0.05 ? el.getScaleY() : 1.0;
+        el.setW(Math.max(4.0, base[0] * Math.abs(sx)));
+        el.setH(Math.max(3.0, base[1] * Math.abs(sy)));
+    }
+
+    /** Real text width (px) for the shrink-wrap frame; bold-aware. */
+    static double estimateTextWidth(TemplateElement el) {
+        double sizePx = el.getFontSize() > 0 ? el.getFontSize() * 1.3333 : 13.3333;
+        boolean heavy = el.isBold() || el.getFontWeight() >= 600;
+        Font textFont = Font.font(
+                el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI",
+                heavy ? FontWeight.BOLD : FontWeight.NORMAL,
+                el.isItalic() ? FontPosture.ITALIC : FontPosture.REGULAR,
+                sizePx);
+        Text measure = new Text(el.getText() != null && !el.getText().isEmpty() ? el.getText() : "W");
+        measure.setFont(textFont);
+        double wPx = measure.getLayoutBounds().getWidth();
+        // Families without a real bold face render synthesized bold, which is
+        // slightly wider; keep the frame honest so bold text never clips.
+        return heavy ? wPx * 1.04 : wPx;
+    }
+
+    /** Real text-block height (px, incl. line spacing) for the shrink-wrap frame. */
+    static double estimateTextHeight(TemplateElement el) {
+        double fontSizePx = el.getFontSize() > 0 ? el.getFontSize() * 1.3333 : 13.3333;
+        double lh = el.getLineHeight() > 0 ? el.getLineHeight() : 1.25;
+        boolean heavy = el.isBold() || el.getFontWeight() >= 600;
+        Font textFont = Font.font(
+                el.getFontFamily() != null ? el.getFontFamily() : "Segoe UI",
+                heavy ? FontWeight.BOLD : FontWeight.NORMAL,
+                el.isItalic() ? FontPosture.ITALIC : FontPosture.REGULAR,
+                fontSizePx);
+        Text measure = new Text(el.getText() != null && !el.getText().isEmpty() ? el.getText() : "W");
+        measure.setFont(textFont);
+        measure.setLineSpacing(Math.max(-fontSizePx * 0.4, (lh - 1.20) * fontSizePx));
+        double hPx = measure.getLayoutBounds().getHeight();
+        return heavy ? hPx * 1.04 : hPx;
+    }
+
+    /** TEXT padding state for the current selection overlay (see textVisualPadW/H). */
+    private boolean selTextType = false;
+    private TemplateElement selTextPadElement = null;
 
     private void updateSelBoxGeometry(Pane selBox, Rectangle border, Rectangle moveHitArea,
                                      Rectangle hNW, Rectangle hN, Rectangle hNE, Rectangle hE,
@@ -2539,10 +3124,22 @@ public class TemplateDesigner extends BorderPane {
                                      double nwPx, double nhPx) {
         selBox.setPrefSize(nwPx, nhPx);
         selBox.setMinSize(nwPx, nhPx);
-        border.setWidth(nwPx);
-        border.setHeight(nhPx);
-        moveHitArea.setWidth(nwPx);
-        moveHitArea.setHeight(nhPx);
+        // TEXT: the dashed border and the move hit area wrap the text with the
+        // shared padding policy (line-height vertical, 1 mm horizontal) so the
+        // selection box always CONTAINS the text at any zoom and during any
+        // scale drag (user-reported: box misplaced after scaling).
+        // The frame already CONTAINS the text padding (the renderer pads
+        // inside), so the selection border hugs the frame edge exactly: the
+        // visible gap text-to-box equals the policy padding (1 mm H,
+        // line-height V) with no double padding (user-reported oversized box).
+        double padW = 0.0;
+        double padH = 0.0;
+        border.setX(-padW); border.setY(-padH);
+        border.setWidth(nwPx + 2.0 * padW);
+        border.setHeight(nhPx + 2.0 * padH);
+        moveHitArea.setX(-padW); moveHitArea.setY(-padH);
+        moveHitArea.setWidth(nwPx + 2.0 * padW);
+        moveHitArea.setHeight(nhPx + 2.0 * padH);
 
         // Handle size scales inversely with zoom so handles stay ~10 px ON
         // SCREEN at every zoom (design-space 10 px became 40 px blobs at 400 %).
@@ -2611,16 +3208,38 @@ public class TemplateDesigner extends BorderPane {
             return;
         }
 
+        // F4: with 2+ selected elements, draw individual light boxes plus the
+        // shared union bounding box (move + delete only).
+        if (multiSelectedElements.size() >= 2) {
+            buildMultiSelectionOverlay();
+            return;
+        }
+
         if (activeInlineEditor != null && activeInlineEditingElement == selectedElement) {
             selectionPane.getChildren().add(activeInlineEditor);
             return;
         }
 
         TemplateElement el = selectedElement;
+        selTextType = isTextLike(el.getType());
+        selTextPadElement = selTextType ? el : null;
+
         double x = el.getX() * MM_PX;
         double y = el.getY() * MM_PX;
         double w = el.getW() * MM_PX;
         double h = el.getH() * MM_PX;
+
+        // For text elements, the selection box must wrap the text with padding,
+        // so ensure the element frame is large enough to contain the text.
+        if (selTextType) {
+            ensureTextFrame(el);
+            // Recalculate dimensions after ensuring frame
+            w = el.getW() * MM_PX;
+            h = el.getH() * MM_PX;
+        }
+
+        // Capture element reference for lambdas (final/effectively final required)
+        final TemplateElement elRef = el;
 
         Pane selBox = new Pane();
         selBox.setLayoutX(x);
@@ -2637,22 +3256,25 @@ public class TemplateDesigner extends BorderPane {
         moveHitArea.setPickOnBounds(true);
         moveHitArea.setCursor(Cursor.MOVE);
 
+        final TemplateElement finalEl = elRef;
+
         final double[] moveStart = new double[4];
         final boolean[] isMoved = new boolean[1];
         final Map<TemplateElement, double[]> groupOrigins = new HashMap<>();
 
         moveHitArea.setOnMousePressed(e -> {
             if (isPanMode || isSpaceDown || e.getButton() == MouseButton.MIDDLE) return;
-            if (e.getClickCount() == 2 && e.getButton() == MouseButton.PRIMARY && (el.getType() == ElementType.TEXT || el.getType() == ElementType.PAGENO)) {
-                startInlineTextEdit(el);
+            if (e.getClickCount() == 2 && e.getButton() == MouseButton.PRIMARY && (finalEl.getType() == ElementType.TEXT || finalEl.getType() == ElementType.PAGENO)) {
+                ensureTextFrame(finalEl);
+                startInlineTextEdit(finalEl);
                 e.consume();
                 return;
             }
             if (e.isPrimaryButtonDown()) {
                 moveStart[0] = e.getScreenX();
                 moveStart[1] = e.getScreenY();
-                moveStart[2] = el.getX();
-                moveStart[3] = el.getY();
+                moveStart[2] = finalEl.getX();
+                moveStart[3] = finalEl.getY();
                 isMoved[0] = false;
                 groupOrigins.clear();
 
@@ -2664,6 +3286,14 @@ public class TemplateDesigner extends BorderPane {
                     }
                 } else {
                     groupOrigins.put(el, new double[]{el.getX(), el.getY()});
+                }
+                // F3: seed origins so co-selected elements follow when dragging
+                // the active selection box's hit area.
+                dragOrigins.clear();
+                for (TemplateElement extra : multiSelectedElements) {
+                    if (extra != el && !extra.isLocked()) {
+                        dragOrigins.put(extra, new double[]{extra.getX(), extra.getY()});
+                    }
                 }
                 e.consume();
             }
@@ -2701,6 +3331,25 @@ public class TemplateDesigner extends BorderPane {
                 }
             }
 
+            // F3: move co-selected elements alongside.
+            for (TemplateElement extra : multiSelectedElements) {
+                if (extra == el || extra.isLocked()) continue;
+                if (groupOrigins.containsKey(extra)) continue;
+                double[] orig = dragOrigins.computeIfAbsent(extra,
+                        k -> new double[]{k.getX(), k.getY()});
+                double nx = Math.max(-2000.0, orig[0] + finalDx);
+                double ny = Math.max(-2000.0, orig[1] + finalDy);
+                extra.setX(nx);
+                extra.setY(ny);
+                for (Node n : elementsPane.getChildren()) {
+                    if (n.getUserData() == extra) {
+                        n.setLayoutX(nx * MM_PX);
+                        n.setLayoutY(ny * MM_PX);
+                        break;
+                    }
+                }
+            }
+            dragOrigins.clear();
             selBox.setLayoutX(el.getX() * MM_PX);
             selBox.setLayoutY(el.getY() * MM_PX);
             updateStatusBarCoords();
@@ -2767,10 +3416,12 @@ public class TemplateDesigner extends BorderPane {
                 rotateStem, handleRotate,
                 w, h);
 
+        final double fw = w;
+        final double fh = h;
         final double[] rotCenter = new double[2];
         handleRotate.setOnMousePressed(e -> {
             if (e.isPrimaryButtonDown()) {
-                Point2D centerInScene = selBox.localToScene(w / 2.0, h / 2.0);
+                Point2D centerInScene = selBox.localToScene(fw / 2.0, fh / 2.0);
                 rotCenter[0] = centerInScene.getX();
                 rotCenter[1] = centerInScene.getY();
                 e.consume();
@@ -2810,13 +3461,15 @@ public class TemplateDesigner extends BorderPane {
             e.consume();
         });
 
-        final double[] resizeStart = new double[6];
+        final double[] resizeStart = new double[7]; // [6] = font size at drag start (TEXT scale drags)
 
         // 1. SE Handle (Bottom-Right)
         handleSE.setOnMousePressed(e -> {
             if (e.isPrimaryButtonDown()) {
                 resizeStart[0] = e.getScreenX(); resizeStart[1] = e.getScreenY();
                 resizeStart[2] = el.getW(); resizeStart[3] = el.getH();
+                resizeStart[4] = el.getX(); resizeStart[5] = el.getY();
+                resizeStart[6] = el.getFontSize() > 0 ? el.getFontSize() : 10.0;
                 e.consume();
             }
         });
@@ -2829,23 +3482,37 @@ public class TemplateDesigner extends BorderPane {
             // Corner drag: content objects scale proportionally by default
             // (Figma corner semantics); Shift flips to free. Other types stay
             // free unless Shift constrains them.
-            String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
-            double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
-            newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
             if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); }
+            String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
+            double[] wh = applyHandleDrag(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis, resizeStart[6]);
+            newW = wh[0]; newH = wh[1];
             el.setW(newW); el.setH(newH);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
             if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, newH);
             else updateLiveElementVisual(el, newW, newH, el.getX(), el.getY());
             e.consume();
         });
-        handleSE.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleSE.setOnMouseReleased(e -> {
+            clearScalePreview(selectedElement);
+            if (selectedElement != null) {
+                ensureTextFrame(selectedElement);
+                selectedElement.setX(resizeStart[4]);
+                selectedElement.setY(resizeStart[5]);
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                saveState();
+                syncGeoSpinnersIfPresent();
+            }
+            e.consume();
+        });
 
         // 2. E Handle (Right-Center)
         handleE.setOnMousePressed(e -> {
             if (e.isPrimaryButtonDown()) {
                 resizeStart[0] = e.getScreenX(); resizeStart[1] = e.getScreenY();
                 resizeStart[2] = el.getW(); resizeStart[3] = el.getH();
+                resizeStart[4] = el.getX(); resizeStart[5] = el.getY();
+                resizeStart[6] = el.getFontSize() > 0 ? el.getFontSize() : 10.0;
                 e.consume();
             }
         });
@@ -2854,21 +3521,39 @@ public class TemplateDesigner extends BorderPane {
             double dx = (e.getScreenX() - resizeStart[0]) / zoom / MM_PX;
             double newW = Math.max(5.0, resizeStart[2] + dx);
             if (snapToGrid) newW = Math.round(newW);
+            double[] wh = applyHandleDrag(el, resizeStart[2], resizeStart[3], newW, resizeStart[3], false, e.isShiftDown(), "w", resizeStart[6]);
+            newW = wh[0];
+            double newH = wh[1];
             el.setW(newW);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, el.getH() * MM_PX);
+            el.setH(newH);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
             // Side handles stretch one dimension — for content objects that is
             // a non-uniform scale of the visual (matches mainstream tools).
-            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, el.getH());
-            else updateLiveElementVisual(el, newW, el.getH(), el.getX(), el.getY());
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, newH);
+            else updateLiveElementVisual(el, newW, newH, el.getX(), el.getY());
             e.consume();
         });
-        handleE.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleE.setOnMouseReleased(e -> {
+            clearScalePreview(selectedElement);
+            if (selectedElement != null) {
+                ensureTextFrame(selectedElement);
+                selectedElement.setX(resizeStart[4]);
+                selectedElement.setY(resizeStart[5]);
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                saveState();
+                syncGeoSpinnersIfPresent();
+            }
+            e.consume();
+        });
 
         // 3. S Handle (Bottom-Center)
         handleS.setOnMousePressed(e -> {
             if (e.isPrimaryButtonDown()) {
                 resizeStart[0] = e.getScreenX(); resizeStart[1] = e.getScreenY();
                 resizeStart[2] = el.getW(); resizeStart[3] = el.getH();
+                resizeStart[4] = el.getX(); resizeStart[5] = el.getY();
+                resizeStart[6] = el.getFontSize() > 0 ? el.getFontSize() : 10.0;
                 e.consume();
             }
         });
@@ -2877,13 +3562,29 @@ public class TemplateDesigner extends BorderPane {
             double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
             double newH = Math.max(3.0, resizeStart[3] + dy);
             if (snapToGrid) newH = Math.round(newH);
+            double[] wh = applyHandleDrag(el, resizeStart[2], resizeStart[3], resizeStart[2], newH, false, e.isShiftDown(), "h", resizeStart[6]);
+            double newW = wh[0];
+            newH = wh[1];
+            el.setW(newW);
             el.setH(newH);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, el.getW() * MM_PX, newH * MM_PX);
-            if (isScaleable(el.getType())) updateLiveScaledVisual(el, el.getW(), newH);
-            else updateLiveElementVisual(el, el.getW(), newH, el.getX(), el.getY());
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, newH);
+            else updateLiveElementVisual(el, newW, newH, el.getX(), el.getY());
             e.consume();
         });
-        handleS.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleS.setOnMouseReleased(e -> {
+            clearScalePreview(selectedElement);
+            if (selectedElement != null) {
+                ensureTextFrame(selectedElement);
+                selectedElement.setX(resizeStart[4]);
+                selectedElement.setY(resizeStart[5]);
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                saveState();
+                syncGeoSpinnersIfPresent();
+            }
+            e.consume();
+        });
 
         // 4. W Handle (Left-Center with Left-Side Scaling)
         handleW.setOnMousePressed(e -> {
@@ -2891,6 +3592,7 @@ public class TemplateDesigner extends BorderPane {
                 resizeStart[0] = e.getScreenX(); resizeStart[1] = e.getScreenY();
                 resizeStart[2] = el.getW(); resizeStart[3] = el.getH();
                 resizeStart[4] = el.getX(); resizeStart[5] = el.getY();
+                resizeStart[6] = el.getFontSize() > 0 ? el.getFontSize() : 10.0;
                 e.consume();
             }
         });
@@ -2900,14 +3602,31 @@ public class TemplateDesigner extends BorderPane {
             double newW = Math.max(5.0, resizeStart[2] - dx);
             double newX = Math.max(-2000.0, resizeStart[4] + (resizeStart[2] - newW));
             if (snapToGrid) { newW = Math.round(newW); newX = Math.round(newX); }
-            el.setW(newW); el.setX(newX);
+            double[] wh = applyHandleDrag(el, resizeStart[2], resizeStart[3], newW, resizeStart[3], false, e.isShiftDown(), "w", resizeStart[6]);
+            newW = wh[0];
+            double newH = wh[1];
+            newX = Math.max(-2000.0, resizeStart[4] + (resizeStart[2] - newW));
+            el.setW(newW); el.setH(newH); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, el.getH() * MM_PX);
-            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, el.getH());
-            else updateLiveElementVisual(el, newW, el.getH(), newX, el.getY());
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, newH);
+            else updateLiveElementVisual(el, newW, newH, newX, el.getY());
             e.consume();
         });
-        handleW.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleW.setOnMouseReleased(e -> {
+            clearScalePreview(selectedElement);
+            if (selectedElement != null) {
+                double right = resizeStart[4] + resizeStart[2];
+                ensureTextFrame(selectedElement);
+                selectedElement.setX(Math.max(-2000.0, right - selectedElement.getW()));
+                selectedElement.setY(resizeStart[5]);
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                saveState();
+                syncGeoSpinnersIfPresent();
+            }
+            e.consume();
+        });
 
         // 5. N Handle (Top-Center)
         handleN.setOnMousePressed(e -> {
@@ -2915,6 +3634,7 @@ public class TemplateDesigner extends BorderPane {
                 resizeStart[0] = e.getScreenX(); resizeStart[1] = e.getScreenY();
                 resizeStart[2] = el.getW(); resizeStart[3] = el.getH();
                 resizeStart[4] = el.getX(); resizeStart[5] = el.getY();
+                resizeStart[6] = el.getFontSize() > 0 ? el.getFontSize() : 10.0;
                 e.consume();
             }
         });
@@ -2924,14 +3644,31 @@ public class TemplateDesigner extends BorderPane {
             double newH = Math.max(3.0, resizeStart[3] - dy);
             double newY = Math.max(-2000.0, resizeStart[5] + (resizeStart[3] - newH));
             if (snapToGrid) { newH = Math.round(newH); newY = Math.round(newY); }
-            el.setH(newH); el.setY(newY);
+            double[] wh = applyHandleDrag(el, resizeStart[2], resizeStart[3], resizeStart[2], newH, false, e.isShiftDown(), "h", resizeStart[6]);
+            double newW = wh[0];
+            newH = wh[1];
+            newY = Math.max(-2000.0, resizeStart[5] + (resizeStart[3] - newH));
+            el.setW(newW); el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
-            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, el.getW() * MM_PX, newH * MM_PX);
-            if (isScaleable(el.getType())) updateLiveScaledVisual(el, el.getW(), newH);
-            else updateLiveElementVisual(el, el.getW(), newH, el.getX(), newY);
+            updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
+            if (isScaleable(el.getType())) updateLiveScaledVisual(el, newW, newH);
+            else updateLiveElementVisual(el, newW, newH, el.getX(), newY);
             e.consume();
         });
-        handleN.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleN.setOnMouseReleased(e -> {
+            clearScalePreview(selectedElement);
+            if (selectedElement != null) {
+                double bottom = resizeStart[5] + resizeStart[3];
+                ensureTextFrame(selectedElement);
+                selectedElement.setX(resizeStart[4]);
+                selectedElement.setY(Math.max(-2000.0, bottom - selectedElement.getH()));
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                saveState();
+                syncGeoSpinnersIfPresent();
+            }
+            e.consume();
+        });
 
         // 6. NW Handle (Top-Left)
         handleNW.setOnMousePressed(e -> {
@@ -2939,6 +3676,7 @@ public class TemplateDesigner extends BorderPane {
                 resizeStart[0] = e.getScreenX(); resizeStart[1] = e.getScreenY();
                 resizeStart[2] = el.getW(); resizeStart[3] = el.getH();
                 resizeStart[4] = el.getX(); resizeStart[5] = el.getY();
+                resizeStart[6] = el.getFontSize() > 0 ? el.getFontSize() : 10.0;
                 e.consume();
             }
         });
@@ -2948,12 +3686,13 @@ public class TemplateDesigner extends BorderPane {
             double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
             double newW = Math.max(5.0, resizeStart[2] - dx);
             double newH = Math.max(3.0, resizeStart[3] - dy);
+            if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); }
             String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
-            double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
-            newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
+            double[] wh = applyHandleDrag(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis, resizeStart[6]);
+            newW = wh[0]; newH = wh[1];
             double newX = Math.max(-2000.0, resizeStart[4] + (resizeStart[2] - newW));
             double newY = Math.max(-2000.0, resizeStart[5] + (resizeStart[3] - newH));
-            if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newX = Math.round(newX); newY = Math.round(newY); }
+            if (snapToGrid) { newX = Math.round(newX); newY = Math.round(newY); }
             el.setW(newW); el.setH(newH); el.setX(newX); el.setY(newY);
             selBox.setLayoutX(newX * MM_PX); selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
@@ -2961,7 +3700,21 @@ public class TemplateDesigner extends BorderPane {
             else updateLiveElementVisual(el, newW, newH, newX, newY);
             e.consume();
         });
-        handleNW.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleNW.setOnMouseReleased(e -> {
+            clearScalePreview(selectedElement);
+            if (selectedElement != null) {
+                double right = resizeStart[4] + resizeStart[2];
+                double bottom = resizeStart[5] + resizeStart[3];
+                ensureTextFrame(selectedElement);
+                selectedElement.setX(Math.max(-2000.0, right - selectedElement.getW()));
+                selectedElement.setY(Math.max(-2000.0, bottom - selectedElement.getH()));
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                saveState();
+                syncGeoSpinnersIfPresent();
+            }
+            e.consume();
+        });
 
         // 7. NE Handle (Top-Right)
         handleNE.setOnMousePressed(e -> {
@@ -2969,6 +3722,7 @@ public class TemplateDesigner extends BorderPane {
                 resizeStart[0] = e.getScreenX(); resizeStart[1] = e.getScreenY();
                 resizeStart[2] = el.getW(); resizeStart[3] = el.getH();
                 resizeStart[4] = el.getX(); resizeStart[5] = el.getY();
+                resizeStart[6] = el.getFontSize() > 0 ? el.getFontSize() : 10.0;
                 e.consume();
             }
         });
@@ -2978,11 +3732,12 @@ public class TemplateDesigner extends BorderPane {
             double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
             double newW = Math.max(5.0, resizeStart[2] + dx);
             double newH = Math.max(3.0, resizeStart[3] - dy);
+            if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); }
             String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
-            double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
-            newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
+            double[] wh = applyHandleDrag(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis, resizeStart[6]);
+            newW = wh[0]; newH = wh[1];
             double newY = Math.max(-2000.0, resizeStart[5] + (resizeStart[3] - newH));
-            if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newY = Math.round(newY); }
+            if (snapToGrid) { newY = Math.round(newY); }
             el.setW(newW); el.setH(newH); el.setY(newY);
             selBox.setLayoutY(newY * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
@@ -2990,7 +3745,20 @@ public class TemplateDesigner extends BorderPane {
             else updateLiveElementVisual(el, newW, newH, el.getX(), newY);
             e.consume();
         });
-        handleNE.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleNE.setOnMouseReleased(e -> {
+            clearScalePreview(selectedElement);
+            if (selectedElement != null) {
+                double bottom = resizeStart[5] + resizeStart[3];
+                ensureTextFrame(selectedElement);
+                selectedElement.setX(resizeStart[4]);
+                selectedElement.setY(Math.max(-2000.0, bottom - selectedElement.getH()));
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                saveState();
+                syncGeoSpinnersIfPresent();
+            }
+            e.consume();
+        });
 
         // 8. SW Handle (Bottom-Left)
         handleSW.setOnMousePressed(e -> {
@@ -2998,6 +3766,7 @@ public class TemplateDesigner extends BorderPane {
                 resizeStart[0] = e.getScreenX(); resizeStart[1] = e.getScreenY();
                 resizeStart[2] = el.getW(); resizeStart[3] = el.getH();
                 resizeStart[4] = el.getX(); resizeStart[5] = el.getY();
+                resizeStart[6] = el.getFontSize() > 0 ? el.getFontSize() : 10.0;
                 e.consume();
             }
         });
@@ -3007,11 +3776,12 @@ public class TemplateDesigner extends BorderPane {
             double dy = (e.getScreenY() - resizeStart[1]) / zoom / MM_PX;
             double newW = Math.max(5.0, resizeStart[2] - dx);
             double newH = Math.max(3.0, resizeStart[3] + dy);
+            if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); }
             String axis = Math.abs(dx) >= Math.abs(dy) ? "w" : "h";
-            double[] wh = applyConstrain(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis);
-            newW = Math.max(5.0, wh[0]); newH = Math.max(3.0, wh[1]);
+            double[] wh = applyHandleDrag(el, resizeStart[2], resizeStart[3], newW, newH, true, e.isShiftDown(), axis, resizeStart[6]);
+            newW = wh[0]; newH = wh[1];
             double newX = Math.max(-2000.0, resizeStart[4] + (resizeStart[2] - newW));
-            if (snapToGrid) { newW = Math.round(newW); newH = Math.round(newH); newX = Math.round(newX); }
+            if (snapToGrid) { newX = Math.round(newX); }
             el.setW(newW); el.setH(newH); el.setX(newX);
             selBox.setLayoutX(newX * MM_PX);
             updateSelBoxGeometry(selBox, border, moveHitArea, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW, rotateStem, handleRotate, newW * MM_PX, newH * MM_PX);
@@ -3019,7 +3789,20 @@ public class TemplateDesigner extends BorderPane {
             else updateLiveElementVisual(el, newW, newH, newX, el.getY());
             e.consume();
         });
-        handleSW.setOnMouseReleased(e -> { clearScalePreview(selectedElement); updateElementVisualInPlace(selectedElement); saveState(); syncGeoSpinnersIfPresent(); e.consume(); });
+        handleSW.setOnMouseReleased(e -> {
+            clearScalePreview(selectedElement);
+            if (selectedElement != null) {
+                double right = resizeStart[4] + resizeStart[2];
+                ensureTextFrame(selectedElement);
+                selectedElement.setX(Math.max(-2000.0, right - selectedElement.getW()));
+                selectedElement.setY(resizeStart[5]);
+                updateElementVisualInPlace(selectedElement);
+                updateSelectionOverlay();
+                saveState();
+                syncGeoSpinnersIfPresent();
+            }
+            e.consume();
+        });
 
         selBox.getChildren().addAll(moveHitArea, border, rotateStem, handleRotate, handleNW, handleN, handleNE, handleE, handleSE, handleS, handleSW, handleW);
         if (isPointEditable(el)) {
@@ -3272,6 +4055,13 @@ public class TemplateDesigner extends BorderPane {
 
             addPropertyNodes(headerRow, nameRow);
 
+            // ── F5: multi-selection properties (2+ selected elements) ──
+            if (multiSelectedElements.size() >= 2) {
+                buildMultiSelectionProperties();
+                propBox.getChildren().setAll(propBuffer);
+                return;
+            }
+
             // Position & Size Grid
             TitledPane geoPane = new TitledPane();
             geoPane.setText("Position & Size");
@@ -3359,11 +4149,13 @@ public class TemplateDesigner extends BorderPane {
                 if (!updatingProperties && !updatingGeo[0] && v != null) {
                     double newW = UnitConverter.toMm(v, unitBox.getValue());
                     double ratio = el.getW() > 0.0001 ? el.getH() / el.getW() : 1.0;
+                    double startW = el.getW(); double startH = el.getH();
                     el.setW(newW);
                     if (aspectLock) {
                         el.setH(newW * ratio);
                         syncGeoSpinnersIfPresent(); // keep the H spinner in step
                     }
+                    applyTextSizeFromBox(el, startW, startH);
                     updateElementVisualInPlace(el);
                     updateSelectionOverlay();
                 }
@@ -3372,11 +4164,13 @@ public class TemplateDesigner extends BorderPane {
                 if (!updatingProperties && !updatingGeo[0] && v != null) {
                     double newH = UnitConverter.toMm(v, unitBox.getValue());
                     double ratio = el.getH() > 0.0001 ? el.getW() / el.getH() : 1.0;
+                    double startW = el.getW(); double startH = el.getH();
                     el.setH(newH);
                     if (aspectLock) {
                         el.setW(newH * ratio);
                         syncGeoSpinnersIfPresent(); // keep the W spinner in step
                     }
+                    applyTextSizeFromBox(el, startW, startH);
                     updateElementVisualInPlace(el);
                     updateSelectionOverlay();
                 }
@@ -3711,7 +4505,7 @@ public class TemplateDesigner extends BorderPane {
         spacingGrid.setPadding(new Insets(8));
 
         double curLh = el.getLineHeight() > 0 ? el.getLineHeight() : 1.25;
-        Spinner<Double> lineHeightSpin = new Spinner<>(0.8, 3.5, curLh, 0.05);
+        Spinner<Double> lineHeightSpin = new Spinner<>(0.1, 200.0, curLh, 0.05);
         lineHeightSpin.setPrefWidth(85);
         configureNumberSpinner(lineHeightSpin);
         lineHeightSpin.setTooltip(new Tooltip("Line height multiplier (e.g. 1.0x, 1.25x, 1.5x) - scales automatically with font size"));
@@ -7585,7 +8379,12 @@ public class TemplateDesigner extends BorderPane {
         el.setH(10);
 
         switch (type) {
-            case TEXT: el.setText("New text"); break;
+            case TEXT:
+                el.setText("New text");
+                // No-clip default: natural 1.2x leading + ~1 mm breathing room
+                // per line, so brand-new text never starts out clipped.
+                el.setLineHeight(defaultLineHeightFor(el));
+                break;
             case RECT: el.setW(60); el.setH(30); el.setBg("#f4f1ea"); el.setBorderColor("#1a1a1a"); el.setBorderWidth(0.5); break;
             case CIRCLE: el.setW(30); el.setH(30); el.setRadius(15); el.setBg("#e0e7ff"); el.setBorderColor("#4f46e5"); el.setBorderWidth(0.5); break;
             case ELLIPSE: el.setW(50); el.setH(30); el.setRadiusX(25); el.setRadiusY(15); el.setBg("#fef3c7"); el.setBorderColor("#d97706"); el.setBorderWidth(0.5); break;
@@ -7609,6 +8408,10 @@ public class TemplateDesigner extends BorderPane {
                 el.setColumns(PresetTemplates.defaultItemColumns());
                 break;
             default: break;
+        }
+
+        if (isTextLike(el.getType())) {
+            ensureTextFrame(el);
         }
 
         template.getElements().add(el);
@@ -7668,7 +8471,40 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void duplicateSelected() {
-        if (selectedElement == null) return;
+        List<TemplateElement> sel = getEffectiveSelection();
+        if (sel.isEmpty()) return;
+        if (sel.size() == 1) {
+            duplicateOne(sel.get(0));
+            return;
+        }
+        List<TemplateElement> copies = new ArrayList<>();
+        for (TemplateElement src : sel) {
+            TemplateElement copy = cloneElementForDuplicate(src);
+            copy.setX(src.getX() + 5);
+            copy.setY(src.getY() + 5);
+            template.getElements().add(copy);
+            copies.add(copy);
+        }
+        saveState();
+        refreshCanvas();
+        selectElementSet(copies);
+        refreshLayersList();
+        Toast.show(app.getRootPane(), "Duplicated", copies.size() + " elements duplicated.", false);
+    }
+
+    private void duplicateOne(TemplateElement selectedElement) {
+        TemplateElement copy = cloneElementForDuplicate(selectedElement);
+
+        template.getElements().add(copy);
+        this.selectedElement = copy;
+        saveState();
+        refreshCanvas();
+        updatePropertiesPanel();
+        refreshLayersList();
+    }
+
+    /** Field-wise clone with a fresh id and +5/+5 offset; no side effects. */
+    private TemplateElement cloneElementForDuplicate(TemplateElement selectedElement) {
         TemplateElement copy = new TemplateElement();
         copy.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         copy.setType(selectedElement.getType());
@@ -7683,6 +8519,7 @@ public class TemplateDesigner extends BorderPane {
         copy.setBorderWidth(selectedElement.getBorderWidth());
         copy.setFontSize(selectedElement.getFontSize());
         copy.setFontWeight(selectedElement.getFontWeight());
+        copy.setBold(selectedElement.isBold());
         copy.setItalic(selectedElement.isItalic());
         copy.setAlign(selectedElement.getAlign());
         copy.setHeaderBg(selectedElement.getHeaderBg());
@@ -7696,19 +8533,15 @@ public class TemplateDesigner extends BorderPane {
             }
             copy.setColumns(copiedCols);
         }
-
-        template.getElements().add(copy);
-        selectedElement = copy;
-        saveState();
-        refreshCanvas();
-        updatePropertiesPanel();
-        refreshLayersList();
+        return copy;
     }
 
     private void deleteSelected() {
-        if (selectedElement == null) return;
-        template.getElements().remove(selectedElement);
+        List<TemplateElement> sel = getEffectiveSelection();
+        if (sel.isEmpty()) return;
+        template.getElements().removeAll(sel);
         selectedElement = null;
+        multiSelectedElements.clear();
         saveState();
         refreshCanvas();
         updatePropertiesPanel();
@@ -7727,11 +8560,192 @@ public class TemplateDesigner extends BorderPane {
         }
     }
 
+    // ── F5: multi-selection spacing panel ──
+
+    private void buildMultiSelectionProperties() {
+        int n = multiSelectedElements.size();
+        Label multiLbl = new Label(n + " elements selected");
+        multiLbl.getStyleClass().add("overline-accent");
+
+        // F5 gate: spacing tools only appear once explicitly enabled here.
+        CheckBox enableGap = new CheckBox("Enable multi-object spacing");
+        enableGap.setSelected(multiSelectionEnabled);
+        enableGap.setTooltip(new Tooltip(
+                "Enable to equalize / nudge the gaps between all selected elements."));
+        enableGap.selectedProperty().addListener((obs, o, v) -> {
+            multiSelectionEnabled = v;
+            updatePropertiesPanel();
+        });
+        addPropertyNodes(multiLbl, enableGap);
+
+        if (!multiSelectionEnabled) {
+            Label hint = new Label(
+                    "Ctrl+Click elements to add them to the selection (click again to remove), or drag an empty area to marquee-select. Then tick \"Enable multi-object spacing\" to set, nudge or distribute the gaps between them.");
+            hint.setWrapText(true);
+            hint.getStyleClass().add("text-sm");
+            addPropertyNode(hint);
+            return;
+        }
+
+        List<TemplateElement> els = getEffectiveSelection();
+        if (els.size() < 2) {
+            return;
+        }
+
+        addPropertyNode(buildGapRow("Vertical Gap", true, els));
+        addPropertyNode(buildGapRow("Horizontal Gap", false, els));
+
+        Label how = new Label(
+                "How this works" + System.lineSeparator()
+                        + "- Set: makes every gap exactly the typed value (mm)." + System.lineSeparator()
+                        + "- - / +: nudges every gap by 1 mm; element sizes are never changed." + System.lineSeparator()
+                        + "- Distribute: spreads the elements evenly between the first and the last, so all gaps become equal." + System.lineSeparator()
+                        + "- The \"now\" value is the current average gap. Vertical uses Y, horizontal uses X." + System.lineSeparator()
+                        + "- Only each element's X/Y coordinates are stored; nothing extra is saved and each action is one undo step.");
+        how.setWrapText(true);
+        how.getStyleClass().add("text-sm");
+        addPropertyNode(how);
+    }
+
+    private HBox buildGapRow(String title, boolean vertical, List<TemplateElement> els) {
+        List<Double> gaps = vertical
+                ? MultiSelectSupport.verticalGaps(els)
+                : MultiSelectSupport.horizontalGaps(els);
+        double avg = gaps.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double min = gaps.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
+
+        Label t = new Label(title);
+        t.getStyleClass().add("cell-bold-secondary");
+        Label val = new Label("now: " + round2(avg) + " mm");
+        val.getStyleClass().add("text-sm");
+
+        Button minus = createToolbarBtn("−", "Decrease all " + title.toLowerCase() + "s by 1 mm",
+                () -> applyGapDelta(vertical, -1.0));
+        Button plus = createToolbarBtn("+", "Increase all " + title.toLowerCase() + "s by 1 mm",
+                () -> applyGapDelta(vertical, 1.0));
+
+        TextField field = new TextField(String.valueOf(round2(avg)));
+        field.setPrefWidth(64);
+        field.setTooltip(new Tooltip("Target gap in mm for all selected elements"));
+        Button setBtn = new Button("Set");
+        setBtn.setTooltip(new Tooltip("Make every gap equal to this value"));
+        setBtn.setOnAction(ev -> {
+            try {
+                double g = Double.parseDouble(field.getText().trim());
+                applyEqualGapValue(vertical, g);
+            } catch (NumberFormatException ex) {
+                Toast.show(app.getRootPane(), "Spacing", "Enter a valid number (mm).", false);
+            }
+        });
+
+        Button distBtn = new Button("Distribute");
+        distBtn.setTooltip(new Tooltip("Spread elements evenly between first and last"));
+        distBtn.setOnAction(ev -> distributeEvenly(vertical));
+
+        HBox row = new HBox(6, t, minus, plus, field, setBtn, distBtn, val);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().add("text-sm");
+        return row;
+    }
+
+    private static double round2(double v) {
+        return Math.round(v * 100.0) / 100.0;
+    }
+
+    private void applyGapDelta(boolean vertical, double delta) {
+        List<TemplateElement> els = getEffectiveSelection();
+        if (els.size() < 2) return;
+        List<TemplateElement> changed = vertical
+                ? MultiSelectSupport.applyVerticalGapDelta(els, delta)
+                : MultiSelectSupport.applyHorizontalGapDelta(els, delta);
+        commitGapChange(changed);
+    }
+
+    private void applyEqualGapValue(boolean vertical, double gap) {
+        List<TemplateElement> els = getEffectiveSelection();
+        if (els.size() < 2) return;
+        List<TemplateElement> changed = vertical
+                ? MultiSelectSupport.applyEqualVerticalGap(els, gap)
+                : MultiSelectSupport.applyEqualHorizontalGap(els, gap);
+        commitGapChange(changed);
+    }
+
+    /** Evenly spreads the elements over the current first-to-last span. */
+    private void distributeEvenly(boolean vertical) {
+        List<TemplateElement> els = getEffectiveSelection();
+        if (els.size() < 3) {
+            applyGapDelta(vertical, 0.0);
+            return;
+        }
+        List<TemplateElement> sorted = new ArrayList<>(els);
+        if (vertical) {
+            sorted.sort(Comparator.comparingDouble(TemplateElement::getY));
+        } else {
+            sorted.sort(Comparator.comparingDouble(TemplateElement::getX));
+        }
+        TemplateElement first = sorted.get(0);
+        TemplateElement last = sorted.get(sorted.size() - 1);
+        double span = vertical
+                ? (last.getY() + last.getH()) - first.getY()
+                : (last.getX() + last.getW()) - first.getX();
+        double sumSizes = 0.0;
+        for (int i = 0; i < sorted.size() - 1; i++) {
+            sumSizes += vertical ? sorted.get(i).getH() : sorted.get(i).getW();
+        }
+        double gap = (span - sumSizes) / (sorted.size() - 1);
+        applyEqualGapValue(vertical, gap);
+    }
+
+    private void commitGapChange(List<TemplateElement> changed) {
+        if (changed == null || changed.isEmpty()) return;
+        for (TemplateElement e : changed) {
+            updateElementVisualInPlace(e);
+        }
+        updateSelectionOverlay();
+        saveState();
+        updatePropertiesPanel();
+    }
+
+    /** F3/F6: commits a new multi-selection (used by paste, duplicate, undo). */
+    private void selectElementSet(java.util.Collection<TemplateElement> els) {
+        multiSelectedElements.clear();
+        if (els != null) {
+            for (TemplateElement e : els) {
+                if (template.getElements().contains(e)) {
+                    multiSelectedElements.add(e);
+                }
+            }
+        }
+        selectedElement = multiSelectedElements.isEmpty() ? null
+                : multiSelectedElements.iterator().next();
+        updateSelectionOverlay();
+        updatePropertiesPanel();
+        syncLayersListSelection();
+    }
+
+    /** Multi-selection when 2+ elements are set; otherwise the anchor or null. */
+    private List<TemplateElement> getEffectiveSelection() {
+        if (multiSelectedElements.size() >= 2) {
+            return new ArrayList<>(multiSelectedElements);
+        }
+        if (selectedElement != null && template.getElements().contains(selectedElement)) {
+            List<TemplateElement> one = new ArrayList<>();
+            one.add(selectedElement);
+            return one;
+        }
+        return Collections.emptyList();
+    }
+
     private void syncLayersListSelection() {
         isUpdatingLayersSelection = true;
         try {
             if (selectedElement != null) {
                 layersList.getSelectionModel().clearSelection();
+                for (TemplateElement me : multiSelectedElements) {
+                    if (!me.isHidden()) {
+                        layersList.getSelectionModel().select(me);
+                    }
+                }
                 layersList.getSelectionModel().select(selectedElement);
                 layersList.scrollTo(selectedElement);
             } else {
@@ -7767,6 +8781,7 @@ public class TemplateDesigner extends BorderPane {
 
     private void undo() {
         Template previous = designerState.undo();
+        multiSelectedElements.clear();
         if (previous == null) {
             Toast.show(app.getRootPane(), "Undo", "Nothing to undo.", false);
             return;
@@ -7782,6 +8797,7 @@ public class TemplateDesigner extends BorderPane {
 
     private void redo() {
         Template next = designerState.redo();
+        multiSelectedElements.clear();
         if (next == null) {
             Toast.show(app.getRootPane(), "Redo", "Nothing to redo.", false);
             return;
@@ -7796,12 +8812,37 @@ public class TemplateDesigner extends BorderPane {
     }
 
     private void copySelected() {
-        if (selectedElement == null) return;
-        designerState.copy(selectedElement);
-        Toast.show(app.getRootPane(), "Copied", "Element copied to clipboard.", false);
+        List<TemplateElement> sel = getEffectiveSelection();
+        if (sel.isEmpty()) return;
+        if (sel.size() == 1) {
+            designerState.copy(sel.get(0));
+            Toast.show(app.getRootPane(), "Copied", "Element copied to clipboard.", false);
+        } else {
+            designerState.copyAll(sel);
+            Toast.show(app.getRootPane(), "Copied", sel.size() + " elements copied to clipboard.", false);
+        }
     }
 
     private void pasteCopied() {
+        if (designerState.pasteAllSource() != null) {
+            List<TemplateElement> sources = designerState.pasteAllSource();
+            List<TemplateElement> pasted = new ArrayList<>();
+            for (TemplateElement src : sources) {
+                TemplateElement p = designerState.deepCopy(src);
+                if (p == null) continue;
+                p.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
+                p.setX(p.getX() + 5);
+                p.setY(p.getY() + 5);
+                template.getElements().add(p);
+                pasted.add(p);
+            }
+            saveState();
+            refreshCanvas();
+            selectElementSet(pasted);
+            refreshLayersList();
+            Toast.show(app.getRootPane(), "Pasted", pasted.size() + " elements pasted.", false);
+            return;
+        }
         TemplateElement pasted = designerState.pasteSource();
         if (pasted == null) return;
         pasted.setId("el_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
@@ -7809,6 +8850,7 @@ public class TemplateDesigner extends BorderPane {
         pasted.setY(pasted.getY() + 5);
         template.getElements().add(pasted);
         selectedElement = pasted;
+        multiSelectedElements.clear();
         saveState();
         refreshCanvas();
         updatePropertiesPanel();
@@ -7880,8 +8922,11 @@ public class TemplateDesigner extends BorderPane {
                 {"Ctrl + G", "Group selected elements together"},
                 {"Ctrl + Shift + G", "Ungroup selected elements"},
                 {"Delete  /  Backspace", "Delete selected canvas element (safe while typing)"},
-                {"Arrow Keys", "Nudge selected element by 1 mm (Shift + Arrow for 5 mm)"}
+                {"Arrow Keys", "Nudge selected element by 1 mm (Shift + Arrow for 5 mm)"},
+                {"Ctrl + Click", "Add / remove element from multi-selection (Ctrl+drag draws a rubber band)"},
+                {"Multi-Spacing", "Select 2+ elements, enable multi-object spacing, then equalize or nudge gaps"}
         };
+
 
         int r = 0;
         for (String[] sc : shortcuts) {
@@ -8061,12 +9106,25 @@ public class TemplateDesigner extends BorderPane {
                 return;
             }
             selectedElement = null;
+            multiSelectedElements.clear();
             updateSelectionOverlay();
             updatePropertiesPanel();
             syncLayersListSelection();
             e.consume();
         } else if (selectedElement != null && !selectedElement.isLocked()) {
             double step = e.isShiftDown() ? 5.0 : 1.0;
+            List<TemplateElement> nudgeTargets = getEffectiveSelection();
+            for (TemplateElement t : nudgeTargets) {
+                if (t.isLocked()) continue;
+                switch (e.getCode()) {
+                    case LEFT  -> t.setX(Math.max(-2000.0, t.getX() - step));
+                    case RIGHT -> t.setX(t.getX() + step);
+                    case UP    -> t.setY(Math.max(-2000.0, t.getY() - step));
+                    case DOWN  -> t.setY(t.getY() + step);
+                    default -> { }
+                }
+            }
+            boolean multiNudged = nudgeTargets.size() > 1;
             if (e.getCode() == KeyCode.LEFT) {
                 selectedElement.setX(Math.max(-2000.0, selectedElement.getX() - step));
                 updateElementVisualInPlace(selectedElement);

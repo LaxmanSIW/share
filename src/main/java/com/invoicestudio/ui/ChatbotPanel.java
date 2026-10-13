@@ -49,15 +49,15 @@ import java.util.List;
  */
 public class ChatbotPanel extends VBox {
 
-    private static final String CARD = "-fx-background-color: #10161F; -fx-border-color: #273245;"
+    private static final String CARD = "-fx-background-color: -color-surface; -fx-border-color: -color-border-subtle;"
             + "-fx-border-width: 1 0 0 1;";
-    private static final String USER_BUBBLE = "-fx-background-color: #2A2417; -fx-text-fill: #F2EBDD;"
+    private static final String USER_BUBBLE = "-fx-background-color: -color-accent-subtle; -fx-text-fill: -color-text-bright;"
             + "-fx-background-radius: 14 4 14 14; -fx-padding: 9 13 9 13; -fx-font-size: 13px;";
-    private static final String AI_BUBBLE = "-fx-background-color: #17202E; -fx-text-fill: #E6EAF0;"
+    private static final String AI_BUBBLE = "-fx-background-color: -color-surface-raised; -fx-text-fill: -color-text;"
             + "-fx-background-radius: 4 14 14 14; -fx-padding: 9 13 9 13; -fx-font-size: 13px;";
-    private static final String ERROR_BUBBLE = "-fx-background-color: rgba(220,38,38,0.15); -fx-text-fill: #f1b0b0;"
+    private static final String ERROR_BUBBLE = "-fx-background-color: -color-error-subtle; -fx-text-fill: -color-error-text;"
             + "-fx-background-radius: 4 14 14 14; -fx-padding: 9 13 9 13; -fx-font-size: 13px;";
-    private static final String GOLD = "#D9A13B";
+    private static final String GOLD = "-color-accent";
 
     // Material-design glyph paths (24×24 grid), sized per use.
     private static final String SVG_SEND = "M2.01 21L23 12 2.01 3 2 10l15 2-15 2z";
@@ -116,7 +116,7 @@ public class ChatbotPanel extends VBox {
         setPrefWidth(460);
         setMinWidth(380);
 
-        providerLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #97A3B6;");
+        providerLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: -color-text-secondary;");
         refreshProviderLabel();
         ChatbotConfig.addChangeListener(configListener);
 
@@ -192,8 +192,12 @@ public class ChatbotPanel extends VBox {
     private static Node svg(String content, double size, String color) {
         SVGPath p = new SVGPath();
         p.setContent(content);
-        p.setFill(Color.web(color));
-        p.setStyle("-fx-scale-x: " + (size / 24.0) + "; -fx-scale-y: " + (size / 24.0) + ";");
+        if (color != null && color.startsWith("-")) {
+            p.setStyle("-fx-fill: " + color + "; -fx-scale-x: " + (size / 24.0) + "; -fx-scale-y: " + (size / 24.0) + ";");
+        } else {
+            p.setFill(Color.web(color != null ? color : "#97A3B6"));
+            p.setStyle("-fx-scale-x: " + (size / 24.0) + "; -fx-scale-y: " + (size / 24.0) + ";");
+        }
         return p;
     }
 
@@ -201,7 +205,7 @@ public class ChatbotPanel extends VBox {
         Button b = new Button();
         b.setId(id);
         b.getStyleClass().add("button-icon-subtle");
-        b.setGraphic(svg(path, 16, "#97A3B6"));
+        b.setGraphic(svg(path, 16, "-color-text-secondary"));
         b.setTooltip(new Tooltip(tooltip));
         b.setMinSize(30, 30);
         b.setPrefSize(30, 30);
@@ -212,7 +216,7 @@ public class ChatbotPanel extends VBox {
     private Button copyButton(String text) {
         Button b = new Button();
         b.getStyleClass().add("button-icon-subtle");
-        b.setGraphic(svg(SVG_COPY, 12, "#7C8AA0"));
+        b.setGraphic(svg(SVG_COPY, 12, "-color-text-tertiary"));
         b.setTooltip(new Tooltip("Copy"));
         b.setMinSize(22, 22);
         b.setPrefSize(22, 22);
@@ -227,7 +231,7 @@ public class ChatbotPanel extends VBox {
             b.setTooltip(new Tooltip("Copied!"));
             javafx.animation.PauseTransition pt = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(1.5));
             pt.setOnFinished(ev -> {
-                b.setGraphic(svg(SVG_COPY, 12, "#7C8AA0"));
+                b.setGraphic(svg(SVG_COPY, 12, "-color-text-tertiary"));
                 b.setTooltip(new Tooltip("Copy"));
             });
             pt.play();
@@ -235,12 +239,12 @@ public class ChatbotPanel extends VBox {
         return b;
     }
 
-    /** Round avatar: gold sparkle for the AI, slate person for the user. */
+    /** Round avatar: AI sparkle for the AI, neutral person for the user. */
     private StackPane avatar(boolean ai, double d) {
         StackPane c = new StackPane(ai
-                ? IconHelper.getIcon(IconHelper.ICON_SPARKLES, 12, "#1A1408")
-                : svg(SVG_PERSON, 14, "#C9D3E0"));
-        c.setStyle("-fx-background-color: " + (ai ? GOLD : "#33415C") + "; -fx-background-radius: 999;");
+                ? IconHelper.getIcon(IconHelper.ICON_SPARKLES, 12, "-color-text-inverse")
+                : svg(SVG_PERSON, 14, "-color-text-light"));
+        c.setStyle("-fx-background-color: " + (ai ? GOLD : "-color-surface-elevated") + "; -fx-background-radius: 999;");
         c.setMinSize(d, d);
         c.setPrefSize(d, d);
         c.setMaxSize(d, d);
@@ -251,13 +255,13 @@ public class ChatbotPanel extends VBox {
 
     private Node buildHeader() {
         Label title = new Label("Assistant");
-        title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #F2F4F8;");
+        title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: -color-text-bright;");
 
         // Model chip — click to pick a model from the LIVE catalogue
         // (fetched from the provider API; Gemini models.list verified).
         modelChip.setText(currentModelLabel());
         modelChip.getStyleClass().add("button-icon-subtle");
-        modelChip.setStyle("-fx-font-size: 11px; -fx-text-fill: #97A3B6; -fx-padding: 3 8 3 8;");
+        modelChip.setStyle("-fx-font-size: 11px; -fx-text-fill: -color-text-secondary; -fx-padding: 3 8 3 8;");
         modelChip.setTooltip(new Tooltip("Change model (live list from your provider)"));
         modelChip.setOnAction(e -> showModelMenu());
 
@@ -322,8 +326,8 @@ public class ChatbotPanel extends VBox {
         input.setMinHeight(36);
         input.setMaxHeight(92);
         input.setPrefHeight(36);
-        input.setStyle("-fx-background-color: transparent; -fx-text-fill: #E6EAF0;"
-                + "-fx-prompt-text-fill: #5b6779; -fx-border-color: transparent;"
+        input.setStyle("-fx-background-color: transparent; -fx-text-fill: -color-text;"
+                + "-fx-prompt-text-fill: -color-text-tertiary; -fx-border-color: transparent;"
                 + "-fx-padding: 6 2 6 10; -fx-font-size: 13px;");
         HBox.setHgrow(input, Priority.ALWAYS);
         input.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
@@ -343,7 +347,7 @@ public class ChatbotPanel extends VBox {
         attachBtn.setOnAction(e -> pickImage());
 
         sendBtn.setId("chat-send");
-        sendBtn.setGraphic(svg(SVG_SEND, 15, "#1A1408"));
+        sendBtn.setGraphic(svg(SVG_SEND, 15, "-color-text-inverse"));
         sendBtn.setStyle("-fx-background-color: " + GOLD + "; -fx-background-radius: 999; -fx-cursor: hand;"
                 + "-fx-background-insets: 0;");
         sendBtn.setTooltip(new Tooltip("Send  (Enter)"));
@@ -355,12 +359,12 @@ public class ChatbotPanel extends VBox {
         HBox pill = new HBox(6, input, attachBtn, sendBtn);
         pill.setAlignment(Pos.CENTER_RIGHT);
         pill.setMinHeight(Region.USE_PREF_SIZE);
-        pill.setStyle("-fx-background-color: #0F1520; -fx-border-color: #273245;"
+        pill.setStyle("-fx-background-color: -color-surface-raised; -fx-border-color: -color-border;"
                 + "-fx-background-radius: 14; -fx-border-radius: 14; -fx-border-width: 1;"
                 + "-fx-padding: 5 6 5 4;");
 
         Label hint = new Label("Enter to send · Shift+Enter for a new line");
-        hint.setStyle("-fx-font-size: 10.5px; -fx-text-fill: #5b6779;");
+        hint.setStyle("-fx-font-size: 10.5px; -fx-text-fill: -color-text-tertiary;");
         hint.setAlignment(Pos.CENTER);
         hint.setMaxWidth(Double.MAX_VALUE);
 
@@ -428,9 +432,9 @@ public class ChatbotPanel extends VBox {
     private void showModelMenu() {
         javafx.scene.control.Label head = new javafx.scene.control.Label("Models (live from "
                 + AiChatClient.providerLabel(cfg.getProvider()) + ")");
-        head.setStyle("-fx-font-size: 11px; -fx-text-fill: #97A3B6; -fx-padding: 8 12 4 12;");
+        head.setStyle("-fx-font-size: 11px; -fx-text-fill: -color-text-secondary; -fx-padding: 8 12 4 12;");
         VBox list = new VBox(2, head);
-        list.setStyle("-fx-background-color: #131B28; -fx-border-color: #273245;"
+        list.setStyle("-fx-background-color: -color-surface-elevated; -fx-border-color: -color-border;"
                 + "-fx-border-width: 1; -fx-background-radius: 8; -fx-border-radius: 8;");
         list.setPrefWidth(340);
         javafx.scene.control.ScrollPane sp = new javafx.scene.control.ScrollPane(list);
@@ -439,7 +443,7 @@ public class ChatbotPanel extends VBox {
         sp.setStyle("-fx-background-color: transparent;");
 
         javafx.scene.control.Label loading = new javafx.scene.control.Label("Loading…");
-        loading.setStyle("-fx-text-fill: #97A3B6; -fx-padding: 6 12 10 12;");
+        loading.setStyle("-fx-text-fill: -color-text-secondary; -fx-padding: 6 12 10 12;");
         list.getChildren().add(loading);
 
         javafx.stage.Popup popup = new javafx.stage.Popup();
@@ -465,7 +469,7 @@ public class ChatbotPanel extends VBox {
                 if (ferr != null) {
                     javafx.scene.control.Label err = new javafx.scene.control.Label(ferr);
                     err.setWrapText(true);
-                    err.setStyle("-fx-text-fill: #f1b0b0; -fx-font-size: 11px; -fx-padding: 4 12 10 12;");
+                    err.setStyle("-fx-text-fill: -color-error-text; -fx-font-size: 11px; -fx-padding: 4 12 10 12;");
                     list.getChildren().add(err);
                     return;
                 }
@@ -477,13 +481,13 @@ public class ChatbotPanel extends VBox {
                             (active ? "✓  " : "     ") + mi.displayName());
                     b.setGraphic(com.invoicestudio.ui.ModelStatusDot.forModel(cfg.getProvider(), mi.id()));
                     b.setStyle("-fx-background-color: transparent; -fx-text-fill: "
-                            + (active ? GOLD : "#C7D0DE") + "; -fx-alignment: CENTER_LEFT;"
+                            + (active ? GOLD : "-color-text") + "; -fx-alignment: CENTER_LEFT;"
                             + "-fx-padding: 6 12 6 12; -fx-font-size: 12.5px; -fx-cursor: hand;"
                             + "-fx-max-width: 9999;");
                     b.setOnMouseEntered(ev -> b.setStyle(b.getStyle()
-                            .replace("transparent", "#1E2A3C")));
+                            .replace("transparent", "-color-surface-hover")));
                     b.setOnMouseExited(ev -> b.setStyle(b.getStyle()
-                            .replace("#1E2A3C", "transparent")));
+                            .replace("-color-surface-hover", "transparent")));
                     b.setOnAction(ev -> {
                         cfg.setModel(mi.id().equals(current) ? "" : mi.id());
                         cfg.save();
@@ -520,16 +524,16 @@ public class ChatbotPanel extends VBox {
                 "Items with stock below 10 pcs",
                 "This month's sales total"}) {
             Button chip = new Button(q);
-            chip.setStyle("-fx-background-color: #17202E; -fx-text-fill: #C7D0DE; -fx-background-radius: 999;"
-                    + "-fx-border-color: #273245; -fx-border-radius: 999; -fx-padding: 6 14 6 14;"
+            chip.setStyle("-fx-background-color: -color-surface-raised; -fx-text-fill: -color-text; -fx-background-radius: 999;"
+                    + "-fx-border-color: -color-border; -fx-border-radius: 999; -fx-padding: 6 14 6 14;"
                     + "-fx-font-size: 12px; -fx-cursor: hand; -fx-alignment: CENTER_LEFT;");
             chip.setGraphic(IconHelper.getIcon(IconHelper.ICON_SPARKLES, 10, GOLD));
             chip.setOnAction(e -> {
                 input.setText(q);
                 send();
             });
-            chip.setOnMouseEntered(ev -> chip.setStyle(chip.getStyle().replace("#17202E", "#1E2A3C")));
-            chip.setOnMouseExited(ev -> chip.setStyle(chip.getStyle().replace("#1E2A3C", "#17202E")));
+            chip.setOnMouseEntered(ev -> chip.setStyle(chip.getStyle().replace("-color-surface-raised", "-color-surface-hover")));
+            chip.setOnMouseExited(ev -> chip.setStyle(chip.getStyle().replace("-color-surface-hover", "-color-surface-raised")));
             chipsRow.getChildren().add(chip);
         }
         messages.getChildren().add(chipsRow);
@@ -656,7 +660,7 @@ public class ChatbotPanel extends VBox {
         // streamed into the label, so a slow multi-request turn never looks
         // like a silent hang ("asked to delete — it got stuck, no logs").
         Label busy = new Label("●  ●  ●");
-        busy.setStyle("-fx-font-size: 11px; -fx-text-fill: #7C8AA0; -fx-padding: 8 0 0 36;");
+        busy.setStyle("-fx-font-size: 11px; -fx-text-fill: -color-text-tertiary; -fx-padding: 8 0 0 36;");
         messages.getChildren().add(busy);
         scrollToBottom();
         sendBtn.setDisable(true);
@@ -689,7 +693,7 @@ public class ChatbotPanel extends VBox {
             if (!r.toolTrace().isEmpty()) {
                 Label trace = new Label("🔧  " + String.join("  ·  ", r.toolTrace()));
                 trace.setWrapText(true);
-                trace.setStyle("-fx-font-size: 10.5px; -fx-text-fill: #7C8AA0; -fx-padding: 0 0 0 36;");
+                trace.setStyle("-fx-font-size: 10.5px; -fx-text-fill: -color-text-tertiary; -fx-padding: 0 0 0 36;");
                 messages.getChildren().add(trace);
             }
             addAiBubble(r.text(), null, false, resultMeta(r));
@@ -825,7 +829,7 @@ public class ChatbotPanel extends VBox {
     /** Tiny muted caption (time · tokens · duration) beside the copy icon. */
     private static Label metaLabel(String text) {
         Label l = new Label(text);
-        l.setStyle("-fx-font-size: 10px; -fx-text-fill: #5b6779; -fx-padding: 0 2 0 2;");
+        l.setStyle("-fx-font-size: 10px; -fx-text-fill: -color-text-tertiary; -fx-padding: 0 2 0 2;");
         return l;
     }
 

@@ -5,6 +5,8 @@ import com.invoicestudio.model.Template;
 import com.invoicestudio.model.TemplateElement;
 import com.invoicestudio.service.AppLog;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Stack;
 
 /**
@@ -23,6 +25,7 @@ final class DesignerState {
     private final Stack<String> undoStack = new Stack<>();
     private final Stack<String> redoStack = new Stack<>();
     private TemplateElement clipboardElement;
+    private final java.util.List<TemplateElement> clipboardElements = new java.util.ArrayList<>();
 
     // ─── Undo / redo (whole-template JSON snapshots) ───────────────────────
 
@@ -91,6 +94,42 @@ final class DesignerState {
             clipboardElement = mapper.readValue(mapper.writeValueAsString(el), TemplateElement.class);
         } catch (Exception e) {
             AppLog.error(e);
+        }
+    }
+
+    /** F6: multi-element clipboard. */
+    void copyAll(List<TemplateElement> els) {
+        clipboardElements.clear();
+        if (els == null) return;
+        for (TemplateElement e : els) {
+            TemplateElement c = deepCopy(e);
+            if (c != null) {
+                clipboardElements.add(c);
+            }
+        }
+    }
+
+    /** Deep copies of the clipboard elements, or null when empty. */
+    List<TemplateElement> pasteAllSource() {
+        if (clipboardElements.isEmpty()) return null;
+        List<TemplateElement> out = new ArrayList<>();
+        for (TemplateElement e : clipboardElements) {
+            TemplateElement c = deepCopy(e);
+            if (c != null) {
+                out.add(c);
+            }
+        }
+        return out;
+    }
+
+    /** Fresh deep copy of any element, or null when serialization fails. */
+    TemplateElement deepCopy(TemplateElement el) {
+        if (el == null) return null;
+        try {
+            return mapper.readValue(mapper.writeValueAsString(el), TemplateElement.class);
+        } catch (Exception e) {
+            AppLog.error(e);
+            return null;
         }
     }
 

@@ -268,6 +268,7 @@ auth & infra, AI assistant, knowledge.
 | `PrintOptions.java` | 17 | Print-choice record carried from `PrintPreviewDialog` into the services. |
 | `VariableGrouper.java` | 13 | Groups variable definitions into UI categories. |
 | `CustomComponentManager.java` | 15 | Persist/load/instantiate designer components. |
+| `TemplatePackageService.java` | 15 | .invpkg ZIP template archive packaging & extraction with asset bundling. |
 | `BulkPrintStateStore.java` | 17 | Bulk-print progress persistence for the bulk dialog. |
 | `KnowledgeRepository.java` | 20 | Ladder + id-union merge of shipped vs user knowledge articles; CRUD, listeners. |
 | `KnowledgeSeed.java` | 20 | 30 built-in seed articles. |
@@ -281,8 +282,8 @@ auth & infra, AI assistant, knowledge.
 
 ### 3.6 UI shell & shared — `ui/` (Ch 9–20)
 
-Twenty-eight files at the top of the package. `StudioApp` and `DataManager`
-are the two load-bearing walls; everything else is chrome or dialog machinery.
+Thirty-three files at the top of the package. `StudioApp` and `DataManager`
+are the two load-bearing walls; everything else is chrome, theme, or dialog machinery.
 
 | File | Ch | Role |
 |---|---|---|
@@ -296,7 +297,12 @@ are the two load-bearing walls; everything else is chrome or dialog machinery.
 | `ShortcutsDialog.java` | 9 | F1 help overlay. |
 | `WindowStateManager.java` | 9 | Window geometry persistence with debounce and off-screen guard. |
 | `WindowResizeHelper.java` | 9 | Custom 8-cursor resize handles for undecorated stages. |
+| `TitleBarTheme.java` | 9 | Windows DWM immersive dark title bar integration via JNA. |
 | `UiTheme.java` | 9 | Programmatic theme factories (buttons, KPI cards, date pickers…). |
+| `Theme.java` | 9 | Theme token data model (colors, fonts, preview swatches). |
+| `ThemeManager.java` | 9 | Centralized active theme state, dynamic stylesheet injection, user theme scanner. |
+| `ThemeValidator.java` | 9 | CSS custom properties schema and color contrast linter. |
+| `ThemeVaultPanel.java` | 9 | Settings theme gallery with live interactive preview cards and file importer. |
 | `IconHelper.java` | 9 | SVG icon factory with glyph fallback. |
 | `Toast.java` | 9 | Transient toast notifications with transition timeline. |
 | `DialogHelper.java` | 9 | Dialog theming, app-icon application, anti-flicker `styleDialog`. |

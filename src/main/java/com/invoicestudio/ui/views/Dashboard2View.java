@@ -247,15 +247,15 @@ public class Dashboard2View extends BorderPane {
         HBox grid = new HBox(14);
         grid.getChildren().addAll(
             createBigKpiCard("Total Sale Amount", "₹ " + currencyFmt.format(totalSales),
-                "All books, all time", "#8b5cf6"),
+                "All books, all time", "-color-accent"),
             createBigKpiCard("Total Payment Amount", "₹ " + currencyFmt.format(totalPayments),
-                "Total collections received", "#10b981"),
+                "Total collections received", "-color-success"),
             createBigKpiCard("Outstanding Balance", "₹ " + currencyFmt.format(outstanding),
-                "Across all active buyers", outstanding > 0 ? "#ef4444" : "#10b981"),
+                "Across all active buyers", outstanding > 0 ? "-color-error" : "-color-success"),
             createBigKpiCard("Total Pieces Sold", String.format("%,d", totalPieces),
-                "All time trouser pieces", "#3b82f6"),
+                "All time trouser pieces", "-color-info"),
             createBigKpiCard("Total Parcels Sent", String.format("%,d", totalParcels),
-                "All time cargo shipments", "#f97316")
+                "All time cargo shipments", "-color-warning")
         );
 
         for (Node n : grid.getChildren()) HBox.setHgrow(n, Priority.ALWAYS);
@@ -832,9 +832,9 @@ public class Dashboard2View extends BorderPane {
             .limit(5)
             .collect(Collectors.toList());
 
-        VBox dCard = createTop5ListCard("Top 5 Debtors", "Highest unpaid balances", "#ef4444", debtors, buyerNames, 0);
-        VBox pCard = createTop5ListCard("Top 5 Paymasters", "Largest collection sources", "#10b981", paymasters, buyerNames, 1);
-        VBox vCard = createTop5ListCard("Volume Leaders", "Most pieces purchased", "#3b82f6", volumeLeaders, buyerNames, 2);
+        VBox dCard = createTop5ListCard("Top 5 Debtors", "Highest unpaid balances", "-color-error", debtors, buyerNames, 0);
+        VBox pCard = createTop5ListCard("Top 5 Paymasters", "Largest collection sources", "-color-success", paymasters, buyerNames, 1);
+        VBox vCard = createTop5ListCard("Volume Leaders", "Most pieces purchased", "-color-info", volumeLeaders, buyerNames, 2);
 
         HBox.setHgrow(dCard, Priority.ALWAYS);
         HBox.setHgrow(pCard, Priority.ALWAYS);

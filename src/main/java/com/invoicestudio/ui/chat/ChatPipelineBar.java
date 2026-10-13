@@ -39,7 +39,7 @@ import javafx.util.Duration;
  */
 public final class ChatPipelineBar extends VBox {
 
-    private static final String GOLD = "#D9A13B";
+    private static final String GOLD = "-color-accent";
 
     // 24×24 material glyphs — one per pipeline stage (no colour-emoji risk).
     private static final String G_BUBBLE = "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z";
@@ -94,13 +94,13 @@ public final class ChatPipelineBar extends VBox {
         setVisible(false);
 
         // Character: the assistant's gold sparkle avatar (same face as the chat).
-        avatar = new StackPane(IconHelper.getIcon(IconHelper.ICON_SPARKLES, 11, "#1A1408"));
+        avatar = new StackPane(IconHelper.getIcon(IconHelper.ICON_SPARKLES, 11, "-color-text-inverse"));
         avatar.setStyle("-fx-background-color: " + GOLD + "; -fx-background-radius: 999;");
         avatar.setMinSize(22, 22);
         avatar.setMaxSize(22, 22);
 
-        stageIcon.setGraphic(glyph(G_BUBBLE, 13, "#97A3B6"));
-        stageLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: #AAB6C8;");
+        stageIcon.setGraphic(glyph(G_BUBBLE, 13, "-color-text-secondary"));
+        stageLbl.setStyle("-fx-font-size: 11px; -fx-text-fill: -color-text-secondary;");
         HBox stageRow = new HBox(7, avatar, stageIcon, stageLbl);
         stageRow.setAlignment(Pos.CENTER_LEFT);
 
@@ -117,7 +117,7 @@ public final class ChatPipelineBar extends VBox {
         HBox.setHgrow(stageRow, Priority.ALWAYS);
 
         // Slim live progress bar (asymptotic fill — never fakes completion).
-        track.setStyle("-fx-background-color: #1B2534; -fx-background-radius: 3;");
+        track.setStyle("-fx-background-color: -color-surface-elevated; -fx-background-radius: 3;");
         track.setPrefHeight(4);
         track.setMaxHeight(4);
         HBox.setHgrow(track, Priority.ALWAYS);
@@ -206,15 +206,19 @@ public final class ChatPipelineBar extends VBox {
     private void setStage(Stage s) {
         if (s == last) return; // no node churn when the stage repeats
         last = s;
-        stageIcon.setGraphic(glyph(s.glyph(), 13, "#97A3B6"));
+        stageIcon.setGraphic(glyph(s.glyph(), 13, "-color-text-secondary"));
         stageLbl.setText(s.caption());
     }
 
     private static SVGPath glyph(String path, double size, String color) {
         SVGPath p = new SVGPath();
         p.setContent(path);
-        p.setFill(Color.web(color));
-        p.setStyle("-fx-scale-x: " + (size / 24.0) + "; -fx-scale-y: " + (size / 24.0) + ";");
+        if (color != null && color.startsWith("-")) {
+            p.setStyle("-fx-fill: " + color + "; -fx-scale-x: " + (size / 24.0) + "; -fx-scale-y: " + (size / 24.0) + ";");
+        } else {
+            p.setFill(Color.web(color != null ? color : "#97A3B6"));
+            p.setStyle("-fx-scale-x: " + (size / 24.0) + "; -fx-scale-y: " + (size / 24.0) + ";");
+        }
         return p;
     }
 

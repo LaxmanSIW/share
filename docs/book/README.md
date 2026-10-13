@@ -35,8 +35,9 @@ completeness.
 | Part 14 | A1 · A2 · A3 | ✅ · ✅ · ✅ |
 | Part 15 | A4 · A5 | ✅ · ✅ |
 
-> **The book is complete:** 23 chapters (Ch 0–22) + 5 appendices, 172 application files
-> and 77 test files covered, 100 GAP / 121 ISSUE / 144 NOTE markers raised honestly.
+> **The book is complete & current:** 23 chapters (Ch 0–22) + 5 appendices, 178 application files
+> and 90 test files covered (along with the Theme Vault, Native C++/Qt6 port, and Template Packaging),
+> with 100 GAP / 121 ISSUE / 144 NOTE markers raised honestly.
 > Start with [Chapter 0](chapter-00-how-to-use-this-book.md); the final coverage audit
 > lives in [Appendix A5](appendix-file-inventory.md).
 

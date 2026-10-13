@@ -250,9 +250,14 @@ public class PdfExportService {
         if (el.isFlipHorizontal() || el.isFlipVertical() || el.getScaleX() != 1.0 || el.getScaleY() != 1.0) {
             double sx = el.isFlipHorizontal() ? -el.getScaleX() : el.getScaleX();
             double sy = el.isFlipVertical() ? -el.getScaleY() : el.getScaleY();
-            g2.translate(x + w / 2.0, y + h / 2.0);
+            // TEXT/PAGENO stretch from their TOP-LEFT corner: the canvas lays the
+            // label out unscaled and stretches it the same way, so print matches.
+            boolean textStretch = el.getType() == ElementType.TEXT || el.getType() == ElementType.PAGENO;
+            double px = textStretch ? x : x + w / 2.0;
+            double py = textStretch ? y : y + h / 2.0;
+            g2.translate(px, py);
             g2.scale(sx, sy);
-            g2.translate(-(x + w / 2.0), -(y + h / 2.0));
+            g2.translate(-px, -py);
         }
 
         if (el.getOpacity() < 1.0 && el.getOpacity() >= 0.0) {
@@ -555,7 +560,31 @@ public class PdfExportService {
                 g2.setFont(font);
                 g2.setColor(parseColor(el.getColor(), Color.BLACK));
 
-                drawWrappedText(g2, text, x, y, w, h, el.getAlign(), el.getVAlign(), el.getLineHeight(), el.getLineSpacing(), el.getWordSpacing());
+                // Match the canvas TEXT frame policy exactly so the PDF is
+                // WYSIWYG: 1 mm horizontal padding, line-height-driven
+                // vertical padding (same formula and 0.05 mm anti-clip floor
+                // as TemplateDesigner / DesignObjectRenderer).
+                double lhPdf = el.getLineHeight() > 0 ? el.getLineHeight() : 1.25;
+                double padVmm = Math.max(0.05, Math.max(0, (lhPdf - 1.0) * 0.5));
+                double padPxH = 1.0 * PX_PER_MM;
+                double padPxV = padVmm * PX_PER_MM;
+                // A stretched text (Bind W/H off) is laid out at its unscaled size;
+                // the transform above stretches it back over the element frame.
+                double sxPdf = el.getScaleX() > 0.05 ? Math.abs(el.getScaleX()) : 1.0;
+                double syPdf = el.getScaleY() > 0.05 ? Math.abs(el.getScaleY()) : 1.0;
+                double tw = w / sxPdf;
+                double th = h / syPdf;
+                // Print the same progressive faux bold as the canvas so a font
+                // without real extra-bold faces still gets 800/900 on paper.
+                int extraBoldPdf = DesignObjectRenderer.syntheticExtraCopies(fontName,
+                        el.getFontWeight() > 0 ? el.getFontWeight() : (el.isBold() ? 700 : 400));
+                double boldOffPdf = Math.max(0.25, fontSizePx * 0.025);
+                for (int bi = 0; bi <= extraBoldPdf; bi++) {
+                    drawWrappedText(g2, text, x + padPxH + bi * boldOffPdf,
+                            y + padPxV + bi * boldOffPdf * 0.5,
+                            Math.max(1.0, tw - 2.0 * padPxH), Math.max(1.0, th - 2.0 * padPxV),
+                            el.getAlign(), el.getVAlign(), el.getLineHeight(), el.getLineSpacing(), el.getWordSpacing());
+                }
             }
             case IMAGE -> {
                 BufferedImage img = null;

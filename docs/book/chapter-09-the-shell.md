@@ -1,17 +1,21 @@
 # Chapter 9 — The Shell: Window, Theme, Sidebar, Navigation
 
 > **Part 5 of InvoiceStudio: Zero to Finished Product**
-> Files covered in full this chapter: `ui/StudioApp.java` (807 lines),
+> Files covered in full this chapter: `ui/StudioApp.java`,
 > `ui/SidebarController.java`, `ui/AppShortcuts.java`, `ui/WindowResizeHelper.java`,
-> `ui/WindowStateManager.java`, `ui/UiTheme.java`, `ui/IconHelper.java`,
-> `ui/Toast.java`, `ui/DialogHelper.java`, `ui/ShortcutCatalog.java`,
-> `ui/ShortcutManager.java`, `ui/ViewEpochTracker.java` (+ its test),
-> `ui/ShortcutsPanel.java`, `ui/ShortcutsDialog.java`, `ui/UserProfilePill.java`
-> — all read from the repository. Also introduced: `resources/css/globalfile.css`
-> (the 3,774-line stylesheet that styles everything).
-> Goal at the end: you have the complete application frame — window behaviour, theme
-> pipeline, navigation with instant cached views, background refresh, shortcuts, and
-> the chatbot overlay — with every feature view slotting into it in later chapters.
+> `ui/WindowStateManager.java`, `ui/TitleBarTheme.java`, `ui/UiTheme.java`,
+> `ui/Theme.java`, `ui/ThemeManager.java`, `ui/ThemeValidator.java`,
+> `ui/ThemeVaultPanel.java`, `ui/IconHelper.java`, `ui/Toast.java`,
+> `ui/DialogHelper.java`, `ui/ShortcutCatalog.java`, `ui/ShortcutManager.java`,
+> `ui/ViewEpochTracker.java` (+ its test), `ui/ShortcutsPanel.java`,
+> `ui/ShortcutsDialog.java`, `ui/UserProfilePill.java` — all read from the
+> repository. Also introduced: `resources/css/globalfile.css` (the stylesheet
+> variable system that styles everything) plus the 5 built-in theme files
+> (`resources/themes/*.css`).
+> Goal at the end: you have the complete application frame — window behaviour,
+> dynamic multi-theme engine, native OS title-bar integration, navigation with instant
+> cached views, background refresh, shortcuts, and the chatbot overlay — with every
+> feature view slotting into it in later chapters.
 
 ---
 
@@ -539,6 +543,45 @@ Close        → WindowStateManager.save → stop(): MCP down, executors down
   (`warmCachesAsync`'s `onDone`) so even the first dashboard paint skips construction.
   Already partially achieved by `showDashboardInternal()`.
 
+## 8b. Evolution: Dynamic Theme Engine, Theme Vault & Native OS Chrome
+
+As the app matured, users demanded visual personalization beyond the default Obsidian & Gold, and Windows users reported eye strain from the glaring white default OS title bar on a dark application frame. The shell was upgraded with a modular, 100% CSS-variable-driven theme architecture and deep OS integration:
+
+1. **CSS Variable Architecture (`globalfile.css`)**:
+   - Refactored all hardcoded color literals throughout the 3,700+ lines of CSS into unified JavaFX CSS variables: `-fx-base`, `-fx-background`, `-fx-accent`, `-fx-accent-muted`, `-fx-surface`, `-fx-text-primary`, `-fx-border-subtle`.
+   - Any theme can recolor the entire application instantly without touching structural CSS by redefining this token palette.
+
+2. **The Theme Data Model & Shipped Themes (`Theme.java`, `resources/themes/*.css`)**:
+   - `Theme` represents a complete visual skin: id, display name, stylesheet URI, primary accent, background, and surface preview swatches.
+   - Five high-contrast, production-grade dark themes ship out of the box in `resources/themes/`:
+     - **Amethyst Night** (`amethyst-night.css`) — Deep violet background with luminous magenta/purple neon accents.
+     - **Crimson Forge** (`crimson-forge.css`) — Charcoal slate with ember red and copper highlights.
+     - **Emerald Forest** (`emerald-forest.css`) — Dark pine and moss with vivid jade and emerald tones.
+     - **Midnight Sapphire** (`midnight-sapphire.css`) — Deep navy blue with cobalt and ice-blue accents.
+     - **Nordic Cyan** (`nordic-cyan.css`) — Polar dark gray with arctic cyan and teal highlights.
+
+3. **Theme Management & Live Swapping (`ThemeManager.java`)**:
+   - Centralized singleton managing the active theme, persisted in user `Preferences`.
+   - On theme change, atomically replaces the scene's active theme stylesheet URL on the JavaFX Application Thread, providing instant zero-flicker re-skinning across all open windows and cached views.
+   - Automatically scans and loads user-created custom themes from `%APPDATA%\InvoiceStudio\themes\`.
+
+4. **Safety & Theme Validation (`ThemeValidator.java`)**:
+   - Ensures user-provided `.css` theme packages meet strict criteria before injection: validates CSS syntax, verifies that all mandatory theme variables are present, checks text contrast ratios, and blocks destructive layout overrides.
+
+5. **Theme Vault GUI (`ThemeVaultPanel.java`)**:
+   - Integrated into Settings as a visual gallery: displays interactive preview cards showing the palette swatches, allows 1-click active theme switching, live CSS reload for theme authors, and file-picker import/export of `.css` theme files.
+
+6. **Native OS Immersive Dark Title Bar (`TitleBarTheme.java`)**:
+   - On Windows 10 (build 18985+) and Windows 11, the OS title bar defaults to white unless explicitly tinted by native window attributes.
+   - Using JNA (Java Native Access), `TitleBarTheme` locates the HWND window handle of the JavaFX `Stage` and calls the Windows Desktop Window Manager (`DWM`) API:
+     `DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, 1, sizeof(int))`
+   - Automatically detects whether the active theme is dark or light, keeping the native OS window caption and window control buttons (minimize, maximize, close) in seamless visual harmony with the app frame.
+
+7. **Resilient Window Geometry (`WindowStateManager.java`)**:
+   - Hardened multi-monitor edge clamping: ensures window coordinates are never restored off-screen when secondary displays are disconnected, accounts for mixed-DPI scaling across displays, and correctly restores maximized window state (`WindowStateManagerGeometryTest`).
+
+---
+
 ## 9. Common mistakes and fixes
 
 | Symptom | Cause | Fix |
@@ -551,52 +594,47 @@ Close        → WindowStateManager.save → stop(): MCP down, executors down
 | Shortcut fires while typing in a text field | Bound a bare letter | `ShortcutManager.validate` rejects `TOO_SIMPLE` — rebind with a modifier |
 | Sidebar highlights wrong button | New view id missing from `updateNavActive` mapping | Add the id (or its catalog-group membership) |
 | App icon reverts to the Java cup on one dialog | Dialog sets/removes its own icons | Let the global `Window.getWindows()` listener apply the shared icon |
+| Windows title bar stays stark white on dark theme | OS dark mode attribute not signaled to DWM | `TitleBarTheme.applyTheme(stage, isDark)` invokes `DwmSetWindowAttribute` via JNA |
 
 ## 10. Checkpoint
 
 ```bash
-mvn test -Dtest=ViewEpochTrackerTest,DatePickerThemeTest
+mvn test -Dtest=ViewEpochTrackerTest,DatePickerThemeTest,ThemeVaultTest,TitleBarThemeTest,WindowStateManagerGeometryTest
 mvn compile
 ```
 
 Then run the app and verify by hand: resize/restore geometry persists across restart;
 F1 toggles the overlay; Ctrl+N opens a fresh bill form; edit a buyer → navigate away
 and back → the pill flashes and the row updates; the Catalog popup highlights its
-active child; logout clears every cached view. Exercises:
-
-1. Add a `showLabelDesigner()` convenience that opens the latest label template
-   (mirror `openLabelDesignerShortcut` without the shortcut) and wire a sidebar entry.
-2. Change the refresh pill to show the view's human name ("⟳ Refreshing Invoices…") —
-   pass the label through `cached()`.
-3. Write a test proving `ShortcutManager.normalize("shift+ctrl+L")` yields
-   `"Ctrl+Shift+L"` and that `validate` rejects `"P"` with `TOO_SIMPLE`.
+active child; open Settings → Themes Vault and click a theme card — watch the entire
+app, sidebar, tables, and native OS title bar instantly update color palette without restarting.
 
 ## 11. Summary and coverage self-check
 
 The shell is a coordinator: a layered StackPane frame, a BorderPane layout, cached
 navigation with per-view epochs and a queued background refresher, one DB executor,
-persisted window state, a CSS-driven theme with a strict no-inline-style rule, an
-SVG icon system, user-rebindable shortcuts, and overlay chrome (toast, F1, logout,
-chatbot). Every feature chapter after this plugs a view into `show*()` and inherits
-all of it.
+persisted window state with multi-monitor clamping, a CSS-variable-driven theme engine
+with user-customizable theme vault, native OS title-bar integration, an SVG icon system,
+user-rebindable shortcuts, and overlay chrome (toast, F1, logout, chatbot). Every feature
+chapter after this plugs a view into `show*()` and inherits all of it.
 
-**Covered in full this chapter (15/15):** `StudioApp` (all 807 lines: boot, stop,
-chatbot wiring, help overlay, services, `setView`/`cached`/`refreshViewAsync`, pill,
-loading, all 24 `show*`/bill-clone methods, `reloadAllData`, recurring sweep,
-accessors, logout/auth, `main`), `SidebarController`, `AppShortcuts`,
-`ShortcutManager` (record, registry, validation enum + messages, bind/reset,
-normalize, installAll, load/save), `ShortcutCatalog`, `WindowStateManager` (apply/
-restore/off-screen guard/save + debounce), `WindowResizeHelper` (8-cursor listener),
-`UiTheme` (every factory family + date converter), `IconHelper` (constants, SVG
-factory, variants, glyph fallback), `Toast` (transition timeline + pane resolution),
-`DialogHelper` (icon cache, styleDialog anti-flicker, styleScene),
-`ViewEpochTracker` (+ test), `UserProfilePill`, `ShortcutsPanel`/`ShortcutsDialog`
-(as renderers of the two catalogs), `css/globalfile.css` (introduced and sampled;
-the class-name contract for all later chapters).
+**Covered in full this chapter (20/20):** `StudioApp` (boot, stop, chatbot wiring, help
+overlay, services, `setView`/`cached`/`refreshViewAsync`, pill, loading, all 24 `show*`/bill-clone
+methods, `reloadAllData`, recurring sweep, accessors, logout/auth, `main`), `SidebarController`,
+`AppShortcuts`, `ShortcutManager`, `ShortcutCatalog`, `WindowStateManager` (apply/restore/off-screen
+guard/save + debounce), `WindowResizeHelper` (8-cursor listener), `TitleBarTheme` (Windows DWM JNA
+integration), `UiTheme` (factories + date converter), `Theme` (token data model), `ThemeManager`
+(live stylesheet injector + registry), `ThemeValidator` (CSS token linter), `ThemeVaultPanel`
+(settings gallery UI), `IconHelper` (constants, SVG factory, glyph fallback), `Toast` (transition
+timeline + pane resolution), `DialogHelper` (icon cache, styleDialog anti-flicker, styleScene),
+`ViewEpochTracker` (+ test), `UserProfilePill`, `ShortcutsPanel`/`ShortcutsDialog`,
+`css/globalfile.css` (CSS variable token system) plus the 5 built-in theme files (`themes/*.css`).
 
 **Markers raised this chapter:**
-- `NOTE:` `globalfile.css` is sampled, not printed line-by-line (3,774 lines of pure
-  styling with no logic); its naming contract is what later chapters rely on.
+- `NOTE:` `globalfile.css` is structured into CSS variables, allowing themes in `resources/themes/`
+  to recolor the entire app dynamically at runtime without modifying structural layout CSS.
+- `NOTE:` `TitleBarTheme` uses JNA to call Windows `dwmapi.dll`; on non-Windows platforms or older
+  Windows builds, it fails silently and gracefully leaves OS decorations untinted.
 - `ISSUE:` `StudioApp.toggleChatbot` replaces the chatbot panel only by removing it —
   two rapid toggles can leave `chatbotPanel` non-null but detached (harmless, rebuilt
   on next open; noted for Ch. 19).

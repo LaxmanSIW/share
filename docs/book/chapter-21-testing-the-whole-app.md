@@ -5,17 +5,23 @@
 > `test/.../AppDirsTest.java`, `test/.../service/WorkshopScenarioTest.java`,
 > `test/.../service/AuthAndDataPartitioningTest.java`,
 > `test/.../service/TemplatePreviewDpiTest.java`,
+> `test/.../service/TemplatePackageServiceTest.java`,
 > `test/.../service/AiChatOptimizerTest.java` (+ the other six AiChat suites
-> surveyed), `test/.../ui/VisualFeaturesVerify.java`, `SmokeLauncher.java`,
-> `NavSmokeRunner.java`, `MerchantTour.java`, `RulerVerify.java`,
+> surveyed), `test/.../ui/VisualFeaturesVerify.java`,
+> `test/.../ui/ThemeVaultTest.java`, `test/.../ui/TitleBarThemeTest.java`,
+> `test/.../ui/WindowStateManagerGeometryTest.java`,
+> `test/.../ui/views/DesignerResizeSemanticsTest.java`,
+> `test/.../ui/views/TextHandleScalePolicyTest.java`,
+> `test/.../ui/views/MultiSelectSupportTest.java`,
+> `SmokeLauncher.java`, `NavSmokeRunner.java`, `MerchantTour.java`, `RulerVerify.java`,
 > `ChatbotKnowledgeVerify.java`, `scripts/nav_smoke_test.sh`,
 > `scripts/ruler_verify_test.sh`, `scripts/knowledge_verify_test.sh`,
-> `merchant-sim/Q.java` — with census tables covering **all 77 Java test
-> files** (53 JUnit suites + 24 interactive harness programs — 23 at the test
+> `merchant-sim/Q.java` — with census tables covering **all 90 Java test
+> files** (66 JUnit suites + 24 interactive harness programs — 23 at the test
 > root plus `TsplPipelineVerify` in `service/`), **all 8 shell scripts**, and
 > the merchant-sim artifacts.
 > Goal at the end: **every chapter of this book has a machine-checked guard —
-> 389 `@Test` methods over seeded databases, 23 self-driving app harnesses
+> 66 JUnit suites over seeded databases, 23 self-driving app harnesses
 > over a virtual screen, and a simulated 3-month business that stress-tested
 > the whole product — and you can run all of it yourself with one command.**
 
@@ -249,22 +255,19 @@ enumerated in Section 5's census; the representative files are listed here).
 ### Step 1 — The landscape: a census of the whole test estate
 
 Run `find src/test/java -name '*.java' | wc -l` in the repository and you get
-**77**. They split three ways:
+**90**. They split three ways:
 
-- **53 JUnit suites** under `src/test/java/com/invoicestudio/` — the test
-  track, 389 `@Test` methods in total (verified by counting `@Test`
-  annotations).
+- **66 JUnit suites** under `src/test/java/com/invoicestudio/` — the test
+  track, pinning every layer of the app.
 - **23 interactive harnesses and launchers** at the root of
   `src/test/java/` — the road tests, run by hand or by the shell scripts.
 - **1 harness + support classes** that complete the set
   (`TsplPipelineVerify` is a `main()`-based suite living in `service/`;
   `KnowledgeGenerator` is a generator disguised as a test).
 
-> **NOTE (kept faithful):** the file-inventory appendix (A5) headlines its
-> Tests section "108 files". The repository today holds **77** `.java` files
-> under `src/test/java` — that is the number this book reports. The appendix
-> is a living ledger and its header count drifts from the working tree; the
-> per-file rows remain the authoritative claim.
+> **NOTE (kept faithful):** the repository today holds **90** `.java` files
+> under `src/test/java` — that is the number this book reports across its
+> census and Appendix A5 inventory.
 
 Here is the full unit-side census, area by area. The "Backstops" column names
 the chapter whose feature the suite pins — every suite belongs to the chapter
@@ -276,6 +279,12 @@ of the class it tests.
 |---|---|---|---|
 | `db/DatabaseTest.java` | 7 | Ch 3–5 | Schema init + CRUD for items, buyers, bills, settings, variables |
 | `AppDirsTest.java` | 3 | Ch 2 | Data-dir override, URL shape, legacy DB migration |
+
+**Domain models (1 suite)**
+
+| Suite | Backstops | What it pins |
+|---|---|---|
+| `model/TemplateCopyOfTest.java` | Ch 7/15 | Deep copy fidelity, id clearing, Jackson round-trip |
 
 **Service layer — billing, buying, money (9 suites)**
 
@@ -291,14 +300,17 @@ of the class it tests.
 | `WorkshopScenarioTest.java` | Ch 12–14 | 10-act business-year scenario (deep-dive in Step 4) |
 | `AuthAndDataPartitioningTest.java` | Ch 10 | Sessions + per-user data walls |
 
-**Service layer — documents, templates, printing (9 suites)**
+**Service layer — documents, templates, printing (12 suites)**
 
 | Suite | Backstops | What it pins |
 |---|---|---|
 | `TemplateDesignerV4Test.java` | Ch 15 | Designer v4 behaviours |
 | `TemplateV3FeaturesTest.java` | Ch 15 | v3 template features |
 | `TemplateTableMinRowsTest.java` | Ch 15 | Table minimum-rows rule |
+| `TemplatePackageServiceTest.java` | Ch 15 | .invpkg ZIP packaging, asset extraction, conflict resolution |
 | `TemplatePreviewDpiTest.java` | Ch 16 | Preview DPI scaling (pixel probes) |
+| `FontWeightSynthesisTest.java` | Ch 16 | Synthetic font bolding fallback for PDF export |
+| `TextStretchRenderTest.java` | Ch 16 | Free text stretch render fidelity |
 | `PageMarginTest.java` | Ch 16 | Page margin math |
 | `TsplCommandBuilderTest.java` | Ch 17 | TSPL command text (23 tests) |
 | `LabelPrintLogicTest.java` | Ch 17 | Label pipeline logic (29 tests) |
@@ -342,17 +354,26 @@ of the class it tests.
 | `McpKnowledgeToolsTest.java` | Ch 18 | Knowledge Hub tools |
 | `McpSurfaceExtensionTest.java` | Ch 18 | Extended tool surface |
 
-**UI & UI chat (11 suites)**
+**UI & UI views (20 suites)**
 
 | Suite | Backstops | What it pins |
 |---|---|---|
 | `ui/ViewEpochTrackerTest.java` | Ch 9 | Per-view freshness bookkeeping |
-| `ui/CopyButtonFactoryTest.java` | Ch 19 | Shared copy-icon button |
+| `ui/ThemeVaultTest.java` | Ch 9 | Theme parsing, token extraction, custom theme importer |
+| `ui/TitleBarThemeTest.java` | Ch 9 | Windows DWM immersive dark title bar native call and fallback |
+| `ui/WindowStateManagerGeometryTest.java` | Ch 9 | Multi-monitor geometry persistence, clamping, maximized restoration |
 | `ui/DatePickerThemeTest.java` | Ch 9 | DatePicker theme wiring |
+| `ui/CopyButtonFactoryTest.java` | Ch 19 | Shared copy-icon button |
 | `ui/KnowledgeHubPanelTest.java` | Ch 20 | Hub panel construction |
 | `ui/ChatbotNewCommandTest.java` | Ch 19 | Chatbot "/new" command |
 | `ui/TemplateDesignerEnhancementsTest.java` | Ch 15 | Designer enhancement round |
 | `ui/TemplateDesignerVectorEnhancementsTest.java` | Ch 15 | Vector tool enhancements |
+| `ui/views/DesignerResizeSemanticsTest.java` | Ch 15 | Pure constraint size truth table, corner proportional, Shift inversion |
+| `ui/views/TextHandleScalePolicyTest.java` | Ch 15 | Text element vertex scaling, start font fallback, release anchor pinning |
+| `ui/views/TextFramePaddingTest.java` | Ch 15 | Text shrink-wrap frame padding and boundary calculation |
+| `ui/views/MultiSelectSupportTest.java` | Ch 15 | Marquee rubber band selection, grouping, equal-gap distribution, multi-nudge |
+| `ui/views/TemplatesExportMenuTest.java` | Ch 15 | Templates gallery export menu and package file chooser interaction |
+| `ui/views/TemplatesToolbarThemeTest.java` | Ch 15 | Templates toolbar theme styling and icon rendering |
 | `ui/VisualFeaturesVerify.java` | Ch 19 | Headless visual verification (deep-dive in Step 8) |
 | `ui/chat/ChatMarkdownRendererTest.java` | Ch 19 | Markdown → styled nodes |
 | `ui/chat/ChatbotLogFilterTest.java` | Ch 19 | Log window filtering |

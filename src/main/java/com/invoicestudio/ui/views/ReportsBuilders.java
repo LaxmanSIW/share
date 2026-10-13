@@ -80,15 +80,15 @@ class ReportsBuilders {
     private Node createKpiCard(String title, String value, String subtext, String accentColor) {
         VBox card = new VBox(4);
         card.setPadding(new Insets(12, 16, 12, 16));
-        card.setStyle("-fx-background-color: #151B26; -fx-border-color: #222F3E; -fx-border-width: 1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-border-top-color: " + accentColor + "; -fx-border-top-width: 3;");
+        card.setStyle("-fx-background-color: -color-surface; -fx-border-color: -color-border; -fx-border-width: 1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-border-top-color: " + accentColor + "; -fx-border-top-width: 3;");
         card.setPrefWidth(210);
         HBox.setHgrow(card, Priority.ALWAYS);
 
         Label lblTitle = new Label(title.toUpperCase());
-        lblTitle.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 10.5px; -fx-font-weight: bold;");
+        lblTitle.setStyle("-fx-text-fill: -color-text-secondary; -fx-font-size: 10.5px; -fx-font-weight: bold;");
 
         Label lblVal = new Label(value);
-        lblVal.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 19px; -fx-font-weight: bold; -fx-font-family: 'Segoe UI', sans-serif;");
+        lblVal.setStyle("-fx-text-fill: -color-text-bright; -fx-font-size: 19px; -fx-font-weight: bold; -fx-font-family: 'Segoe UI', sans-serif;");
 
         Label lblSub = new Label(subtext);
         lblSub.setStyle("-fx-text-fill: " + accentColor + "; -fx-opacity: 0.88; -fx-font-size: 11px;");
@@ -170,10 +170,10 @@ class ReportsBuilders {
         // KPI Summary Cards
         HBox kpiRow = new HBox(12);
         kpiRow.getChildren().addAll(
-            createKpiCard("Total Outstanding Due", "₹ " + currencyFmt.format(totalOutstandingAmount), "Pending accounts receivable", "#F87171"),
-            createKpiCard("Active Debtors", activeDebtorsCount + " Accounts", "Buyers with unpaid balance", "#F2CA6B"),
-            createKpiCard("Total Parcels Sent", totalParcelsCount + " Bales", "Shipments dispatched to debtors", "#38BDF8"),
-            createKpiCard("Collection Efficiency", String.format("%.1f%%", collectionEfficiency), "Recovered receipts ratio", "#34D399")
+            createKpiCard("Total Outstanding Due", "₹ " + currencyFmt.format(totalOutstandingAmount), "Pending accounts receivable", "-color-error"),
+            createKpiCard("Active Debtors", activeDebtorsCount + " Accounts", "Buyers with unpaid balance", "-color-accent"),
+            createKpiCard("Total Parcels Sent", totalParcelsCount + " Bales", "Shipments dispatched to debtors", "-color-info"),
+            createKpiCard("Collection Efficiency", String.format("%.1f%%", collectionEfficiency), "Recovered receipts ratio", "-color-success")
         );
 
         // Filter Bar
@@ -223,7 +223,7 @@ class ReportsBuilders {
             @Override protected void updateItem(Number v, boolean emp) {
                 super.updateItem(v, emp);
                 setText(emp || v == null ? null : "₹ " + currencyFmt.format(v.doubleValue()));
-                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: #94A3B8;");
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: -color-text-secondary;");
             }
         });
 
@@ -233,7 +233,7 @@ class ReportsBuilders {
             @Override protected void updateItem(Number v, boolean emp) {
                 super.updateItem(v, emp);
                 setText(emp || v == null ? null : "₹ " + currencyFmt.format(v.doubleValue()));
-                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: #34D399;");
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: -color-success;");
             }
         });
 
@@ -243,7 +243,7 @@ class ReportsBuilders {
             @Override protected void updateItem(Number v, boolean emp) {
                 super.updateItem(v, emp);
                 setText(emp || v == null ? null : "₹ " + currencyFmt.format(v.doubleValue()));
-                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #F87171;");
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: -color-error;");
             }
         });
 
@@ -253,7 +253,7 @@ class ReportsBuilders {
             @Override protected void updateItem(Number v, boolean emp) {
                 super.updateItem(v, emp);
                 setText(emp || v == null ? null : String.valueOf(v.intValue()));
-                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: #38BDF8;");
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: -color-info;");
             }
         });
 
@@ -341,10 +341,10 @@ class ReportsBuilders {
         // Summary Strip Cards
         HBox statementKpiRow = new HBox(12);
         statementKpiRow.getChildren().addAll(
-            createKpiCard("Opening Balance", "₹ 0.00", "Starting balance", "#94A3B8"),
-            createKpiCard("Total Billed (Debits)", "₹ 0.00", "Invoiced sales amount", "#F87171"),
-            createKpiCard("Total Paid (Credits)", "₹ 0.00", "Receipts credited", "#34D399"),
-            createKpiCard("Closing Ledger Balance", "₹ 0.00", "Net current outstanding due", "#F2CA6B")
+            createKpiCard("Opening Balance", "₹ 0.00", "Starting balance", "-color-text-secondary"),
+            createKpiCard("Total Billed (Debits)", "₹ 0.00", "Invoiced sales amount", "-color-error"),
+            createKpiCard("Total Paid (Credits)", "₹ 0.00", "Receipts credited", "-color-success"),
+            createKpiCard("Closing Ledger Balance", "₹ 0.00", "Net current outstanding due", "-color-accent")
         );
 
         // Ledger Table
@@ -387,7 +387,7 @@ class ReportsBuilders {
                 if (emp || v == null || v.doubleValue() == 0) setText(emp ? null : "—");
                 else {
                     setText("+ ₹ " + currencyFmt.format(v.doubleValue()));
-                    setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: #F87171;");
+                    setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: -color-error;");
                 }
             }
         });
@@ -400,7 +400,7 @@ class ReportsBuilders {
                 if (emp || v == null || v.doubleValue() == 0) setText(emp ? null : "—");
                 else {
                     setText("- ₹ " + currencyFmt.format(v.doubleValue()));
-                    setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: #34D399;");
+                    setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: -color-success;");
                 }
             }
         });
@@ -415,7 +415,7 @@ class ReportsBuilders {
                     double b = v.doubleValue();
                     setText("₹ " + currencyFmt.format(b));
                     setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: " +
-                            (b > 0.01 ? "#F87171" : (b < -0.01 ? "#34D399" : "#94A3B8")) + ";");
+                            (b > 0.01 ? "-color-error" : (b < -0.01 ? "-color-success" : "-color-text-secondary")) + ";");
                 }
             }
         });
@@ -487,12 +487,12 @@ class ReportsBuilders {
             table.setItems(FXCollections.observableArrayList(ledger));
 
             statementKpiRow.getChildren().setAll(
-                createKpiCard("Opening Balance", "₹ " + currencyFmt.format(sel.getOpeningBalance()), "Starting balance", "#94A3B8"),
-                createKpiCard("Total Billed (Debits)", "₹ " + currencyFmt.format(totalDeb), "Invoiced sales amount", "#F87171"),
-                createKpiCard("Total Paid (Credits)", "₹ " + currencyFmt.format(totalCred), "Receipts credited", "#34D399"),
+                createKpiCard("Opening Balance", "₹ " + currencyFmt.format(sel.getOpeningBalance()), "Starting balance", "-color-text-secondary"),
+                createKpiCard("Total Billed (Debits)", "₹ " + currencyFmt.format(totalDeb), "Invoiced sales amount", "-color-error"),
+                createKpiCard("Total Paid (Credits)", "₹ " + currencyFmt.format(totalCred), "Receipts credited", "-color-success"),
                 createKpiCard("Closing Ledger Balance", "₹ " + currencyFmt.format(runningBal),
                     runningBal > 0.01 ? "Pending amount receivable" : "Account fully settled",
-                    runningBal > 0.01 ? "#F87171" : "#34D399")
+                    runningBal > 0.01 ? "-color-error" : "-color-success")
             );
         };
 
@@ -552,9 +552,9 @@ class ReportsBuilders {
 
         HBox kpiRow = new HBox(12);
         kpiRow.getChildren().addAll(
-            createKpiCard("Total Units Moved", totalUnits + " Pieces", "Total garment shipments", "#F2CA6B"),
-            createKpiCard("CC Book Units", ccUnits + " Pieces", "Credit customer volume", "#38BDF8"),
-            createKpiCard("CS Book Units", csUnits + " Pieces", "Cash sale customer volume", "#34D399")
+            createKpiCard("Total Units Moved", totalUnits + " Pieces", "Total garment shipments", "-color-accent"),
+            createKpiCard("CC Book Units", ccUnits + " Pieces", "Credit customer volume", "-color-info"),
+            createKpiCard("CS Book Units", csUnits + " Pieces", "Cash sale customer volume", "-color-success")
         );
 
         CategoryAxis xAxis = new CategoryAxis();
@@ -601,7 +601,7 @@ class ReportsBuilders {
 
         TableColumn<MovementRow, Number> cTot = new TableColumn<>("Total Trouser Pieces");
         cTot.setCellValueFactory(d -> new SimpleIntegerProperty(d.getValue().total));
-        cTot.setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #F2CA6B;");
+        cTot.setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: -color-accent;");
 
         table.getColumns().addAll(cMonth, cCc, cCs, cTot);
 
@@ -650,9 +650,9 @@ class ReportsBuilders {
 
         HBox kpiRow = new HBox(12);
         kpiRow.getChildren().addAll(
-            createKpiCard("Total Sales Generated", "₹ " + currencyFmt.format(totalSales), "All-time invoiced revenue", "#38BDF8"),
-            createKpiCard("Total Collections", "₹ " + currencyFmt.format(totalPayments), "All-time receipts collected", "#34D399"),
-            createKpiCard("Net Uncollected Balance", "₹ " + currencyFmt.format(totalSales - totalPayments), "Net balance across all accounts", "#F87171")
+            createKpiCard("Total Sales Generated", "₹ " + currencyFmt.format(totalSales), "All-time invoiced revenue", "-color-info"),
+            createKpiCard("Total Collections", "₹ " + currencyFmt.format(totalPayments), "All-time receipts collected", "-color-success"),
+            createKpiCard("Net Uncollected Balance", "₹ " + currencyFmt.format(totalSales - totalPayments), "Net balance across all accounts", "-color-error")
         );
 
         class SalesTrendRow {
@@ -689,7 +689,7 @@ class ReportsBuilders {
             @Override protected void updateItem(Number v, boolean emp) {
                 super.updateItem(v, emp);
                 setText(emp || v == null ? null : "₹ " + currencyFmt.format(v.doubleValue()));
-                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: #38BDF8;");
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: -color-info;");
             }
         });
 
@@ -699,7 +699,7 @@ class ReportsBuilders {
             @Override protected void updateItem(Number v, boolean emp) {
                 super.updateItem(v, emp);
                 setText(emp || v == null ? null : "₹ " + currencyFmt.format(v.doubleValue()));
-                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: #34D399;");
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-text-fill: -color-success;");
             }
         });
 
@@ -712,7 +712,7 @@ class ReportsBuilders {
                 else {
                     setText("₹ " + currencyFmt.format(v.doubleValue()));
                     setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: " +
-                        (v.doubleValue() > 0 ? "#F87171" : "#34D399") + ";");
+                        (v.doubleValue() > 0 ? "-color-error" : "-color-success") + ";");
                 }
             }
         });
@@ -828,9 +828,9 @@ class ReportsBuilders {
 
         HBox kpiRow = new HBox(12);
         kpiRow.getChildren().addAll(
-            createKpiCard("Total Catalog Items", rows.size() + " SKUs", "Active catalog items tracked", "#38BDF8"),
-            createKpiCard("Total Units Sold", totalUnits + " Pieces", "Dispatched item volume", "#F2CA6B"),
-            createKpiCard("Item Sales Revenue", "₹ " + currencyFmt.format(totalRev), "Aggregate item billing", "#34D399")
+            createKpiCard("Total Catalog Items", rows.size() + " SKUs", "Active catalog items tracked", "-color-info"),
+            createKpiCard("Total Units Sold", totalUnits + " Pieces", "Dispatched item volume", "-color-accent"),
+            createKpiCard("Item Sales Revenue", "₹ " + currencyFmt.format(totalRev), "Aggregate item billing", "-color-success")
         );
 
         TableView<ItemStatsRow> table = new TableView<>();
@@ -860,7 +860,7 @@ class ReportsBuilders {
             @Override protected void updateItem(Number v, boolean emp) {
                 super.updateItem(v, emp);
                 setText(emp || v == null ? null : "₹ " + currencyFmt.format(v.doubleValue()));
-                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #34D399;");
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: -color-success;");
             }
         });
 
@@ -932,9 +932,9 @@ class ReportsBuilders {
 
         HBox kpiRow = new HBox(12);
         kpiRow.getChildren().addAll(
-            createKpiCard("Active Categories", catStats.size() + " Groups", "Catalog groups tracked", "#F2CA6B"),
-            createKpiCard("Total Units Sold", totalCatUnits + " Pieces", "Dispatched category volume", "#38BDF8"),
-            createKpiCard("Category Sales Revenue", "₹ " + currencyFmt.format(totalCatRev), "All categorized billing", "#34D399")
+            createKpiCard("Active Categories", catStats.size() + " Groups", "Catalog groups tracked", "-color-accent"),
+            createKpiCard("Total Units Sold", totalCatUnits + " Pieces", "Dispatched category volume", "-color-info"),
+            createKpiCard("Category Sales Revenue", "₹ " + currencyFmt.format(totalCatRev), "All categorized billing", "-color-success")
         );
 
         PieChart pie = new PieChart();
@@ -986,7 +986,7 @@ class ReportsBuilders {
             @Override protected void updateItem(Number v, boolean emp) {
                 super.updateItem(v, emp);
                 setText(emp || v == null ? null : "₹ " + currencyFmt.format(v.doubleValue()));
-                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #34D399;");
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: -color-success;");
             }
         });
 
@@ -998,7 +998,7 @@ class ReportsBuilders {
                 if (emp || v == null) setText(null);
                 else {
                     setText(String.format("%.1f%%", v.doubleValue()));
-                    setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #F2CA6B;");
+                    setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: -color-accent;");
                 }
             }
         });
@@ -1061,9 +1061,9 @@ class ReportsBuilders {
 
         HBox kpiRow = new HBox(12);
         kpiRow.getChildren().addAll(
-            createKpiCard("Total Taxable Turnover", "₹ " + currencyFmt.format(totalTaxableAll), "Net taxable value", "#38BDF8"),
-            createKpiCard("Total GST Collected", "₹ " + currencyFmt.format(totalTaxAll), "CGST + SGST + IGST liability", "#F87171"),
-            createKpiCard("Total Gross Turnover", "₹ " + currencyFmt.format(totalTurnoverAll), "Aggregate invoice value", "#F2CA6B")
+            createKpiCard("Total Taxable Turnover", "₹ " + currencyFmt.format(totalTaxableAll), "Net taxable value", "-color-info"),
+            createKpiCard("Total GST Collected", "₹ " + currencyFmt.format(totalTaxAll), "CGST + SGST + IGST liability", "-color-error"),
+            createKpiCard("Total Gross Turnover", "₹ " + currencyFmt.format(totalTurnoverAll), "Aggregate invoice value", "-color-accent")
         );
 
         HBox topBar = new HBox(12);
@@ -1136,7 +1136,7 @@ class ReportsBuilders {
             @Override protected void updateItem(Number v, boolean emp) {
                 super.updateItem(v, emp);
                 setText(emp || v == null ? null : "₹ " + currencyFmt.format(v.doubleValue()));
-                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #F87171;");
+                setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: -color-error;");
             }
         });
 
@@ -1202,9 +1202,9 @@ class ReportsBuilders {
 
         HBox kpiRow = new HBox(12);
         kpiRow.getChildren().addAll(
-            createKpiCard("Registered Transporters", map.size() + " Agencies", "Active logistics partners", "#F2CA6B"),
-            createKpiCard("Total Dispatched Parcels", allParcels + " Bales", "Dispatched shipment parcels", "#38BDF8"),
-            createKpiCard("Total Cargo Value", "₹ " + currencyFmt.format(allFreightVal), "Goods value shipped via transport", "#34D399")
+            createKpiCard("Registered Transporters", map.size() + " Agencies", "Active logistics partners", "-color-accent"),
+            createKpiCard("Total Dispatched Parcels", allParcels + " Bales", "Dispatched shipment parcels", "-color-info"),
+            createKpiCard("Total Cargo Value", "₹ " + currencyFmt.format(allFreightVal), "Goods value shipped via transport", "-color-success")
         );
 
         TableView<TransportStatsRow> table = new TableView<>();
@@ -1226,7 +1226,7 @@ class ReportsBuilders {
 
         TableColumn<TransportStatsRow, Number> cParcels = new TableColumn<>("Total Parcels Sent");
         cParcels.setCellValueFactory(d -> new SimpleIntegerProperty(d.getValue().totalParcels));
-        cParcels.setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #38BDF8;");
+        cParcels.setStyle("-fx-alignment: CENTER-RIGHT; -fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: -color-info;");
 
         TableColumn<TransportStatsRow, Number> cVal = new TableColumn<>("Goods Value Carried (₹)");
         cVal.setCellValueFactory(d -> new SimpleDoubleProperty(d.getValue().goodsValue));

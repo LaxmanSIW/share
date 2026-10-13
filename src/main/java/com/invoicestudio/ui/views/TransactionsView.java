@@ -104,10 +104,10 @@ public class TransactionsView extends BorderPane {
         kpiRow.setAlignment(Pos.CENTER_LEFT);
 
         kpiRow.getChildren().addAll(
-            createMiniKpiCard("Total Sales", totalSalesLabel, "metric-sales", "#3b82f6"),
-            createMiniKpiCard("Payments Received", totalPaymentsLabel, "metric-payments", "#10b981"),
-            createMiniKpiCard("Net Balance", netBalanceLabel, "metric-balance", "#c4703f"),
-            createMiniKpiCard("Total Pieces", totalPiecesLabel, "metric-pieces", "#8b5cf6")
+            createMiniKpiCard("Total Sales", totalSalesLabel, "metric-sales", "-color-info"),
+            createMiniKpiCard("Payments Received", totalPaymentsLabel, "metric-payments", "-color-success"),
+            createMiniKpiCard("Net Balance", netBalanceLabel, "metric-balance", "-color-accent"),
+            createMiniKpiCard("Total Pieces", totalPiecesLabel, "metric-pieces", "-color-warning")
         );
 
         // Filter Bar
@@ -339,7 +339,7 @@ public class TransactionsView extends BorderPane {
                     boolean isSale = t == null || "sale".equalsIgnoreCase(t.getTransactionType());
                     setText((isSale ? "+ ₹ " : "- ₹ ") + currencyFmt.format(val.doubleValue()));
                     setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-alignment: CENTER-RIGHT; " +
-                        "-fx-text-fill: " + (isSale ? "#dc2626" : "#16a34a") + ";");
+                        "-fx-text-fill: " + (isSale ? "-color-error" : "-color-success") + ";");
                 }
             }
         });
@@ -382,7 +382,7 @@ public class TransactionsView extends BorderPane {
                     setStyle(null);
                 } else {
                     setText(val);
-                    setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: #2563eb;");
+                    setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-weight: bold; -fx-text-fill: -color-info;");
                 }
             }
         });
@@ -488,7 +488,7 @@ public class TransactionsView extends BorderPane {
         // If linked to Tax Invoice, show banner
         if (isEdit && existing.getBillNumber() != null && !existing.getBillNumber().isBlank()) {
             Label linkedLbl = new Label("Linked Tax Invoice: " + existing.getBillNumber());
-            linkedLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #2563eb;");
+            linkedLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: -color-info;");
             grid.add(new Label("Bill Linked:"), 0, row);
             grid.add(linkedLbl, 1, row++);
         }

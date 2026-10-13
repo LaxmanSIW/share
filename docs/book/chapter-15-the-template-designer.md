@@ -1,14 +1,17 @@
 # Chapter 15 — The Template Designer: The Canvas Where Invoices Are Invented
 
 > **Part 9 of InvoiceStudio: Zero to Finished Product**
-> Files covered in full this chapter: `ui/views/TemplateDesigner.java` (all 7,687 lines —
+> Files covered in full this chapter: `ui/views/TemplateDesigner.java` (all 9,171 lines —
 > the largest file in the app), `ui/views/DesignerState.java`, `ui/views/VectorGeometryUtil.java`,
 > `service/SvgVectorParser.java`, `service/CustomComponentManager.java`,
-> `ui/CustomColorChooserDialog.java`, plus the designer test suite
+> `service/TemplatePackageService.java`, `ui/CustomColorChooserDialog.java`, plus the designer test suite
 > (`ui/TemplateDesignerEnhancementsTest.java`, `ui/TemplateDesignerVectorEnhancementsTest.java`,
-> `service/TemplateDesignerV4Test.java`, `mcp/McpTemplateDesignTest.java`).
-> Goal at the end: **you can click, drag, snap, curve, group, undo and save every pixel of an
-> invoice — and understand every trick that makes a 7,687-line canvas editor feel calm.**
+> `service/TemplateDesignerV4Test.java`, `mcp/McpTemplateDesignTest.java`,
+> `ui/views/DesignerResizeSemanticsTest.java`, `ui/views/TextHandleScalePolicyTest.java`,
+> `ui/views/TextFramePaddingTest.java`, `ui/views/MultiSelectSupportTest.java`,
+> `service/TemplatePackageServiceTest.java`, `model/TemplateCopyOfTest.java`).
+> Goal at the end: **you can click, drag, snap, curve, group, multi-select, resize, undo and save
+> every pixel of an invoice — and export/import portable template bundles.**
 
 ---
 
@@ -2421,6 +2424,52 @@ is the craft.
 
 ---
 
+## 8b. Evolution: Multi-Selection, Researched Resize Semantics, Vertex Scaling & Template Packages
+
+In real-world print shops, complex invoices contain dozens of synchronized labels, tables, and brand blocks. Several critical design enhancements and fixes were engineered to elevate the canvas from a single-object editor into a professional layout studio:
+
+### 1. Multi-Element Selection & Manipulation
+- **Marquee Selection (Rubber Band)**: Dragging across empty canvas space draws a translucent rubber-band selection rectangle (`startSelectionBox`, `updateSelectionBox`, `finishSelectionBox`). Any elements whose bounding boxes intersect the marquee are added to `multiSelectedElements`.
+- **Ctrl + Click Multi-Select**: Holding `Ctrl` toggles selection membership on click without clearing already selected items.
+- **Grouping & Ungrouping**: Selected elements can be grouped (`Ctrl+G`) into persistent group containers, or dissolved (`Ctrl+Shift+G`).
+- **Multi-Object Distribution & Equal Spacing**:
+  - Horizontal & vertical distribution (`distributeEvenly(boolean vertical)`): Computes the outer bounds and equalizes inter-element gaps across 3+ items.
+  - Multi-nudge: Arrow keys nudge *all* selected elements synchronously by 1 mm (5 mm with Shift), preserving their relative offsets.
+  - Multi-Clipboard: `DesignerState.copyAll(List<TemplateElement>)` serializes multi-selections; paste offsets them by +5 mm as an intact cluster.
+
+### 2. Negative Coordinate Support on Rulers
+- When elements are nudged into negative space or the canvas is zoomed and panned past the origin, the top and left rulers now render negative millimeter tick marks and coordinate readouts, matching Photoshop and Illustrator canvas mechanics.
+
+### 3. Researched Selection & Resize Semantics
+Based on standard CAD/DTP conventions (detailed in `docs/vault/10 Designer Selection & Resize.md`):
+- **Content vs Frame**: Corner handles on content elements (images, barcodes, QR codes) scale proportionally by default, avoiding distorted aspect ratios. Side handles stretch a single axis.
+- **Shift Inversion**: Holding `Shift` inverts the current proportional/free behavior on any handle.
+- **Aspect Lock ("Bind W/H")**: A session toggle in the properties panel locks proportional scaling across all handles when enabled.
+- **Pure Constraint Calculator**: `TemplateDesigner.constrainSize(...)` computes the exact clamped dimensions mathematically from drag-start origins, eliminating drift.
+- **Live 60fps Visual Preview**: `updateLiveScaledVisual()` smoothly scales the rendered visual node in real-time during mouse drag without re-rasterizing heavy barcodes or SVG vectors until mouse release.
+
+### 4. Text Object Vertex Scaling & Invariant Pinning
+Text elements originally exhibited three subtle bugs when scaled using corner/vertex handles:
+1. *0.5 pt Collapse*: Corner handles (`handleSE`, `handleNW`, `handleNE`, `handleSW`) did not initialize `resizeStart[6]` with the current font size, resulting in $0.0 \times \text{factor} = 0$, which clamped font size to a microscopic dot.
+   - *Fix*: In `applyTextDrag()`, a defensive fallback (`fontBase = startFont > 0 ? startFont : el.getFontSize()`) guarantees font size always scales smoothly even if uninitialized.
+2. *Canvas Jumping / Edge Shift*: When releasing a handle, `ensureTextFrame()` shrinks the text bounding box to fit the exact font metrics. Without anchor pinning, handles dragging top/left edges shifted the stationary corner.
+   - *Fix*: Every handle's `setOnMouseReleased` now pins its stationary invariant:
+     - `NW`: pins bottom-right anchor (`setX(right - el.getW()); setY(bottom - el.getH())`).
+     - `NE`: pins bottom-left anchor (`setX(origX); setY(bottom - el.getH())`).
+     - `SW`: pins top-right anchor (`setX(right - el.getW()); setY(origY)`).
+     - `W`: pins right edge (`setX(right - el.getW())`).
+     - `N`: pins bottom edge (`setY(bottom - el.getH())`).
+     - `SE`, `E`, `S`: pin top-left anchor (`setX(origX); setY(origY)`).
+3. *Accidental Canvas Panning*: Handle touch targets were enlarged to `11.0 px`, eliminating misclicks that leaked through to the canvas background.
+4. *Live Text Scaling*: `updateLiveElementVisual()` dynamically scales the live text label font size at 60fps during mouse drag.
+
+### 5. Template Package Export & Import (`TemplatePackageService.java`)
+- **Portability Format (`.invpkg`)**: ZIP archive containing the template's JSON definition (`template.json`) plus an `assets/` folder bundling custom logos, images, and fonts.
+- **Conflict Resolution & Validation**: On import, validates JSON schemas and asset checksums; prompts the user to overwrite or duplicate with a new name if an ID or name collision exists.
+- **Cache Epoch Integration**: Successfully importing or duplicating a template triggers `DataManager.invalidateTemplates()`, instantly refreshing the Templates gallery.
+
+---
+
 ## 9. Common mistakes and fixes
 
 | Symptom | Cause | Fix |
@@ -2434,6 +2483,8 @@ is the craft.
 | Typed numbers in X/Y/W/H spinners don't apply | Bypassed `configureNumberSpinner` (no focus-loss/Enter commit) or the `updatingProperties` guard was removed | Keep both; the guard prevents panel *builds* from writing back to the model |
 | Duplicate of a custom path comes out as a blank box | `duplicateSelected()` doesn't copy `points`/`pathData`/`svgSource` | Use the OPTIONAL IMPROVEMENT (deep copy via `el.copy()`) or extend the hand-copy |
 | Text box shows a fat white frame in inline editing | The TextArea skin's `.content` padding/background | Keep the `editor.applyCss(); lookup(".content")` zeroing block in `startInlineTextEdit` |
+| Text element shrinks to 0.5 pt on corner resize drag | Missing initial font size in `resizeStart[6]` | Use `applyTextDrag` with `startFont > 0 ? startFont : el.getFontSize()` fallback |
+| Text jumps across canvas when releasing NW/NE/SW handles | `ensureTextFrame` shrink-wrap without pinning stationary anchor | Pin bottom-right / bottom-left / top-right coordinates on handle release |
 | Arrow keys move elements while typing in a property field | `isInputFieldActive` guard removed or a new control isn't a `TextInputControl`/`Spinner` | Extend `isInputFieldActive`'s parent walk, or make the control focus-traversable text input |
 | Label mode shows a page the size of the invoice | `syncPageFromLabelConfig` not called after stock changes / opening | Call it after every `LabelConfig` mutation (the code base does this in 5 places — mirror them) |
 | One record prints 2–3 labels, rest blank | Feed pitch (label height + gap) exceeds the roll's real pitch | Not a designer bug — fix Label Height / Feed Gap in the Label Stock dialog; the amber pitch note in Step 13 computes the exact dots |
@@ -2450,85 +2501,73 @@ You can verify everything this chapter built without writing a line of code:
 2. **Add & move**: insert a Text element; drag it — blue guide lines appear as it
    magnetizes to margins and neighbours; release — Ctrl+Z/Ctrl+Y walk the history;
    double-click it — the inline editor appears exactly on the element; Enter commits.
-3. **Handles**: select a Table; resize from SE, then from W (the right edge stays put);
-   grab the rotate dot with Shift held — rotation snaps in 15° steps; watch the footer
-   readout track X/Y/W/H/Rot live.
-4. **Zoom story**: Ctrl+scroll to 400% — grid refines to 1 mm, handles stay ~10 px,
+3. **Multi-Selection & Alignment**: drag a rubber-band marquee around 3 elements; press
+   arrow keys to nudge all 3; use the toolbar to distribute them evenly with equal gaps;
+   press Ctrl+G to group them into a single manipulable unit.
+4. **Handles & Text Scaling**: select a Text element; drag the SE vertex handle to scale
+   font size smoothly with live 60fps text preview; drag the NW vertex handle — upon release,
+   the bottom-right anchor stays rock-solid without canvas shifting.
+5. **Zoom story**: Ctrl+scroll to 400% — grid refines to 1 mm, handles stay ~11 px,
    ruler numbers reveal finer divisions, the canvas never drifts; press Ctrl+0 — FIT
    re-centres the page.
-5. **Vector pen**: press P, click 4 vertices, click back near the start — a polygon is
+6. **Vector pen**: press P, click 4 vertices, click back near the start — a polygon is
    born with cyan vertex anchors; drag one anchor — the shape follows; toggle
    "Convert to Smooth Bezier Curves" and sweep the tension slider.
-6. **Barcode Mode**: Ctrl+Shift+L — the canvas shrinks to the label cell with seeded
+7. **Barcode Mode**: Ctrl+Shift+L — the canvas shrinks to the label cell with seeded
    `{{item_name}}`/`{{barcode}}` elements; open **Label Stock**, switch a TA210 preset,
    watch the strip diagram, feed-pitch note and ✓/⚠ lines update live; **Strip Preview**
    and **Bulk Print** open their (Chapter 17) windows.
-7. `mvn test -Dtest=TemplateDesignerV4Test,TemplateDesignerEnhancementsTest,TemplateDesignerVectorEnhancementsTest`
-   → all green: unit conversion, bezier strings, vertex extraction, SVG id-guard,
-   component round-trip, PDF smoke exports.
-
-**Exercises.** (a) Add "Center to center" magnet snapping for X in `applySnapping`
-(the candidate expression is given in §7) and prove it with a two-element template.
-(b) Give the arrow-key nudge the release-time `saveState()` from the OPTIONAL
-IMPROVEMENT and count undo entries before/after (the toast history is your counter).
-(c) Add a new element type: the "PAID" stamp idea is taken by WATERMARK — instead add
-`ElementType.STARS_LINE` that renders N stars in a row, walking the full checklist from
-§7: enum value, factory case, palette item, property editor branch, layer badge,
-renderer case — then verify the MCP design guide test still passes (it lists every
-type).
+8. **Export/Import Package**: in Templates Gallery, export a template to `.invpkg`;
+   delete or rename it; import the `.invpkg` bundle back and verify full fidelity.
+9. `mvn test -Dtest=TemplateDesignerV4Test,DesignerResizeSemanticsTest,TextHandleScalePolicyTest,TextFramePaddingTest,MultiSelectSupportTest,TemplatePackageServiceTest`
+   → all green: unit conversion, bezier strings, vertex extraction, proportional resize semantics,
+   text scaling anchor stability, multi-select distribution, and package archive round-trip.
 
 ---
 
 ## 11. Summary and coverage self-check
 
-The chapter's promise stands: **you can click, drag, snap, curve, group, undo and save
-every pixel of an invoice.** The designer is one `Template` object projected onto a
+The chapter's promise stands: **you can click, drag, snap, curve, group, multi-select, resize,
+undo, and package every pixel of an invoice.** The designer is one `Template` object projected onto a
 layered canvas; every interaction is "mutate the model, then repaint surgically";
 undo is JSON snapshots capped at 50; the heavy maths (SVG paths, bezier smoothing,
-unit conversion, color hex) lives in pure, unit-tested helpers; and the same element
-list this chapter edits is what Chapters 16–17 render to screen, PDF and thermal paper.
+unit conversion, proportional constraint calculations) lives in pure, unit-tested helpers;
+and the same element list this chapter edits is what Chapters 16–17 render to screen, PDF and thermal paper.
 
-**Covered in full this chapter:** `ui/views/TemplateDesigner.java` (7,687 lines —
+**Covered in full this chapter:** `ui/views/TemplateDesigner.java` (9,171 lines —
 constructor & layer stack, session variable caches, toolbar/ribbon/footer, pan/zoom/
-anchor machinery, adaptive grid & device-px snapping, coalesced rulers, margin guides,
-interactive element nodes & table mock, group-aware dragging, snapping & guide lines,
-inline text editor, selection overlay with 8 handles + rotate + per-vertex anchors,
-pen tool, twelve property editors, column/variable pickers, comprehensive variable
-list, components & groups, element factory, page & margin dialogs, Barcode Mode with
-stock dialog / strip diagram / rotate-90 / strip preview / bulk print, save & undo
-wiring, keyboard shortcuts & F1 help) · `ui/views/DesignerState.java` (snapshot
-undo/redo + clipboard) · `ui/views/VectorGeometryUtil.java` (colors, SVG-path vertices,
-Catmull-Rom beziers, image decoders) · `service/SvgVectorParser.java` (document →
-sub-shapes → JavaFX & Java2D, `isValidPathData` id-guard) ·
+anchor machinery, marquee selection box, multi-selection set, grouping/ungrouping,
+equal gap distribution, adaptive grid & device-px snapping, negative/positive coalesced
+rulers, margin guides, interactive element nodes & table mock, group-aware dragging,
+snapping & guide lines, inline text editor, selection overlay with 8 handles + rotate + per-vertex
+anchors, proportional resize matrix, live 60fps scaled visual rendering, text handle scaling
+with anchor pinning, pen tool, property editors, column/variable pickers, comprehensive
+variable list, components & groups, element factory, page & margin dialogs, Barcode Mode with
+stock dialog / strip diagram / rotate-90 / strip preview / bulk print, save & undo wiring,
+keyboard shortcuts & F1 help) · `ui/views/DesignerState.java` (snapshot undo/redo + multi-clipboard) ·
+`ui/views/VectorGeometryUtil.java` (colors, SVG-path vertices, Catmull-Rom beziers, image decoders) ·
+`service/SvgVectorParser.java` (document → sub-shapes → JavaFX & Java2D, `isValidPathData` id-guard) ·
 `service/CustomComponentManager.java` (normalize/save/load/instantiate/delete) ·
+`service/TemplatePackageService.java` (.invpkg packaging, zip extraction, validation, conflict resolution) ·
 `ui/CustomColorChooserDialog.java` (sliders/palette/hex/eyedropper/focus retention) ·
 `test/.../TemplateDesignerEnhancementsTest.java` ·
 `test/.../TemplateDesignerVectorEnhancementsTest.java` ·
-`test/.../TemplateDesignerV4Test.java` · `test/.../McpTemplateDesignTest.java` — with
-`UnitConverter`, `ComponentPreset`, `LabelPresets`, `LabelGeometryService`,
-`TsplPrintService` (dots), `LabelStripPreviewDialog`, `LabelBulkPrintDialog` and
-`DesignObjectRenderer` explained at their call sites (their full coverage belongs to
-Chapters 7, 16 and 17).
+`test/.../TemplateDesignerV4Test.java` · `test/.../McpTemplateDesignTest.java` ·
+`test/.../DesignerResizeSemanticsTest.java` · `test/.../TextHandleScalePolicyTest.java` ·
+`test/.../TextFramePaddingTest.java` · `test/.../MultiSelectSupportTest.java` ·
+`test/.../TemplatePackageServiceTest.java` · `test/.../TemplateCopyOfTest.java`.
 
-**Markers raised this chapter:** `NOTE:` `DesignerState` extracted verbatim from the
-designer; its javadoc cites the extraction rule. `NOTE:` `flushPendingRulerRepaint()`
-fires its debounce handler with a `null` event (test hook; handler ignores the event).
-`NOTE:` table canvas mock hard-codes sample cell values (by design — no bill in the
-designer). `NOTE:` `columnKeyToLabel` duplicated between `TemplateDesigner` and
-`VectorGeometryUtil` (historical; keep both in sync). `NOTE:` `parseElementVertices`
-treats the magic default-points string `"0,0 20,40 40,0"` as "not custom" (couples the
-util to the factory's POLYGON defaults). `NOTE:` the screen eyedropper's overlay is
-`rgba(0,0,0,0.005)` — a hit-testing veil, not a visual choice. `NOTE:` Ctrl+S works
-even while typing (deliberate, ordered before the typing guard). `NOTE:` four manual
-`*Verify` harness programs exist under `src/test/java` (not JUnit; they eyeball
-zoom/ruler/label-dialog behavior). `NOTE:` `McpTemplateDesignTest` is the designer's
-MCP surface — mechanics in Chapter 18. `ISSUE:` `duplicateSelected()` drops
-`points`/`pathData`/`svgSource`/gradients/shadow (fix sketched). `ISSUE:`
-`CustomComponentManager` initializes `maxX`/`maxY` with `Double.MIN_VALUE` (smallest
-*positive* double) — latent bounding-box bug masked by the 10 mm clamp. `ISSUE:`
-arrow-key nudging snapshots undo per keystroke, flooding the 50-deep stack (fix
-sketched). `ISSUE:` text/SVG property textareas trigger a full `refreshCanvas()` per
-keystroke (no debounce; fix sketched).
+**Markers raised this chapter:**
+- `NOTE:` `TemplateDesigner.java` was expanded with multi-selection mechanics, negative ruler support,
+  and 60fps live scale rendering, totaling 9,171 lines.
+- `NOTE:` `DesignerState` was updated to support multi-element copying (`copyAll`, `pasteAllSource`).
+- `NOTE:` `TemplatePackageService` operates as a stand-alone headless service, usable by both the UI
+  and MCP tools without JavaFX dependencies.
+- `ISSUE:` `duplicateSelected()` drops `points`/`pathData`/`svgSource`/gradients/shadow (addressed in `Template.copyOf`).
+- `ISSUE:` `CustomComponentManager` initializes `maxX`/`maxY` with `Double.MIN_VALUE` (smallest
+  *positive* double) — latent bounding-box bug masked by the 10 mm clamp.
+- `ISSUE:` arrow-key nudging snapshots undo per keystroke, flooding the 50-deep stack (fix sketched).
+- `ISSUE:` text/SVG property textareas trigger a full `refreshCanvas()` per keystroke (no debounce; fix sketched).
 
 📊 **Progress Tracker**
 

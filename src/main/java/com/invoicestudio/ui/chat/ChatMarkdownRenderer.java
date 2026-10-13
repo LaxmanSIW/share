@@ -43,10 +43,10 @@ import java.util.regex.Pattern;
  */
 public final class ChatMarkdownRenderer {
 
-    private static final String GOLD = "#D9A13B";
-    private static final String TEXT_PRIMARY = "#E6EAF0";
-    private static final String TEXT_BOLD = "#FFFFFF";
-    private static final String TEXT_CODE = "#FCD34D";
+    private static final String GOLD = "-color-accent";
+    private static final String TEXT_PRIMARY = "-color-text";
+    private static final String TEXT_BOLD = "-color-text-bright";
+    private static final String TEXT_CODE = "-color-accent";
     private static final String MONO_FONT = "Consolas, 'Courier New', monospace";
 
     private static final Pattern BOLD_PATTERN = Pattern.compile("\\*\\*(.+?)\\*\\*");
@@ -67,7 +67,7 @@ public final class ChatMarkdownRenderer {
         if (isError) {
             Label err = new Label(markdown);
             err.setWrapText(true);
-            err.setStyle("-fx-text-fill: #f1b0b0; -fx-font-size: 13px;");
+            err.setStyle("-fx-text-fill: -color-error-text; -fx-font-size: 13px;");
             return err;
         }
 
@@ -188,11 +188,11 @@ public final class ChatMarkdownRenderer {
         } else if (clean.startsWith("[!TIP]") || clean.startsWith("[!tip]")) {
             clean = clean.substring(6).trim();
             title = "TIP";
-            color = "#10B981";
+            color = "-color-success";
         } else if (clean.startsWith("[!WARNING]") || clean.startsWith("[!warning]")) {
             clean = clean.substring(10).trim();
             title = "WARNING";
-            color = "#F59E0B";
+            color = "-color-warning";
         }
 
         Label titleLbl = new Label(title);
@@ -201,7 +201,7 @@ public final class ChatMarkdownRenderer {
         TextFlow flow = parseRichText(clean);
 
         VBox box = new VBox(4, titleLbl, flow);
-        box.setStyle("-fx-background-color: rgba(217, 161, 59, 0.08); -fx-border-color: " + color + ";"
+        box.setStyle("-fx-background-color: -color-surface-raised; -fx-border-color: " + color + ";"
                 + "-fx-border-width: 0 0 0 3; -fx-border-radius: 4; -fx-background-radius: 4;"
                 + "-fx-padding: 8 12 8 12;");
         return box;
@@ -209,7 +209,7 @@ public final class ChatMarkdownRenderer {
 
     private static Node renderSeparator() {
         Separator s = new Separator();
-        s.setStyle("-fx-background-color: #273449; -fx-padding: 4 0 4 0;");
+        s.setStyle("-fx-background-color: -color-border; -fx-padding: 4 0 4 0;");
         return s;
     }
 
@@ -307,8 +307,8 @@ public final class ChatMarkdownRenderer {
         for (int c = 0; c < cols; c++) {
             String hText = cleanCellText(headers.get(c));
             Label hLbl = new Label(hText);
-            hLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #F1F5F9; -fx-font-size: 12px; "
-                    + "-fx-padding: 7 14 7 14; -fx-background-color: #192333;");
+            hLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: -color-text-bright; -fx-font-size: 12px; "
+                    + "-fx-padding: 7 14 7 14; -fx-background-color: -color-surface-raised;");
             hLbl.setAlignment(alignments.get(c));
             hLbl.setMinWidth(Region.USE_PREF_SIZE);
             hLbl.setMaxWidth(Double.MAX_VALUE);
@@ -326,11 +326,11 @@ public final class ChatMarkdownRenderer {
                 CellFormatted cf = formatCell(rawVal);
                 Label cellLbl = new Label(cf.text);
                 String boldStyle = cf.bold
-                        ? "-fx-font-weight: bold; -fx-text-fill: #F1F5F9; "
-                        : "-fx-text-fill: #CBD5E1; ";
+                        ? "-fx-font-weight: bold; -fx-text-fill: -color-text-bright; "
+                        : "-fx-text-fill: -color-text; ";
                 cellLbl.setStyle(boldStyle + "-fx-font-size: 12px; "
                         + "-fx-padding: 6 14 6 14; -fx-background-color: " + rowBg + ";"
-                        + "-fx-border-color: #1F2C3F; -fx-border-width: 1 0 0 0;");
+                        + "-fx-border-color: -color-border-subtle; -fx-border-width: 1 0 0 0;");
                 cellLbl.setAlignment(alignments.get(c));
                 cellLbl.setMinWidth(Region.USE_PREF_SIZE);
                 cellLbl.setMaxWidth(Double.MAX_VALUE);
@@ -344,7 +344,7 @@ public final class ChatMarkdownRenderer {
         grid.setMaxWidth(Double.MAX_VALUE);
 
         VBox card = new VBox(grid);
-        card.setStyle("-fx-background-color: #0E1520; -fx-border-color: #28374D; "
+        card.setStyle("-fx-background-color: -color-surface; -fx-border-color: -color-border; "
                 + "-fx-border-radius: 8; -fx-background-radius: 8; -fx-border-width: 1; -fx-overflow: hidden;");
         card.setMinWidth(Region.USE_PREF_SIZE);
         card.setMinHeight(Region.USE_PREF_SIZE);
@@ -428,10 +428,10 @@ public final class ChatMarkdownRenderer {
 
     private static Node renderCodeBlock(String lang, String code) {
         Label langLbl = new Label(lang.isBlank() ? "CODE" : lang.toUpperCase());
-        langLbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #7C8AA0; -fx-font-weight: bold;");
+        langLbl.setStyle("-fx-font-size: 10px; -fx-text-fill: -color-text-tertiary; -fx-font-weight: bold;");
 
         Button copyBtn = new Button("Copy");
-        copyBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #97A3B6; -fx-font-size: 10.5px; "
+        copyBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: -color-text-secondary; -fx-font-size: 10.5px; "
                 + "-fx-cursor: hand; -fx-padding: 2 6;");
         copyBtn.setOnAction(e -> {
             Clipboard cb = Clipboard.getSystemClipboard();
@@ -450,11 +450,11 @@ public final class ChatMarkdownRenderer {
         head.getChildren().add(copyBtn);
 
         Label codeText = new Label(code);
-        codeText.setStyle("-fx-font-family: " + MONO_FONT + "; -fx-font-size: 12px; -fx-text-fill: #F1F5F9;");
+        codeText.setStyle("-fx-font-family: " + MONO_FONT + "; -fx-font-size: 12px; -fx-text-fill: -color-text-bright;");
         codeText.setWrapText(true);
 
         VBox box = new VBox(4, head, codeText);
-        box.setStyle("-fx-background-color: #0A0F17; -fx-border-color: #273245; "
+        box.setStyle("-fx-background-color: -color-bg-deep; -fx-border-color: -color-border; "
                 + "-fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 8 10 8 10;");
         return box;
     }
@@ -558,22 +558,30 @@ public final class ChatMarkdownRenderer {
 
     private static Text normalText(String str) {
         Text t = new Text(str);
-        t.setFill(Color.web(TEXT_PRIMARY));
+        applyFill(t, TEXT_PRIMARY);
         t.setFont(Font.font("System", 13.0));
         return t;
     }
 
     private static Text boldText(String str) {
         Text t = new Text(str);
-        t.setFill(Color.web(TEXT_BOLD));
+        applyFill(t, TEXT_BOLD);
         t.setFont(Font.font("System", FontWeight.BOLD, 13.0));
         return t;
     }
 
     private static Text codeText(String str) {
         Text t = new Text(" " + str + " ");
-        t.setFill(Color.web(TEXT_CODE));
+        applyFill(t, TEXT_CODE);
         t.setFont(Font.font("Consolas", 12.0));
         return t;
+    }
+
+    private static void applyFill(Text t, String color) {
+        if (color != null && color.startsWith("-")) {
+            t.setStyle("-fx-fill: " + color + ";");
+        } else if (color != null && !color.isBlank()) {
+            t.setFill(Color.web(color));
+        }
     }
 }

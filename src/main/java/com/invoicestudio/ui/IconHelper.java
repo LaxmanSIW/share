@@ -86,7 +86,11 @@ public class IconHelper {
         if (path != null) {
             SVGPath svg = new SVGPath();
             svg.setContent(path);
-            svg.setFill(Color.web(colorHex != null ? colorHex : "#CBD5E1"));
+            if (colorHex != null && colorHex.startsWith("-")) {
+                svg.setStyle("-fx-fill: " + colorHex + ";");
+            } else {
+                svg.setFill(Color.web(colorHex != null ? colorHex : "#CBD5E1"));
+            }
             return svg;
         }
 
@@ -101,7 +105,11 @@ public class IconHelper {
         if (path != null) {
             SVGPath svg = new SVGPath();
             svg.setContent(path);
-            svg.setFill(Color.web(colorHex != null ? colorHex : "#94A3B8"));
+            if (colorHex != null && colorHex.startsWith("-")) {
+                svg.setStyle("-fx-fill: " + colorHex + ";");
+            } else {
+                svg.setFill(Color.web(colorHex != null ? colorHex : "#94A3B8"));
+            }
             svg.setScaleX(14.0 / 24.0);
             svg.setScaleY(14.0 / 24.0);
             javafx.scene.Group grp = new javafx.scene.Group(svg);

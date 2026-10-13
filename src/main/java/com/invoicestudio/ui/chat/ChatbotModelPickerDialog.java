@@ -35,9 +35,9 @@ import java.util.function.Consumer;
  */
 public final class ChatbotModelPickerDialog {
 
-    private static final String GOLD = "#D9A13B";
-    private static final String BG_WINDOW = "#0B0F17";
-    private static final String BORDER_COLOR = "#222F43";
+    private static final String GOLD = "-color-accent";
+    private static final String BG_WINDOW = "-color-bg-deep";
+    private static final String BORDER_COLOR = "-color-border";
 
     private final Stage stage = new Stage();
     private final TextField searchField = new TextField();
@@ -65,18 +65,18 @@ public final class ChatbotModelPickerDialog {
         icon.setGraphic(IconHelper.getIcon(IconHelper.ICON_SPARKLES, 18, GOLD));
 
         Label title = new Label("Select AI Model");
-        title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #F1F5F9;");
+        title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: -color-text-bright;");
 
         Label providerBadge = new Label(provLabel);
         providerBadge.setStyle("-fx-font-size: 10.5px; -fx-text-fill: " + GOLD + "; "
-                + "-fx-background-color: rgba(217, 161, 59, 0.12); -fx-border-color: rgba(217, 161, 59, 0.35); "
+                + "-fx-background-color: -color-accent-subtle; -fx-border-color: -color-accent-glow; "
                 + "-fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 7 2 7; -fx-font-weight: bold;");
 
         HBox titleRow = new HBox(8, icon, title, providerBadge);
         titleRow.setAlignment(Pos.CENTER_LEFT);
 
         Label subtitle = new Label("Live catalogue from " + provLabel + ". Pick a model for assistant reasoning and business tool execution.");
-        subtitle.setStyle("-fx-font-size: 11.5px; -fx-text-fill: #8A9BAE;");
+        subtitle.setStyle("-fx-font-size: 11.5px; -fx-text-fill: -color-text-secondary;");
         subtitle.setWrapText(true);
 
         VBox header = new VBox(4, titleRow, subtitle);
@@ -84,9 +84,9 @@ public final class ChatbotModelPickerDialog {
 
         // 2. Search Box
         searchField.setPromptText("🔍  Search models (e.g. flash, lite, pro, 3.5)...");
-        searchField.setStyle("-fx-background-color: #141D2B; -fx-border-color: #273449; "
-                + "-fx-border-radius: 8; -fx-background-radius: 8; -fx-text-fill: #E2E8F0; "
-                + "-fx-prompt-text-fill: #64748B; -fx-padding: 8 12 8 12; -fx-font-size: 13px;");
+        searchField.setStyle("-fx-background-color: -color-surface; -fx-border-color: -color-border; "
+                + "-fx-border-radius: 8; -fx-background-radius: 8; -fx-text-fill: -color-text; "
+                + "-fx-prompt-text-fill: -color-text-tertiary; -fx-padding: 8 12 8 12; -fx-font-size: 13px;");
 
         ObservableList<ModelCatalog.ModelInfo> masterList = FXCollections.observableArrayList(models);
         FilteredList<ModelCatalog.ModelInfo> filteredList = new FilteredList<>(masterList, p -> true);
@@ -107,7 +107,7 @@ public final class ChatbotModelPickerDialog {
 
         // 3. Model List View
         listView.setItems(filteredList);
-        listView.setStyle("-fx-background-color: #0A0E17; -fx-control-inner-background: #0A0E17; "
+        listView.setStyle("-fx-background-color: -color-bg-deep; -fx-control-inner-background: -color-bg-deep; "
                 + "-fx-border-color: " + BORDER_COLOR + "; -fx-border-radius: 8; -fx-background-radius: 8; "
                 + "-fx-padding: 4;");
         VBox.setVgrow(listView, Priority.ALWAYS);
@@ -132,11 +132,11 @@ public final class ChatbotModelPickerDialog {
                 // Left details: Name + technical ID
                 Label nameLbl = new Label(mi.displayName());
                 nameLbl.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; "
-                        + "-fx-text-fill: " + (isActive ? GOLD : "#F1F5F9") + ";");
+                        + "-fx-text-fill: " + (isActive ? GOLD : "-color-text-bright") + ";");
 
                 Label idLbl = new Label(mi.id());
                 idLbl.setStyle("-fx-font-size: 11px; -fx-font-family: Consolas, 'Courier New', monospace; "
-                        + "-fx-text-fill: #64748B;");
+                        + "-fx-text-fill: -color-text-tertiary;");
 
                 VBox leftBox = new VBox(2, nameLbl, idLbl);
                 leftBox.setAlignment(Pos.CENTER_LEFT);
@@ -162,8 +162,8 @@ public final class ChatbotModelPickerDialog {
                     long k = mi.inputTokenLimit() / 1000;
                     String contextText = k >= 1000 ? (k / 1000) + "M context" : k + "K context";
                     Label ctxLbl = new Label(contextText);
-                    ctxLbl.setStyle("-fx-font-size: 10px; -fx-text-fill: #94A3B8; "
-                            + "-fx-background-color: #1A2333; -fx-border-color: #273449; "
+                    ctxLbl.setStyle("-fx-font-size: 10px; -fx-text-fill: -color-text-secondary; "
+                            + "-fx-background-color: -color-surface-raised; -fx-border-color: -color-border; "
                             + "-fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 6 2 6;");
                     rightBox.getChildren().add(ctxLbl);
                 }
@@ -171,7 +171,7 @@ public final class ChatbotModelPickerDialog {
                 if (isActive) {
                     Label activeChip = new Label("Current");
                     activeChip.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: " + GOLD + "; "
-                            + "-fx-background-color: rgba(217, 161, 59, 0.15); -fx-border-color: " + GOLD + "; "
+                            + "-fx-background-color: -color-accent-subtle; -fx-border-color: " + GOLD + "; "
                             + "-fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 6 2 6;");
                     rightBox.getChildren().add(activeChip);
                 }
@@ -185,7 +185,7 @@ public final class ChatbotModelPickerDialog {
 
                 // Styling updates based on selection
                 if (isSelected()) {
-                    setStyle("-fx-background-color: #152238; -fx-background-radius: 6; "
+                    setStyle("-fx-background-color: -color-surface-hover; -fx-background-radius: 6; "
                             + "-fx-border-color: " + GOLD + "; -fx-border-width: 0 0 0 3;");
                 } else {
                     setStyle("-fx-background-color: transparent; -fx-background-radius: 6;");
@@ -216,18 +216,18 @@ public final class ChatbotModelPickerDialog {
 
         // 4. Footer Bar
         updateCount(filteredList.size(), masterList.size());
-        countLabel.setStyle("-fx-font-size: 11.5px; -fx-text-fill: #64748B;");
+        countLabel.setStyle("-fx-font-size: 11.5px; -fx-text-fill: -color-text-tertiary;");
 
         Region footerSpring = new Region();
         HBox.setHgrow(footerSpring, Priority.ALWAYS);
 
         Button cancelBtn = new Button("Cancel");
-        cancelBtn.setStyle("-fx-background-color: #1A2333; -fx-text-fill: #CBD5E1; "
-                + "-fx-border-color: #2E3C52; -fx-border-radius: 6; -fx-background-radius: 6; "
+        cancelBtn.setStyle("-fx-background-color: -color-surface-raised; -fx-text-fill: -color-text; "
+                + "-fx-border-color: -color-border; -fx-border-radius: 6; -fx-background-radius: 6; "
                 + "-fx-padding: 7 16 7 16; -fx-font-size: 12px; -fx-cursor: hand;");
         cancelBtn.setOnAction(e -> stage.close());
 
-        selectBtn.setStyle("-fx-background-color: " + GOLD + "; -fx-text-fill: #0B0E13; "
+        selectBtn.setStyle("-fx-background-color: " + GOLD + "; -fx-text-fill: -color-text-inverse; "
                 + "-fx-font-weight: bold; -fx-border-radius: 6; -fx-background-radius: 6; "
                 + "-fx-padding: 7 18 7 18; -fx-font-size: 12px; -fx-cursor: hand;");
         selectBtn.disableProperty().bind(listView.getSelectionModel().selectedItemProperty().isNull());

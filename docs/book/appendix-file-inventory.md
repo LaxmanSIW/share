@@ -10,13 +10,14 @@
 > and lifecycle explained (no text to read) · ⚠ = flagged GAP in its chapter.
 > Paths under `src/main/java/com/invoicestudio/` are shortened to their tail.
 >
-> ### Audit summary (verified at book completion)
+> ### Audit summary (updated to current codebase)
 >
 > | Measure | Value |
 > |---|---|
-> | Tracked files in repository | **322** (305 at Step 0 — the chatbot sessions added chat/transcript/vault/status services, UI classes and tests; all covered in Ch 19/14/15/16/18) |
-> | Application Java files (`src/main/java`) | 172 — every one claimed by a chapter row below |
-> | Test Java files (`src/test/java`) | **77** = 53 JUnit suites (389 `@Test` methods) + 23 interactive launchers/harnesses + the knowledge generator (Ch 21 reconciles the old "108 files" Step-0 estimate; see the NOTE in Ch 21) |
+> | Tracked files in Java core (`src/`) | **273** (178 app Java files + 90 test Java files + 5 theme stylesheets) |
+> | Application Java files (`src/main/java`) | **178** — every one claimed by a chapter row below |
+> | Test Java files (`src/test/java`) | **90** = 66 JUnit suites + 24 interactive launchers/harnesses/generators |
+> | Extended Ecosystem additions | Native C++/Qt6 port (`native/`) + Static UI prototype (`redesign/`) + 13 Vault notes (`docs/vault/`) |
 > | Book units delivered | 23 chapters (Ch 0–22) + 5 appendices (A1–A5) |
 > | Faithfulness markers raised | **100 GAP · 121 ISSUE · 144 NOTE** (deduplicated per-chapter, recapped in each chapter's self-check and consolidated in A4) |
 > | OPTIONAL IMPROVEMENT blocks | 131 mentions → consolidated into the ranked 43-row roadmap of **Appendix A3** |
@@ -147,6 +148,7 @@
 | `TemplatePreviewService.java` | Logic | Template → preview image | renderer | designer | 16 | ✅ |
 | `VariableGrouper.java` | Logic | Group variable defs into UI categories | VariableDef | variables, settings | 13 | ✅ |
 | `CustomComponentManager.java` | Logic | Persist/load designer components | CustomComponent, AppDirs | designer | 15 | ✅ |
+| `TemplatePackageService.java` | Logic | .invpkg ZIP template archive packaging & extraction | Jackson, AppDirs | TemplatesView, MCP | 15 | ✅ |
 | `BulkPrintStateStore.java` | State | Bulk-print progress persistence | AppDirs | bulk dialog | 17 | ✅ |
 | `KnowledgeRepository.java` | Logic | Load/save Knowledge Hub articles | KnowledgeArticle, json | Hub panel, MCP | 20 | ✅ |
 | `KnowledgeSeed.java` | Data | Built-in seed articles | — | first run | 20 | ✅ |
@@ -169,6 +171,11 @@
 | `WindowResizeHelper.java` | UI | Custom window resize handles | stage | shell | 9 | ✅ |
 | `WindowStateManager.java` | State | Window geometry persistence | prefs | shell | 9 | ✅ |
 | `UiTheme.java` | Style | Programmatic theme bits | css | app | 9 | ✅ |
+| `Theme.java` | Model | Theme color tokens & preview swatches | — | ThemeManager | 9 | ✅ |
+| `ThemeManager.java` | State | Centralized active theme state & live CSS injector | Preferences, AppDirs | StudioApp, ThemeVault | 9 | ✅ |
+| `ThemeValidator.java` | Logic | CSS custom variable & theme syntax linter | — | ThemeManager | 9 | ✅ |
+| `ThemeVaultPanel.java` | UI | Theme vault gallery in settings with live preview cards | ThemeManager | settings view | 9 | ✅ |
+| `TitleBarTheme.java` | Native | Windows DWM immersive dark title bar via JNA | stage, JNA | StudioApp | 9 | ✅ |
 | `IconHelper.java` | Assets | Icon glyph factory | resources | everywhere | 9 | ✅ |
 | `Toast.java` | UI | Transient toast notifications | — | everywhere | 9 | ✅ |
 | `DialogHelper.java` | UI | Dialog theming/app icon | — | dialogs | 9 | ✅ |
@@ -257,6 +264,11 @@
 | File | Type | Purpose | Ch | Status |
 |---|---|---|---|---|
 | `css/globalfile.css` | Stylesheet | Whole dark-gold theme (3774 lines) | 9 | ✅ |
+| `themes/amethyst-night.css` | Stylesheet | Violet & neon purple theme | 9 | ✅ |
+| `themes/crimson-forge.css` | Stylesheet | Charcoal & crimson ember theme | 9 | ✅ |
+| `themes/emerald-forest.css` | Stylesheet | Pine & emerald green theme | 9 | ✅ |
+| `themes/midnight-sapphire.css` | Stylesheet | Deep navy & sapphire blue theme | 9 | ✅ |
+| `themes/nordic-cyan.css` | Stylesheet | Polar slate & arctic cyan theme | 9 | ✅ |
 | `icons/Invoice black background.png` | Image | Dark app icon | 9 | ◐ |
 | `icons/Invoicewhitebackground.png` | Image | Light app icon | 9 | ◐ |
 | `icons/invoice-mark.png` | Image | Logo mark | 9 | ◐ |
@@ -279,7 +291,9 @@
 |---|---|---|---|---|
 | `docs/OPTIMIZATION_REPORT_2026-09-16.md` | Docs | Optimization pass report | 21 | ✅ |
 | `docs/PERFORMANCE_OPTIMIZATION_GUIDE.md` | Docs | Performance guide | 21 | ✅ |
-| `docs/vault/00 Index.md` … `08 MCP Server.md` (9 files) | Docs | Architecture vault notes | 21 | ✅ |
+| `docs/vault/00 Index.md` … `12 Dark OS Title Bar.md` (13 notes) | Docs | Architecture vault notes including packaging, resize, remote printing, dark title bar | 21 | ✅ |
+| `native/*` | Directory | InvoiceStudio Native C++/Qt6 desktop port (v4.0.0) | 1, 22 | ◐ |
+| `redesign/*` | Directory | 24-page static HTML/CSS/JS Institutional-Editorial UI prototype | 9 | ◐ |
 | `scripts/bulk_verify_test.sh` | Script | Bulk-print verify runner | 21 | ✅ |
 | `scripts/knowledge_verify_test.sh` | Script | Knowledge verify runner | 21 | ✅ |
 | `scripts/labelstock_verify_test.sh` | Script | Label-stock verify runner | 21 | ✅ |
@@ -300,22 +314,22 @@
 | `fx.env` | Env | (duplicated above; single row authoritative) | 1 | ✅ |
 | `MERCHANT_SIM_REPORT.md` | Docs | (duplicated above; single row authoritative) | 21 | ✅ |
 
-## Tests (77 files — every suite mapped to its chapter, enumerated in Ch 21)
+## Tests (90 files — every suite mapped to its chapter, enumerated in Ch 21)
 
 | Suite / harness | Tests | Ch | Status |
 |---|---|---|---|
 | `AppDirsTest.java` | 3 | 2 | ✅ |
 | `db/DatabaseTest.java` | suite | 3 | ✅ |
+| `model/TemplateCopyOfTest.java` | 4 | 7, 15 | ✅ |
 | `mcp/*` (8 files) | suites | 18 | ✅ |
-| `service/*` (35 files, incl. AiChat ×6, billing ×2, label/print ×8, template ×4, knowledge ×3, vault/transcript/status ×3…) | suites | 2–20 by topic | ✅ |
-| `ui/*` (8 files) + `ui/chat/*` (3 files) | suites | by topic | ✅ |
+| `service/*` (38 files, incl. AiChat ×6, billing ×2, label/print ×8, template ×5 incl. TemplatePackageServiceTest, FontWeightSynthesisTest, TextStretchRenderTest, knowledge ×3, vault/transcript/status ×3…) | suites | 2–20 by topic | ✅ |
+| `ui/*` (17 files, incl. ThemeVaultTest, TitleBarThemeTest, WindowStateManagerGeometryTest, DesignerResizeSemanticsTest, TextHandleScalePolicyTest, TextFramePaddingTest, MultiSelectSupportTest, TemplatesExportMenuTest, TemplatesToolbarThemeTest…) + `ui/chat/*` (3 files) | suites | by topic | ✅ |
 | `VisualFeaturesVerify.java` | 7 | 19 | ✅ |
 | Root launchers/verifiers (23: SmokeLauncher, NavSmokeRunner, MerchantTour(+L), ZoomScrollVerify, RulerVerify, SelectionZoomVerify, BarcodeFixVerify, BarcodeVerifyLauncher, BulkDialogVerify, BulkVerifyLauncher, LabelStockDialogVerify, LabelStockLauncher, ChatbotKnowledgeVerify(+L), SettingsKnowledgeVerify(+L), TsplVerifyLauncher, MerchantBulkStress, MerchantSimSeed…) | interactive | 21 | ✅ |
+| `KnowledgeGenerator.java` + `TsplPipelineVerify.java` | support / harness | 17, 20 | ✅ |
 
-**NOTE (reconciliation):** the Step-0 header estimated "108 test files"; the final count
-is **77 `.java` files** (53 JUnit suites + 23 launchers + KnowledgeGenerator). Ch 21
-enumerates all 77 by name and carries the NOTE; the difference was stale arithmetic in
-the early estimate, not missing coverage.
+> **NOTE (verified):** The repository holds **90 `.java` files** under `src/test/java`
+> (66 JUnit suites + 23 launchers + KnowledgeGenerator), all compiling clean and passing.
 
 ---
 

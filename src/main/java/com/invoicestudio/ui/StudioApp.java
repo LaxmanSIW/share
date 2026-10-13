@@ -113,8 +113,10 @@ public class StudioApp extends Application {
 
         stage.setScene(scene);
         stage.setTitle("InvoiceStudio — Bill Design & Print");
-        stage.setMinWidth(1024);
-        stage.setMinHeight(640);
+        // NOTE: stage min width/height are set by WindowStateManager.applyAndTrack()
+        // below, which clamps them to the smallest connected screen — a fixed
+        // 1024×640 minimum overflows the logical desktop of a scaled laptop
+        // panel and opened the window pre-clipped there (docs/vault/10 §7).
 
         try {
             // Modern icon-only mark (redesigned from the square wordmark —
